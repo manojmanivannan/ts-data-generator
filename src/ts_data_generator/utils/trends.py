@@ -53,8 +53,8 @@ class SinusoidalTrend(Trends):
         Args:
             name (str): Name of the trend.
             amplitude (float): Amplitude of the sinusoidal wave.
-            freq (float): Frequency of the sinusoidal wave.
-            phase (float): Phase offset of the sinusoidal wave.
+            freq (float): Frequency of the sinusoidal wave in days.
+            phase (float): Phase offset of the sinusoidal wave in hours.
             noise_level (float): Standard deviation of the noise.
         """
         super().__init__(name)
@@ -79,40 +79,65 @@ class SinusoidalTrend(Trends):
     def noise_level(self) -> float:
         return self._noise_level
 
-    def generate(self, timestamps) -> np.ndarray:
+    def generate(self, timestamps: pd.DatetimeIndex) -> np.ndarray:
         """
         Generate a sinusoidal wave with added noise.
-        
-        Parameters:
-            amplitude (float): Amplitude of the sinusoidal wave.
-            freq (float): Frequency of the sinusoidal wave.
-            phase (float): Phase offset of the sinusoidal wave.
-            noise_level (float): Standard deviation of the noise.
-            
+
+        Args:
+            timestamps (pd.DatetimeIndex): Array of timestamps.
+
         Returns:
-            y (numpy.ndarray): Sinusoidal wave with noise.
+            np.ndarray: Sinusoidal wave with noise.
         """
+        # Calculate the time in fractional days
+        time_in_days = (timestamps - timestamps[0]).total_seconds() / (24 * 3600)
 
-        # frequency is in hours, phase is in minutes,
-        # convert frequency to period
-        frequency = 1/self._freq  # Set frequency to oscillate once every hour
-        phase_hours = self._phase / 60  # Convert phase to hours
-        noise_level = self._noise_level * 0.1 # Add 10% noise
+        # Convert phase to fractional days
+        phase_in_days = self._phase / 24.0
 
-        base_wave = np.zeros(len(timestamps))
+        # Calculate the sinusoidal wave
+        base_wave = self._amplitude * np.sin(2 * np.pi * (1/self._freq) * (time_in_days + phase_in_days))
 
-        # Convert phase from minutes to hours
+        # Add noise
+        noise = np.random.normal(0, self._noise_level, len(timestamps))
+        sinusoidal_wave = base_wave + noise
+
+        return sinusoidal_wave
+    
+    # def generate(self, timestamps) -> np.ndarray:
+    #     """
+    #     Generate a sinusoidal wave with added noise.
         
-        base_wave += self._amplitude *np.sin(2 * np.pi * frequency * (timestamps.hour + timestamps.minute / 60)) + phase_hours
+    #     Parameters:
+    #         amplitude (float): Amplitude of the sinusoidal wave.
+    #         freq (float): Frequency of the sinusoidal wave.
+    #         phase (float): Phase offset of the sinusoidal wave.
+    #         noise_level (float): Standard deviation of the noise.
+            
+    #     Returns:
+    #         y (numpy.ndarray): Sinusoidal wave with noise.
+    #     """
+
+    #     # frequency is in hours, phase is in minutes,
+    #     # convert frequency to period
+    #     frequency = 1/self._freq  # Set frequency to oscillate once every hour
+    #     phase_hours = self._phase / 60  # Convert phase to hours
+    #     noise_level = self._noise_level * 0.1 # Add 10% noise
+
+    #     base_wave = np.zeros(len(timestamps))
+
+    #     # Convert phase from minutes to hours
+        
+    #     base_wave += self._amplitude *np.sin(2 * np.pi * frequency * (timestamps.hour + timestamps.minute / 60)) + phase_hours
 
     
-        noise = np.random.normal(0, noise_level, len(timestamps))  # Generate noise
-        base_wave += noise  # Add noise to the wave
+    #     noise = np.random.normal(0, noise_level, len(timestamps))  # Generate noise
+    #     base_wave += noise  # Add noise to the wave
         
-        # Add noise to the wave
-        y = base_wave #+ noise
+    #     # Add noise to the wave
+    #     y = base_wave #+ noise
         
-        return y
+    #     return y
     
 
 class LinearTrend(Trends):
@@ -166,7 +191,7 @@ class LinearTrend(Trends):
         # Calculate time differences in the appropriate unit
         time_deltas = (timestamps - timestamps[0])
 
-        if timestamps.freq == "5T":  # 5-minute granularity
+        if timestamps.freq == "5min":  # 5-minute granularity
             time_numeric = time_deltas.total_seconds() / 60.0  # Convert to minutes
         elif timestamps.freq == "H":  # Hourly granularity
             time_numeric = time_deltas.total_seconds() / 3600.0  # Convert to hours
@@ -186,3 +211,73 @@ class LinearTrend(Trends):
 
         return trend_with_noise
 
+class WeekendTrend(Trends):
+    def __init__(
+        self,
+        name: str = "default",
+        weekend_effect: float = 1.0,
+        direction: Literal["up", "down"] = "up",
+        noise_level: float = 0.0,
+        limit: float = 10.0,
+    ):
+        """
+        Initialize a WeekendTrend object.
+
+        Args:
+            name (str): Name of the trend.
+            weekend_effect (float): Magnitude of the weekend effect.
+            direction (Literal["up", "down"]): Direction of the weekend effect.
+            noise_level (float): Standard deviation of the noise.
+            limit (float): Maximum value for the weekend effect.
+        """
+        super().__init__(name)
+        self._weekend_effect = weekend_effect
+        self._direction = direction
+        self._noise_level = noise_level
+        self._limit = limit
+
+    @property
+    def weekend_effect(self) -> float:
+        return self._weekend_effect
+
+    @property
+    def direction(self) -> str:
+        return self._direction
+
+    @property
+    def noise_level(self) -> float:
+        return self._noise_level
+
+    @property
+    def limit(self) -> float:
+        return self._limit
+
+    def generate(self, timestamps: pd.DatetimeIndex) -> np.ndarray:
+        """
+        Generate a weekend-specific trend.
+
+        Args:
+            timestamps (pd.DatetimeIndex): Array of timestamps.
+
+        Returns:
+            np.ndarray: Trend values with weekend effect.
+        """
+        # Initialize the trend with zeros
+        trend = np.zeros(len(timestamps))
+
+        # Determine if each timestamp falls on a weekend (Saturday or Sunday)
+        is_weekend = timestamps.weekday >= 5
+
+        # Apply the weekend effect
+        weekend_adjustment = self._weekend_effect if self._direction == "up" else -self._weekend_effect
+        trend[is_weekend] = weekend_adjustment
+
+
+        # Clip the trend to the specified limit
+        trend = np.clip(trend, -self._limit, self._limit)
+
+        # Add noise
+        noise = np.random.normal(0, self._noise_level, len(timestamps))
+        trend += noise
+
+        return trend
