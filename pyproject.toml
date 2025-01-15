@@ -14,7 +14,8 @@ dependencies = [
     "pytest",
     "python-dotenv",
     "pandas",
-    "pydantic"
+    "pydantic",
+    "matplotlib"
 ]
 readme = "README.md"
 authors = [
