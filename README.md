@@ -1,6 +1,6 @@
 <!-- html title in the middle -->
 <p style="text-align: center;">
-    <h1 align="center">Data Generator Library</h1>
+    <h1 align="center">Synthetic Time Series Data Generator</h1>
     <h3 align="center">A Python library for generating synthetic time series data</h3>
 </p>
 
@@ -23,14 +23,22 @@ Coming soon
 ## Usage
 
 ```python
-from ts_data_generator import DataGen
-from ts_data_generator.utils import some_function
+d = DataGen()
+d.start_datetime = "2019-01-01"
+d.end_datetime = "2019-01-03"
+d.granularity = Granularity.FIVE_MIN
+d.add_dimension("product", random_choice(["A", "B", "C", "D"]))
 
-# Create a data generator
-gen = DataGen()
+metric1_trend = SinusoidalTrend(name="sine", amplitude=10, freq=24, phase=0, noise_level=10)
 
-# Generate sample data
-df = gen.generate_sample_data(rows=100)
+d.add_metric(name="temperature", trends=[metric1_trend])
+
+metric2_trend = SinusoidalTrend(name="sine", amplitude=1, freq=12, phase=0, noise_level=2)
+metric3_trend = LinearTrend(name="linear", limit=100, offset=10, noise_level=1)
+
+d.add_metric(name="humidity", trends=[metric2_trend,metric3_trend])
+d.generate_data()
+df = d.data
 
 # Use utility functions
 processed_df = some_function(df)
