@@ -3,9 +3,12 @@
     <h1 align="center">Synthetic Time Series Data Generator</h1>
     <h3 align="center">A Python library for generating synthetic time series data</h3>
 </p>
+<p align="center">
+<img src="notebooks/image.png" alt="MarineGEO circle logo" style="height: 1000px; width:800px;"/>
+</p>
 
 
-
+<!-- insert image from notebooks directory -->
 
 
 
