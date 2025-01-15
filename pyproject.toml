@@ -1,0 +1,43 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ts_data_generator"]
+
+[project]
+name = "ts-data-generator"
+version = "0.0.1"
+description = "A Python library for generating synthetic time series data"
+requires-python = ">=3.8"
+dependencies = [
+    "pytest",
+    "python-dotenv",
+    "pandas",
+    "pydantic"
+]
+readme = "README.md"
+authors = [
+    { name = "Manoj Manivannan", email = "manojm18@live.in" }
+]
+license = { text = "MIT" }
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+keywords = ["synthetic data", "data generator", "python", "time series"]
+
+
+[tool.pytest.ini_options]
+addopts = "-ra -q"
+testpaths = [
+    "tests",
+]
+
+[project.optional-dependencies]
+dev = [
+    "black",
+    "flake8",
+]
+
