@@ -4,6 +4,7 @@ Core DataGen class implementation
 
 from typing import Optional, Union, Dict, Set, List, Generator
 from .schema.models import Metrics, Dimensions, Granularity
+from .utils.trends import Trends
 import pandas as pd
 from datetime import datetime
 
@@ -74,6 +75,8 @@ class DataGen:
 
     @property
     def granularity(self):
+        if isinstance(self._granularity, Granularity):
+            return self._granularity.value
         return self._granularity
 
     @granularity.setter
@@ -97,6 +100,10 @@ class DataGen:
     @property
     def metrics(self):
         return {m.name: m for m in self._metrics}
+    
+    @property
+    def trends(self):
+        return {m.name: {t.name: t for t in m._trends} for m in self._metrics}
 
     def _validate_metrics(self) -> None:
         """Validate metrics format and logic.
@@ -217,11 +224,7 @@ class DataGen:
     def add_metric(
         self,
         name: str,
-        function_type: Optional[str] = "sine",
-        function_value: Optional[Generator] = None,
-        frequency_in_hour: Optional[float] = 24,
-        offset_in_minutes: Optional[float] = 0,
-        scale: Optional[float] = 1,
+        trends: Set[Trends]
     ) -> None:
         """
         Add a metric to the DataGen instance.
@@ -267,15 +270,12 @@ class DataGen:
         """
         metric = Metrics(
             name=name,
-            function_type=function_type,
-            function_value=function_value,
-            frequency_in_hour=frequency_in_hour,
-            offset_in_minutes=offset_in_minutes,
-            scale=scale,
+            trends=trends
         )
         # Raise error if self._metrics already contains a metric with the same name
-        if metric in self._metrics:
-            raise ValueError(f"Metric with name {name} already exists")
+        for m in self._metrics:
+            if name == m.name:
+                raise ValueError(f"Metric with name '{name}' already exists")
         self._metrics.append(metric)
 
     def update_metric(
@@ -357,35 +357,31 @@ class DataGen:
         self._timestamps = pd.date_range(
             start=self.start_datetime,
             end=self.end_datetime,
-            freq=self.granularity.value,
+            freq=self.granularity,
         )
 
-        for _, dimension in self.dimensions.items():
-            dimension._create_generator(self._timestamps)
+        # create an empty dataframe with timestamps as index
+        self.metric_data = pd.DataFrame(index=self._timestamps)
 
+
+        # Generate metric data 
         for _, metric in self.metrics.items():
-            metric._create_generator(self._timestamps)
+            # recursively concant the dataframe to self.data
+            self.metric_data = pd.concat([self.metric_data, metric.generate(self._timestamps)], axis=1)
 
-        # Generate data
-        self.data = pd.DataFrame()
-        data = {}
-        for column_name, dimension in self.dimensions.items():
-            if isinstance(dimension.function, int) or isinstance(
-                dimension.function, str
-            ):
-                data[column_name] = [
-                    dimension.function for _ in range(self._timestamps.shape[0])
+
+
+        # Generate dimension data directly using a dictionary comprehension
+        self.dimension_data = pd.DataFrame(
+            {
+                column_name: [
+                    next(dimension.function) if not isinstance(dimension.function, (int, str)) else dimension.function
+                    for _ in range(len(self._timestamps))
                 ]
-            else:
-                data[column_name] = [
-                    next(dimension._function) for _ in range(self._timestamps.shape[0])
-                ]
+                for column_name, dimension in self.dimensions.items()
+            },
+            index=self._timestamps,
+    )
 
-        for column_name, metric in self.metrics.items():
-            if metric._function_type in ["sine", "cosine"]:
-                data[column_name] = metric._data
-            elif metric._function_type == "constant":
-                data[column_name] = metric._data
+        self.data = pd.concat([self.dimension_data, self.metric_data], axis=1)
 
-        self.data = pd.DataFrame(data)
-        self.data["datetime"] = self._timestamps

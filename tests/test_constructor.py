@@ -6,6 +6,7 @@ import pytest
 import pandas as pd
 from ts_data_generator import DataGen
 from ts_data_generator.utils.functions import random_choice, random_int
+from ts_data_generator.utils.trends import SinusoidalTrend
 
 
 class TestDataGenInitialization:
@@ -17,12 +18,14 @@ class TestDataGenInitialization:
         data_gen = DataGen()
         data_gen.start_datetime = "2022-01-01"
         data_gen.end_datetime = "2022-12-31"
+        data_gen.granularity = "5min"
         # Create function that will return random choice from list
         data_gen.add_dimension(name="protocol", function=random_choice(["TCP", "UDP"]))
         data_gen.add_dimension(name="port", function=random_int(1, 65536))
-        data_gen.add_metric(name="metric1", frequency_in_hour=1, offset_in_minutes=0, scale=2)
-        data_gen.add_metric(name="metric2", frequency_in_hour=2, offset_in_minutes=0, scale=3)
-        data_gen.granularity = "5min"
+
+        metric1_trend = SinusoidalTrend(name="sine", amplitude=1, freq=24, phase=0, noise_level=1)
+        data_gen.add_metric(name="metric1", trends=[metric1_trend])
+
         return data_gen
 
     def test_setting_dates(self, data_gen_instance):
@@ -43,9 +46,11 @@ class TestDataGenInitialization:
         
     def test_metric_values(self, data_gen_instance):
         assert data_gen_instance.metrics["metric1"].name == "metric1"
-        assert data_gen_instance.metrics["metric1"].frequency_in_hour == 1
-        assert data_gen_instance.metrics["metric1"].offset_in_minutes == 0
-        assert data_gen_instance.metrics["metric1"].scale == 2
+        assert data_gen_instance.trends['metric1']["sine"].name == "sine"
+        assert data_gen_instance.trends['metric1']["sine"].amplitude == 1
+        assert data_gen_instance.trends['metric1']["sine"].freq == 24
+        assert data_gen_instance.trends['metric1']["sine"].phase == 0
+        assert data_gen_instance.trends['metric1']["sine"].noise_level == 1
         
     def test_can_not_add_duplicate_dimension(self, data_gen_instance):
         with pytest.raises(ValueError):
