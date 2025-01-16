@@ -31,27 +31,7 @@ pip install --editable .
 
 ## Usage
 
-```python
-d = DataGen()
-d.start_datetime = "2019-01-01"
-d.end_datetime = "2019-01-03"
-d.granularity = Granularity.FIVE_MIN
-d.add_dimension("product", random_choice(["A", "B", "C", "D"]))
-
-metric1_trend = SinusoidalTrend(name="sine", amplitude=10, freq=24, phase=0, noise_level=10)
-
-d.add_metric(name="temperature", trends=[metric1_trend])
-
-metric2_trend = SinusoidalTrend(name="sine", amplitude=1, freq=12, phase=0, noise_level=2)
-metric3_trend = LinearTrend(name="linear", limit=100, offset=10, noise_level=1)
-
-d.add_metric(name="humidity", trends=[metric2_trend,metric3_trend])
-d.generate_data()
-df = d.data
-
-# Use data further however you want
-processed_df = some_function(df)
-```
+Check the sample notebook [here](https://github.com/manojmanivannan/ts-data-generator/blob/main/notebooks/sample.ipynb)
 
 #### Release method
 1. `git tag <x.x.x>`
