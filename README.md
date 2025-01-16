@@ -4,7 +4,7 @@
     <h3 align="center">A Python library for generating synthetic time series data</h3>
 </p>
 <p align="center">
-<img src="notebooks/image.png" alt="MarineGEO circle logo" style="height: 1000px; width:800px;"/>
+<img src="https://github.com/manojmanivannan/ts-data-generator/raw/main/notebooks/image.png" alt="MarineGEO circle logo" style="height: 1000px; width:800px;"/>
 </p>
 
 
