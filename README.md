@@ -1,26 +1,32 @@
 <!-- html title in the middle -->
-<p style="text-align: center;">
-    <h1 align="center">Synthetic Time Series Data Generator</h1>
-    <h3 align="center">A Python library for generating synthetic time series data</h3>
-</p>
-<p align="center">
+<div align="center">
+
+# Synthetic Time Series Data Generator
+
+[![Python](https://img.shields.io/pypi/v/ts-data-generator)](https://pypi.org/project/ts-data-generator) ![CI](https://github.com/manojmanivannan/ts-data-generator/actions/workflows/ci.yaml/badge.svg)
+
+A Python library for generating synthetic time series data
+
+<sup>Special thanks to: [Nike-Inc](https://github.com/Nike-Inc/timeseries-generator) repo
+
 <img src="https://github.com/manojmanivannan/ts-data-generator/raw/main/notebooks/image.png" alt="MarineGEO circle logo" style="height: 1000px; width:800px;"/>
-</p>
 
+<!-- ![Tutorial][tutorial] -->
 
-<!-- insert image from notebooks directory -->
-
-
+</div>
 
 ## Installation
+### PyPi (recommended)
+You can install with pip directly by
+```bash
+pip install ts-data-generator
+```
 
 ### Repo
 After cloning this repo and creating a virtual environment, run the following command:
 ```bash
 pip install --editable .
 ```
-### PyPi
-Coming soon
 
 
 ## Usage
@@ -43,10 +49,12 @@ d.add_metric(name="humidity", trends=[metric2_trend,metric3_trend])
 d.generate_data()
 df = d.data
 
-# Use utility functions
+# Use data further however you want
 processed_df = some_function(df)
 ```
 
 #### Release method
 1. `git tag <x.x.x>`
 2. `git push origin <x.x.x>`
+
+<!-- [tutorial]: /notebooks/test.gif -->
