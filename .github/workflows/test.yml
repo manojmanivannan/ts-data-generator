@@ -33,4 +33,4 @@ jobs:
       - name: Run PyTest 🧪
         shell: bash
         run: |
-          poetry run python -m pytest -v tests
+          poetry run python -m pytest -vv tests
