@@ -338,7 +338,6 @@ class DataGen:
             end=self.end_datetime,
             freq=self.granularity,
         )
-        print(f"Setting time range between {self._timestamps[0]} and {self._timestamps[-1]}")
 
         # create an empty dataframe with timestamps as index
         if self.metric_data.empty:
