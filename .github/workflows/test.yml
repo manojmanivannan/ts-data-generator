@@ -1,0 +1,37 @@
+name: test
+
+on:
+  push:
+    branches:
+      - "*"
+  pull_request:
+    branches:
+      - "*"
+  workflow_dispatch:
+
+jobs:
+  test_py:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install Poetry
+        run: |
+            curl -sSL https://install.python-poetry.org | python3 -
+            echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: Set project version with Poetry
+        run: |
+            poetry version ${{ needs.details.outputs.new_version }}
+  
+      - name: Install dependencies
+        run: poetry install --sync --no-interaction
+
+      - name: Run PyTest 🧪
+        shell: bash
+        run: |
+          poetry run python -m pytest -vv tests
