@@ -91,6 +91,10 @@ jobs:
       - name: Install dependencies
         run: poetry install --sync --no-interaction
 
+      - name: Run PyTest 🧪
+        run: |
+          poetry run python -m pytest -vv tests
+
       - name: Build source and wheel distribution
         run: |
             poetry build
