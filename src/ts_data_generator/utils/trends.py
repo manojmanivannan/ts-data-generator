@@ -128,9 +128,9 @@ class LinearTrend(Trends):
         self._offset = offset
         self._noise_level = noise_level
         # check if limit is within the range of 1 and 100
-        if limit < 1 or limit > 100:
+        if limit < 1 or limit > 1000:
             raise ValueError("Limit must be within the range of 1 and 100")
-        self._limit = limit
+        self._limit = limit * 10
 
     @property
     def limit(self) -> float:
@@ -247,3 +247,83 @@ class WeekendTrend(Trends):
         trend += noise
 
         return trend
+
+class StockTrend(Trends):
+    def __init__(
+        self,
+        name: str = "default",
+        amplitude: float = 15.0,
+        direction: Literal["up", "down"] = "up",
+        noise_level: float = 0.0,
+    ):
+        """
+        Initialize a StockTrend object.
+
+        Args:
+            name (str): Name of the trend.
+            amplitude (float): Amplitude of the trend.
+            direction (str): Direction of the trend ('up' or 'down').
+            noise_level (float): Standard deviation of the noise.
+
+        Raises:
+            ValueError: If the end value is not consistent with the direction.
+        """
+        super().__init__(name)
+        self._amplitude = amplitude
+        self._direction = direction
+        self._noise_level = noise_level
+
+
+    @property
+    def amplitude(self) -> float:
+        return self._amplitude
+
+    @property
+    def direction(self) -> str:
+        return self._direction
+
+    @property
+    def noise_level(self) -> float:
+        return self._noise_level
+
+
+    def generate(self, timestamps: pd.DatetimeIndex) -> np.ndarray:
+        """
+        Generate a stock price-like trend.
+
+        Args:
+            timestamps (pd.DatetimeIndex): Array of timestamps.
+
+        Returns:
+            np.ndarray: Generated stock price trend values.
+        """
+        # Initialize the trend array
+        num_steps = len(timestamps)
+        trend = np.zeros(num_steps)
+        trend[0] = 0
+
+        # Calculate the drift per step to guide the trend toward the end value
+        drift_per_step = self._amplitude / num_steps
+
+        # Generate the trend using a random walk
+        for i in range(1, num_steps):
+            # Calculate random fluctuation (volatility)
+            volatility = np.random.normal(0, self._noise_level)
+
+            # Add drift and volatility to the previous value
+            step = drift_per_step + volatility
+            trend[i] = trend[i - 1] + step
+
+
+        time_in_days = (timestamps - timestamps[0]).total_seconds() / (24 * 3600)
+        base_wave = (
+                    self._amplitude * np.sin(2 * np.pi * (time_in_days/5)) - self._amplitude +
+                    2*self._amplitude * np.sin(2 * np.pi * (time_in_days/30)) - self._amplitude + 
+                    2*self._amplitude * np.sin(2 * np.pi * (time_in_days/45))+ 
+                    3*self._amplitude * np.sin(2 * np.pi * (time_in_days/180))
+                )
+        if self._direction =='down':
+            base_wave = base_wave[::-1]
+
+        return base_wave + trend
+    

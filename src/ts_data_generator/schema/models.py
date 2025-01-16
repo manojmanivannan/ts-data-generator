@@ -37,37 +37,7 @@ class Metrics(ABC):
             auto_generate_name(category="metric") if name == "default" else name
         )
         self._trends = trends
-        # self._function_type = function_type
 
-        # # Validate required arguments for sine and cosine
-        # if function_type in {"sine", "cosine"}:
-        #     if frequency_in_hour is None or offset_in_minutes is None or scale is None:
-        #         raise ValueError(
-        #             "frequency_in_hour, offset_in_minutes, and scale are required for sine or cosine"
-        #         )
-        #     self._frequency_in_hour = frequency_in_hour
-        #     self._offset_in_minutes = offset_in_minutes
-        #     self._scale = scale
-        #     self._function_value = None
-
-        # elif function_type == "generator":
-        #     if function_value is None:
-        #         raise ValueError("function_value is required for generator")
-        #     self._function_value = function_value
-        #     self._frequency_in_hour = None
-        #     self._offset_in_minutes = None
-        #     self._scale = None
-
-        # elif function_type == "constant":
-        #     if function_value is None:
-        #         raise ValueError("scale is required for constant")
-        #     if not isinstance(function_value, (int, float)):
-        #         raise ValueError("function_value must be an integer or float")
-        #     self._function_value = function_value
-
-        #     self._frequency_in_hour = None
-        #     self._offset_in_minutes = None
-        #     self._scale = None
     @property
     def name(self) -> str:
         """Get the name of the metric."""

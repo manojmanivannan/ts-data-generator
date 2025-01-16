@@ -27,6 +27,9 @@ class DataGen:
         self._start_datetime = start_datetime
         self._end_datetime = end_datetime
         self._granularity = granularity
+        self.metric_data = None
+        self.dimension_data = None
+        self.data = None
 
     def __repr__(self):
         return f"""DataGen Class
@@ -336,7 +339,7 @@ class DataGen:
                 raise ValueError("function_value is required for constant.")
             metric._function_value = function_value
 
-    def generate_data(self) -> pd.DataFrame:
+    def generate_data(self, dimension_name: Optional[Union[str, List[str]]] = None, metric_name: Optional[Union[str, List[str]]] = None) -> pd.DataFrame:
         """Generate a sample DataFrame with unique IDs and values.
 
         Args:
@@ -361,7 +364,14 @@ class DataGen:
         )
 
         # create an empty dataframe with timestamps as index
-        self.metric_data = pd.DataFrame(index=self._timestamps)
+        if not self.metric_data:
+            self.metric_data = pd.DataFrame(index=self._timestamps)
+        
+        if not self.dimension_data:
+            self.dimension_data = pd.DataFrame(index=self._timestamps)
+        
+        if not self.data:
+            self.data = pd.DataFrame(index=self._timestamps)
 
 
         # Generate metric data 
@@ -383,5 +393,5 @@ class DataGen:
             index=self._timestamps,
     )
 
-        self.data = pd.concat([self.dimension_data, self.metric_data], axis=1)
+        self.data = pd.concat([self.data, self.dimension_data, self.metric_data], axis=1)
 

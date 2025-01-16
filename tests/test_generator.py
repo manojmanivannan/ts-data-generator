@@ -8,7 +8,7 @@ from ts_data_generator import DataGen
 from ts_data_generator.schema.models import Granularity
 from ts_data_generator.utils.functions import random_choice, random_int
 from typing import Generator
-from ts_data_generator.utils.trends import SinusoidalTrend
+from ts_data_generator.utils.trends import SinusoidalTrend, LinearTrend, StockTrend, WeekendTrend
 
 
 class TestDataGen5minGenerator:
@@ -27,7 +27,14 @@ class TestDataGen5minGenerator:
         data_gen.add_dimension(name="port", function=random_int(1, 65536))
 
         metric1_trend = SinusoidalTrend(name="sine", amplitude=1, freq=24, phase=0, noise_level=1)
-        data_gen.add_metric(name="metric1", trends=[metric1_trend])
+        data_gen.add_metric(name="sine1", trends=[metric1_trend])
+
+        metric4_trend = WeekendTrend(name="weekend", weekend_effect=10, direction="up", noise_level=0.5, limit=10)
+        data_gen.add_metric(name="weekend_trend1", trends=[metric4_trend])
+
+        metric5_trend = StockTrend(name='stock', amplitude=10, direction='up', noise_level=0.5)
+        metric5_linear = LinearTrend(name='Linear', offset=0, noise_level=1, limit=10)
+        data_gen.add_metric(name="stock_like_trend1", trends=[metric5_trend, metric5_linear])
 
         return data_gen
 
@@ -40,7 +47,7 @@ class TestDataGen5minGenerator:
         data_gen_instance.generate_data()
         expected_length = int(24*60/5)+1 #( 24 hours * 12 five-minute intervals in 1 hour)+1 to include end date
         assert data_gen_instance.data.shape[0] == expected_length
-        assert data_gen_instance.data.shape[1] == 3 # 3 columns: protocol, port, metric1
+        assert data_gen_instance.data.shape[1] == 5 # 3 columns: protocol, port, sine1, weekend_trend1, stock_like_trend1
 
     
 
