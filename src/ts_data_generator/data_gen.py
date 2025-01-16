@@ -27,9 +27,9 @@ class DataGen:
         self._start_datetime = start_datetime
         self._end_datetime = end_datetime
         self._granularity = granularity
-        self.metric_data = None
-        self.dimension_data = None
-        self.data = None
+        self.metric_data = pd.DataFrame()
+        self.dimension_data = pd.DataFrame()
+        self.data = pd.DataFrame()
 
     def __repr__(self):
         return f"""DataGen Class
@@ -57,6 +57,8 @@ class DataGen:
             except ValueError:
                 raise ValueError("Dates must be in ISO format (YYYY-MM-DD)")
         self._start_datetime = value
+        if self._start_datetime and self._end_datetime:
+            self._generate_data()
 
     @property
     def end_datetime(self):
@@ -75,6 +77,8 @@ class DataGen:
             except ValueError:
                 raise ValueError("Dates must be in ISO format (YYYY-MM-DD)")
         self._end_datetime = value
+        if self._start_datetime and self._end_datetime:
+            self._generate_data()
 
     @property
     def granularity(self):
@@ -108,29 +112,7 @@ class DataGen:
     def trends(self):
         return {m.name: {t.name: t for t in m._trends} for m in self._metrics}
 
-    def _validate_metrics(self) -> None:
-        """Validate metrics format and logic.
 
-        Raises:
-            ValueError: If metrics are invalid
-        """
-        if not self.metrics:
-            raise ValueError("metrics must be set")
-
-    def _validate_dimensions(self) -> None:
-        """Validate dimensions format and logic.
-
-        Raises:
-            ValueError: If dimensions are invalid
-        """
-        if not self.dimensions:
-            raise ValueError("dimensions must be set")
-
-        for d in self._dimensions:
-            if not isinstance(d.function, Generator):
-                raise ValueError(
-                    f"{d.name} dimension function must be a generator object"
-                )
 
     def _validate_dates(self) -> None:
         """Validate start_datetime and end_datetime format and logic.
@@ -164,7 +146,7 @@ class DataGen:
 
         Args:
             name (str): The unique name of the dimension.
-            function (int | str | Generator): A callable (e.g., generator function) that produces values for the dimension.
+            function (int | float | str | Generator): A callable (e.g., generator function) that produces values for the dimension.
 
         Raises:
             ValueError: If a dimension with the same name already exists in the collection.
@@ -176,11 +158,16 @@ class DataGen:
             ...
             >>> my_object.add_dimension(name="category", function=sample_generator())
         """
+        # validate the function
+        if not isinstance(function, Union[int,float,str,Generator]):
+            raise ValueError(f'Function of the dimension {name} has to be int, float, str or generator object')
+        
         dimension = Dimensions(name=name, function=function)
         # Raise error if self._dimensions already contains a dimension with the same name
         if dimension in self._dimensions:
             raise ValueError(f"Dimension with name {name} already exists")
         self._dimensions.append(dimension)
+        self._generate_data()
 
     def update_dimension(self, name: str, function) -> None:
         """
@@ -223,6 +210,30 @@ class DataGen:
                     "Provided function must be callable or int or float or string."
                 )
             dimension.function = function
+
+    def remove_dimension(self, name: str) -> None:
+        """
+        Remove the dimension from the data generator by its name
+
+        Args:
+            name (str): The name of the dimension to remove.
+
+        Raises:
+            ValueError: If the dimension with the specified name does not exist.
+
+        Example:
+            ```python
+            data_gen.remove_dimension(name="category")
+            ```
+        """
+        if name in self.dimensions:
+            # update the data
+            self.data = self.data.drop([name],axis=1)
+            
+
+        # drop the dimension from dimension list
+        self._dimensions = [d for d in self._dimensions if d.name != name]
+
 
     def add_metric(
         self,
@@ -280,66 +291,33 @@ class DataGen:
             if name == m.name:
                 raise ValueError(f"Metric with name '{name}' already exists")
         self._metrics.append(metric)
+        self._generate_data()
 
-    def update_metric(
-        self,
-        name: str,
-        function_value: Optional[Generator] = None,
-        frequency_in_hour: Optional[float] = None,
-        offset_in_minutes: Optional[float] = None,
-        scale: Optional[float] = None,
-    ) -> None:
+    def remove_metric(self, name: str) -> None:
         """
-        Update an existing metric in the DataGen instance.
-
-        Allows updating the characteristics of a metric. The metric is identified by its name.
+        Remove the metric from the data generator by its name
 
         Args:
-            name (str): The unique name of the metric to update.
-            function_value (Optional[Generator]): A new generator function for the metric.
-                Required if `function_type` is "generator".
-            frequency_in_hour (Optional[float]): The new frequency of oscillation in hours.
-                Required if `function_type` is "sine" or "cosine".
-            offset_in_minutes (Optional[float]): The new phase offset in minutes.
-                Required if `function_type` is "sine" or "cosine".
-            scale (Optional[float]): The new amplitude or constant value. If None, the scale remains unchanged.
+            name (str): The name of the metric to remove.
 
         Raises:
             ValueError: If the metric with the specified name does not exist.
-            ValueError: If required parameters for the specified `function_type` are missing.
 
         Example:
             ```python
-            # Updating an existing metric
-            data_gen.update_metric(
-                name="sine_metric",
-                frequency_in_hour=2.0,
-                scale=15.0
-            )
+            data_gen.remove_metric(name="category")
             ```
         """
-        if name not in self.metrics:
-            raise ValueError(f"Metric with name '{name}' does not exist.")
+        if name in self.metrics:
+            # update the data
+            self.data = self.data.drop([name],axis=1)
 
-        metric = self.metrics[name]
+        # drop the dimension from dimension list
+        self._metrics = [d for d in self._metrics if d.name != name]
 
 
-        if metric._function_type == "generator" and function_value is not None:
-            metric._function_value = function_value
-        elif metric._function_type in {"sine", "cosine"}:
-            if frequency_in_hour is None or offset_in_minutes is None or scale is None:
-                raise ValueError(
-                    "frequency_in_hour, offset_in_minutes, and scale are required for sine or cosine."
-                )
-            metric._frequency_in_hour = frequency_in_hour
-            metric._offset_in_minutes = offset_in_minutes
-            metric._scale = scale
-        elif metric._function_type == "constant":
-            if function_value is None:
-                raise ValueError("function_value is required for constant.")
-            metric._function_value = function_value
 
-    def generate_data(self, dimension_name: Optional[Union[str, List[str]]] = None, metric_name: Optional[Union[str, List[str]]] = None) -> pd.DataFrame:
+    def _generate_data(self, dimension_name: Optional[Union[str, List[str]]] = None, metric_name: Optional[Union[str, List[str]]] = None) -> pd.DataFrame:
         """Generate a sample DataFrame with unique IDs and values.
 
         Args:
@@ -354,44 +332,85 @@ class DataGen:
         """
         # Validate dates
         self._validate_dates()
-        self._validate_dimensions()
-        self._validate_metrics()
 
         self._timestamps = pd.date_range(
             start=self.start_datetime,
             end=self.end_datetime,
             freq=self.granularity,
         )
+        print(f"Setting time range between {self._timestamps[0]} and {self._timestamps[-1]}")
 
         # create an empty dataframe with timestamps as index
-        if not self.metric_data:
+        if self.metric_data.empty:
             self.metric_data = pd.DataFrame(index=self._timestamps)
         
-        if not self.dimension_data:
+        if self.dimension_data.empty:
             self.dimension_data = pd.DataFrame(index=self._timestamps)
         
-        if not self.data:
+        if self.data.empty:
             self.data = pd.DataFrame(index=self._timestamps)
+        else:
+            # if data present and if there is change in timestamp ranges, reset dimension, metric and data
+            if len(self.data) != len(self._timestamps):
+                # Clear existing data to ensure full regeneration
+                self.metric_data = pd.DataFrame(index=self._timestamps)
+                self.dimension_data = pd.DataFrame(index=self._timestamps)
+                self.data = pd.DataFrame(index=self._timestamps)
+
 
 
         # Generate metric data 
         for _, metric in self.metrics.items():
-            # recursively concant the dataframe to self.data
-            self.metric_data = pd.concat([self.metric_data, metric.generate(self._timestamps)], axis=1)
+            
+            # only proceed if metric name is not in the dataset
+            if (not metric.name in self.data.columns):
+                # recursively concant the dataframe to self.data
+                
+                self.metric_data = pd.concat([self.metric_data, metric.generate(self._timestamps)], axis=1)
 
+            
+            # if the metric is already in dataset, ignore with an empty dataframe
+            else:
+                self.metric_data = pd.DataFrame(index=self._timestamps)
 
+        dimension_data_dict = {}
+        for column_name, dimension in self.dimensions.items():
+            
+            # only proceed if dimension name is not in the dataset
+            if not column_name in self.data.columns:
+                column_data = []
+                for _ in range(len(self._timestamps)):
 
-        # Generate dimension data directly using a dictionary comprehension
-        self.dimension_data = pd.DataFrame(
-            {
-                column_name: [
-                    next(dimension.function) if not isinstance(dimension.function, (int, str)) else dimension.function
-                    for _ in range(len(self._timestamps))
-                ]
-                for column_name, dimension in self.dimensions.items()
-            },
-            index=self._timestamps,
-    )
+                    # if the dimension.function is generator object
+                    if not isinstance(dimension.function, (int, str)):
+                        column_data.append(next(dimension.function))
+                    
+                    else: # else the dimension.function is a constant integer or string
+                        column_data.append(dimension.function)
+                
+                dimension_data_dict[column_name] = column_data
+            
+
+        self.dimension_data = pd.DataFrame(dimension_data_dict, index=self._timestamps)
 
         self.data = pd.concat([self.data, self.dimension_data, self.metric_data], axis=1)
+
+    def plot(self, exclude: List[str] = [], include: List[str] = []):
+        """
+        Plots the data based on the specified inclusion and exclusion criteria.
+        Parameters:
+        exclude (List[str]): A list of strings specifying the data columns to exclude from the plot.
+        include (List[str]): A list of strings specifying the data columns to include in the plot.
+        Returns:
+        None
+        """
+
+        if exclude and include:
+            raise ValueError("Only one of 'exclude' or 'include' should be provided, not both.")
+        
+        if exclude:
+            self.data.plot(y=[col for col in self.data.columns if col not in exclude])
+        
+        if include:
+            self.data.plot(y=[col for col in self.data.columns if col in include])
 

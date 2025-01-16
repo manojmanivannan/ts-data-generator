@@ -12,7 +12,7 @@ T = TypeVar("T")
 
 class Granularity(Enum):
     FIVE_MIN = "5min"
-    HOURLY = "H"
+    HOURLY = "h"
     DAILY = "D"
 
 
