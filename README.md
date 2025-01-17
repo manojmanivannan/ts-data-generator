@@ -28,10 +28,42 @@ After cloning this repo and creating a virtual environment, run the following co
 pip install --editable .
 ```
 
-
 ## Usage
 
 Check the sample notebook [here](https://github.com/manojmanivannan/ts-data-generator/blob/main/notebooks/sample.ipynb)
+
+### CLI
+
+You can also use the command line utility `tsdata` to generate the data.
+```bash
+(venv) ~/ts-data-generator   cli $ tsdata generate --help
+Usage: tsdata generate [OPTIONS]
+
+  Generate time series data and save it to a CSV file.
+
+Options:
+  --start TEXT                    Start datetime 'YYYY-MM-DD'  [required]
+  --end TEXT                      End datetime 'YYYY-MM-DD'  [required]
+  --granularity [FIVE_MIN|HOURLY|DAILY]
+                                  Granularity of the time series data  [required]
+  --dims TEXT                     + separated list of dimensions definition of format 'name:function:values'  [required]
+  --mets TEXT                     + separated list of metrics definition trends of format 'name:trend(*params)'  [required]
+  --output TEXT                   Output file name  [required]
+  --help                          Show this message and exit.
+  ```
+For example you can call this cli tool like below to generate data
+```bash
+tsdata generate \
+  --start "2019-01-01" \
+  --end "2019-01-12" \
+  --granularity "FIVE_MIN" \
+  --dims "product:random_choice:A,B,C,D" \
+  --dims "product_id:random_float:1,4" \
+  --dims "const:constant:5" \
+  --mets "sales:LinearTrend(limit=500)+WeekendTrend(weekend_effect=50)" \
+  --mets "trend:LinearTrend(limit=10)" \
+  --output "data.csv"
+```
 
 #### Release method
 1. `git tag <x.x.x>`

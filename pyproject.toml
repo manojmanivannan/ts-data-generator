@@ -15,7 +15,8 @@ dependencies = [
     "python-dotenv",
     "pandas",
     "pydantic",
-    "matplotlib"
+    "matplotlib",
+    "click",
 ]
 readme = "README.md"
 authors = [
@@ -42,3 +43,5 @@ dev = [
     "flake8",
 ]
 
+[project.scripts]
+tsdata = "ts_data_generator.cli:main"
