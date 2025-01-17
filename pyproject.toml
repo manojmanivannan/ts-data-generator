@@ -44,4 +44,4 @@ dev = [
 ]
 
 [project.scripts]
-tsgen = "ts_data_generator.cli:main"
+tsdata = "ts_data_generator.cli:main"

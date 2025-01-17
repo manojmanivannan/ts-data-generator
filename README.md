@@ -28,17 +28,16 @@ After cloning this repo and creating a virtual environment, run the following co
 pip install --editable .
 ```
 
-
 ## Usage
 
 Check the sample notebook [here](https://github.com/manojmanivannan/ts-data-generator/blob/main/notebooks/sample.ipynb)
 
 ### CLI
 
-You can also use the command line utility `tsgen` to generate the data.
+You can also use the command line utility `tsdata` to generate the data.
 ```bash
-(venv) ~/ts-data-generator   cli $ tsgen generate --help
-Usage: tsgen generate [OPTIONS]
+(venv) ~/ts-data-generator   cli $ tsdata generate --help
+Usage: tsdata generate [OPTIONS]
 
   Generate time series data and save it to a CSV file.
 
@@ -54,7 +53,7 @@ Options:
   ```
 For example you can call this cli tool like below to generate data
 ```bash
-tsgen generate \
+tsdata generate \
   --start "2019-01-01" \
   --end "2019-01-12" \
   --granularity "FIVE_MIN" \
