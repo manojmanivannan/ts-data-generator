@@ -9,10 +9,13 @@ def constant(value):
     Returns a constant value.
 
     Args:
-        value: The constant value to return.
+        value: A single constant int, string or float value to return.
 
     """
     while True:
+        # if value is iterable, return the first element
+        if isinstance(value, (list, tuple, np.ndarray, pd.Series)):
+            value = value[0]
         yield value
         
 def random_choice(iterable):

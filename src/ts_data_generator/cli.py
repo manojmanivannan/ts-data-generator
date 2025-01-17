@@ -172,20 +172,18 @@ def generate(start, end, granularity, dims, mets, output):
             values = values.split(",")
 
         try:
-
             data_gen.add_dimension(name, dtype_function(values))
         except TypeError as e:
-
-            if "random_int" in str(e) or "random_float" in str(e):  # because random_int needs tuple as input
-                try:
-                    data_gen.add_dimension(name, dtype_function(*values))
-                except TypeError as e:
-                    click.echo(f"Error: Invalid dimension parameters '{values}' for {dtype}.\n")
-                    dimensions.callback()
-                    # raise click.UsageError(f"Invalid dimension type: {dtype}\n")
-                    sys.exit(1)
-            else:
-                click.UsageError(f"Invalid dimension type: {dtype}\n")
+            try:
+                data_gen.add_dimension(name, dtype_function(*values))
+            except TypeError as e:
+                click.echo(f"Error: Invalid dimension parameters '{values}' for {dtype}.\n")
+                dimensions.callback()
+                sys.exit(1)
+            except Exception as e:
+                click.UsageError(f"Error creating dimension: {e}\ for dimension type: {dtype}\n")
+                dimensions.callback()
+                sys.exit(1)
 
     # Add metrics with trends
     for metric in mets.split(";"):
