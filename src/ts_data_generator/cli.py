@@ -5,43 +5,48 @@ import ts_data_generator.utils.functions as util_functions
 import ts_data_generator.utils.trends as trends_functions
 
 
-@click.group()
+@click.group(context_settings={"max_content_width": 220})
 def main():
     """CLI tool for generating time series data."""
 
 
 @main.command()
 @click.option(
-    "--start", required=True, type=str, help="Start datetime (e.g., '2019-01-01')."
+    "--start", required=True, type=str, help="Start datetime (e.g., '2019-01-01')"
 )
 @click.option(
-    "--end", required=True, type=str, help="End datetime (e.g., '2019-01-12')."
+    "--end", required=True, type=str, help="End datetime (e.g., '2019-01-12')"
 )
 @click.option(
     "--granularity",
     required=True,
     type=click.Choice(["FIVE_MIN", "HOURLY", "DAILY"], case_sensitive=False),
-    help="Granularity of the time series data.",
+    help="Granularity of the time series data",
 )
 @click.option(
     "--dims",
     required=True,
     type=str,
-    help="Semicolon-separated list of dimensions of the format 'name:function:values' (e.g., 'product:random_choice:A,B,C,D;product_id:random_int:1,10000').",
+    help="+ separated list of dimensions definition of format 'name:function:values'",
+    multiple=True,
 )
 @click.option(
     "--mets",
     required=True,
     type=str,
-    help="Semicolon-separated list of metrics with trends (e.g., 'sales:LinearTrend(limit=500)+WeekendTrend(weekend_effect=50)').",
+    help="+ separated list of metrics definition trends of format 'name:trend(*params)'",
+    multiple=True,
 )
 @click.option(
-    "--output", required=True, type=str, help="Output file path (e.g., 'data.csv')."
+    "--output", required=True, type=str, help="Output file name"
 )
 def generate(start, end, granularity, dims, mets, output):
     """
     Generate time series data and save it to a CSV file.
     """
+    mets = ";".join(mets)
+    dims = ";".join(dims)
+    
     from click.core import Context
 
     # Initialize the data generator
