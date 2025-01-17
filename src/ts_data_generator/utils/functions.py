@@ -27,7 +27,7 @@ def random_choice(iterable):
         yield random.choice(iterable)
 
 
-def random_int(start, end):
+def random_int(start: int, end: int):
     """
     Returns a random integer between start and end, inclusive.
 
@@ -40,7 +40,7 @@ def random_int(start, end):
         yield random.randint(start, end)
 
 
-def random_float(start, end):
+def random_float(start: float, end: float):
     """
     Returns a random float between start and end, inclusive.
 
