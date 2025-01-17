@@ -159,11 +159,8 @@ def generate(start, end, granularity, dims, mets, output):
         try:
             dtype_function = getattr(util_functions, dtype)
         except AttributeError as e:
-            # call click dimensions command's help
-            # ctx = Context(dimensions)
             click.echo(f"Error: Invalid dimension function type '{dtype}'.\n")
             dimensions.callback()
-            # raise click.UsageError(f"Invalid dimension type: {dtype}\n")
             sys.exit(1)
 
         if all([v.isdigit() for v in values.split(",")]):
@@ -177,11 +174,15 @@ def generate(start, end, granularity, dims, mets, output):
             try:
                 data_gen.add_dimension(name, dtype_function(*values))
             except TypeError as e:
-                click.echo(f"Error: Invalid dimension parameters '{values}' for {dtype}.\n")
+                click.echo(
+                    f"Error: Invalid dimension parameters '{values}' for {dtype}.\n"
+                )
                 dimensions.callback()
                 sys.exit(1)
             except Exception as e:
-                click.UsageError(f"Error creating dimension: {e}\ for dimension type: {dtype}\n")
+                click.UsageError(
+                    f"Error creating dimension: {e}\ for dimension type: {dtype}\n"
+                )
                 dimensions.callback()
                 sys.exit(1)
 
