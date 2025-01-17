@@ -12,10 +12,10 @@ def main():
 
 @main.command()
 @click.option(
-    "--start", required=True, type=str, help="Start datetime (e.g., '2019-01-01')"
+    "--start", required=True, type=str, help="Start datetime 'YYYY-MM-DD'"
 )
 @click.option(
-    "--end", required=True, type=str, help="End datetime (e.g., '2019-01-12')"
+    "--end", required=True, type=str, help="End datetime 'YYYY-MM-DD'"
 )
 @click.option(
     "--granularity",

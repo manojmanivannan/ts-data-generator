@@ -43,8 +43,8 @@ Usage: tsgen generate [OPTIONS]
   Generate time series data and save it to a CSV file.
 
 Options:
-  --start TEXT                    Start datetime (e.g., '2019-01-01')  [required]
-  --end TEXT                      End datetime (e.g., '2019-01-12')  [required]
+  --start TEXT                    Start datetime 'YYYY-MM-DD'  [required]
+  --end TEXT                      End datetime 'YYYY-MM-DD'  [required]
   --granularity [FIVE_MIN|HOURLY|DAILY]
                                   Granularity of the time series data  [required]
   --dims TEXT                     + separated list of dimensions definition of format 'name:function:values'  [required]
