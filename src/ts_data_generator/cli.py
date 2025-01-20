@@ -138,7 +138,7 @@ def generate(start, end, granularity, dims, mets, output):
     # Generate and save data
     data = data_gen.data
     if output.endswith(".csv"):
-        data.to_csv(output, index=True)
+        data.to_csv(output, index=True, index_label="datetime")
     else:
         raise ValueError("Output file must be .csv")
 
