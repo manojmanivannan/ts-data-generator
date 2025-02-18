@@ -46,7 +46,7 @@ class TestDataGen5minGenerator:
     def test_metric_generator_output(self, data_gen_instance):
         expected_length = int(24*60/5)+1 #( 24 hours * 12 five-minute intervals in 1 hour)+1 to include end date
         assert data_gen_instance.data.shape[0] == expected_length
-        assert data_gen_instance.data.shape[1] == 5 # 3 columns: protocol, port, sine1, weekend_trend1, stock_like_trend1
+        assert data_gen_instance.data.shape[1] == 6 # 6 columns: protocol, epoch, port, sine1, weekend_trend1, stock_like_trend1
 
     def test_remove_dimension(self, data_gen_instance):
         dimension_to_remove = "port"

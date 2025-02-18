@@ -29,8 +29,8 @@ pip install --editable .
 ```
 
 ## Usage
-
-Check the sample notebook [here](https://github.com/manojmanivannan/ts-data-generator/blob/main/notebooks/sample.ipynb)
+1. To check out constructing for time series data, check the sample notebook [here](https://github.com/manojmanivannan/ts-data-generator/blob/main/notebooks/sample.ipynb)
+2. To extract the trends from an existing data, check this sample notebook [here](https://github.com/manojmanivannan/ts-data-generator/blob/main/notebooks/imputer.ipynb)
 
 ### CLI
 

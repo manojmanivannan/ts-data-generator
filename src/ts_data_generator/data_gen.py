@@ -338,7 +338,7 @@ class DataGen:
             end=self.end_datetime,
             freq=self.granularity,
         )
-
+        self._unix_timestamp = [int(ts.timestamp()) for ts in self._timestamps]
         # create an empty dataframe with timestamps as index
         if self.metric_data.empty:
             self.metric_data = pd.DataFrame(index=self._timestamps)
@@ -375,6 +375,9 @@ class DataGen:
         dimension_data_dict = {}
         for column_name, dimension in self.dimensions.items():
             
+            if not 'epoch' in self.data.columns:
+                dimension_data_dict['epoch'] = self._unix_timestamp
+            
             # only proceed if dimension name is not in the dataset
             if not column_name in self.data.columns:
                 column_data = []
@@ -390,6 +393,7 @@ class DataGen:
                 dimension_data_dict[column_name] = column_data
             
 
+
         self.dimension_data = pd.DataFrame(dimension_data_dict, index=self._timestamps)
 
         self.data = pd.concat([self.data, self.dimension_data, self.metric_data], axis=1)
@@ -403,13 +407,21 @@ class DataGen:
         Returns:
         None
         """
-
         if exclude and include:
             raise ValueError("Only one of 'exclude' or 'include' should be provided, not both.")
         
-        if exclude:
-            self.data.plot(y=[col for col in self.data.columns if col not in exclude])
-        
-        if include:
-            self.data.plot(y=[col for col in self.data.columns if col in include])
+        # Get only numeric columns
+        numeric_cols = self.data.select_dtypes(include=['number']).columns.tolist()
+        numeric_cols.remove('epoch')
 
+        if exclude:
+            plot_cols = [col for col in numeric_cols if col not in exclude]
+        elif include:
+            plot_cols = [col for col in numeric_cols if col in include]
+        else:
+            plot_cols = numeric_cols  # Default: Plot all numeric columns
+
+        if not plot_cols:
+            raise ValueError("No numeric columns available for plotting.")
+
+        self.data.plot(y=plot_cols)
