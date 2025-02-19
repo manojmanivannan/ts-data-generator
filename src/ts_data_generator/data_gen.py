@@ -2,7 +2,7 @@
 Core DataGen class implementation
 """
 
-from typing import Optional, Union, Literal, Set, List, Generator
+from typing import Optional, Union, Set, List, Generator
 from .schema.models import Metrics, Dimensions, Granularity
 from .utils.trends import Trends
 import pandas as pd
