@@ -157,12 +157,12 @@ class TestDataScaleGenerator:
         saved = data_gen_instance.data['metric1'].iloc[0]
 
         data_gen_instance.normalize()
-        data_gen_instance.data['metric1'].min = 0
-        data_gen_instance.data['metric1'].max = 1
-        data_gen_instance.data['metric1'].iloc[0] != saved
+        assert data_gen_instance.data['metric1'].min() == 0
+        assert data_gen_instance.data['metric1'].max() == 1
+        assert data_gen_instance.data['metric1'].iloc[0] != pytest.approx(saved)
 
 
         data_gen_instance.denormalize()
-        data_gen_instance.data['metric1'].iloc[0] == saved
+        assert data_gen_instance.data['metric1'].iloc[0] == pytest.approx(saved)
 
 
