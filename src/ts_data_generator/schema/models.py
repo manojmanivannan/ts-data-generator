@@ -14,6 +14,8 @@ class Granularity(Enum):
     FIVE_MIN = "5min"
     HOURLY = "h"
     DAILY = "D"
+    ONE_MIN = "min"
+    ONE_SECOND = "s"
 
 
 class Metrics(ABC):

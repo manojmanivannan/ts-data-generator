@@ -159,12 +159,17 @@ class LinearTrend(Trends):
 
         if timestamps.freq == "5min":  # 5-minute granularity
             time_numeric = time_deltas.total_seconds() / 60.0  # Convert to minutes
-        elif timestamps.freq == "H":  # Hourly granularity
+        elif timestamps.freq == "h":  # Hourly granularity
             time_numeric = time_deltas.total_seconds() / 3600.0  # Convert to hours
+        elif timestamps.freq == "min":
+            time_numeric = time_deltas.total_seconds() / 60.0 / 5
+        elif timestamps.freq == "s":
+            time_numeric = time_deltas.total_seconds() / 60.0 / 5
         elif timestamps.freq == "D":  # Daily granularity
             time_numeric = time_deltas.days  # Use days directly
+            
         else:
-            raise ValueError("Unsupported granularity. Use 5T, H, or D.")
+            raise ValueError(f"Unsupported granularity {timestamps.freq}. Use 5T, H, or D.")
 
         self._coefficient = np.radians(np.sin(self._limit/len(time_numeric)))
 

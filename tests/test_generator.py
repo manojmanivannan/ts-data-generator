@@ -104,3 +104,25 @@ class TestDataGenDailyGenerator:
             data_gen_instance.add_dimension(name="random", function=[])
 
 
+
+class TestDataGenSecondlyGenerator:
+    # Setup method to initialize the Calculator instance
+    
+    
+    @pytest.fixture
+    def data_gen_instance(self):
+        """Fixture to create a DataGen instance"""
+        data_gen = DataGen()
+        data_gen.start_datetime = "2022-01-01"
+        data_gen.end_datetime = "2022-01-02"
+        data_gen.granularity = Granularity.ONE_SECOND
+        # Create function that will return random choice from list
+        protocol_choices = random_choice(["TCP", "UDP"])
+        data_gen.add_dimension(name="protocol", function=protocol_choices)
+        metric1_trend = SinusoidalTrend(name="sine", amplitude=1, freq=24, phase=0, noise_level=1)
+        data_gen.add_metric(name="metric1", trends=[metric1_trend])
+        return data_gen
+
+    def test_granularity(self, data_gen_instance):
+        assert data_gen_instance.granularity == 's'
+        assert data_gen_instance.data['epoch'].iloc[1] - data_gen_instance.data['epoch'].iloc[0] == np.int64(1)
