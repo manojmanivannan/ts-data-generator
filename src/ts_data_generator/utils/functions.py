@@ -3,8 +3,9 @@
 import random
 import numpy as np
 import pandas as pd
+from typing import Union
 
-def constant(value):
+def constant(value: Union[int,str,float,list]):
     """
     Returns a constant value.
 
@@ -14,9 +15,10 @@ def constant(value):
     """
     while True:
         # if value is iterable, return the first element
-        if isinstance(value, (list, tuple, np.ndarray, pd.Series)):
-            value = value[0]
-        yield value
+        if isinstance(value, (list, tuple)):
+            yield [value]
+        else:
+            yield value
         
 def random_choice(iterable):
     """

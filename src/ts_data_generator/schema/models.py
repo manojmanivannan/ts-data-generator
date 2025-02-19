@@ -81,7 +81,7 @@ class Metrics(ABC):
 
 
 class Dimensions(ABC):
-    def __init__(self, name: str, function: Union[int, str, float, Generator]):
+    def __init__(self, name: str, function: Union[int, str, float, Generator], key: bool = None):
         """Initialize a dimension with a name and value generation function.
 
         Args:
@@ -90,6 +90,12 @@ class Dimensions(ABC):
         """
         self._name = name
         self._function = function
+        self._key = key if key else False
+        self._data = None
+
+    @property
+    def data(self) -> pd.Series:
+        return self._data
 
     @property
     def name(self) -> str:
@@ -100,6 +106,15 @@ class Dimensions(ABC):
     def function(self) -> Union[int, str, float, Generator]:
         """Get the value generation function."""
         return self._function
+    
+    @property
+    def key(self) -> Union[int, str, float, Generator]:
+        """Get the value generation function."""
+        return self._key
+    
+    @key.setter
+    def key(self, value: bool) -> None:
+        self._key = value
 
     @function.setter
     def function(self, value: Union[int, str, float, Generator]) -> None:
@@ -114,25 +129,27 @@ class Dimensions(ABC):
             and not isinstance(value, str)
             and not isinstance(value, float)
             and not isinstance(value, Generator)
+            and not isinstance(value, list)
         ):
             raise ValueError(
                 "function must be a generator object or int or str or float"
             )
         self._function = value
 
-    def _create_generator(self, timestamps) -> Generator[T, None, None]:
+    def generate(self, timestamps) -> pd.DataFrame:
         """Create a generator that yields dimension values.
 
-        Args:
-            timestamps: List of timestamps from pd.date_range
-
         """
-        pass
+        data = [next(self._function) for _ in timestamps]
+
+
+        self._data = pd.DataFrame(data, columns=[self._name], index=timestamps)
+        return self._data
 
     def __eq__(self, other: object) -> bool:
         """Enable equality comparison for set operations."""
         if not isinstance(other, Dimensions):
-            return NotImplemented
+            raise NotImplementedError
         return self._name == other.name
 
     def __hash__(self) -> int:
