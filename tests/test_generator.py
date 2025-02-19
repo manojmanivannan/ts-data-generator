@@ -6,7 +6,7 @@ import pandas as pd
 import numpy as np
 from ts_data_generator import DataGen
 from ts_data_generator.schema.models import Granularity
-from ts_data_generator.utils.functions import random_choice, random_int
+from ts_data_generator.utils.functions import random_choice, random_int, constant
 from enum import Enum
 from typing import Generator
 from ts_data_generator.utils.trends import SinusoidalTrend, LinearTrend, StockTrend, WeekendTrend
@@ -76,7 +76,7 @@ class TestDataGenHourlyGenerator:
 
     def test_invalid_dimension_set(self, data_gen_instance):
         
-        with pytest.raises(ValueError):
+        with pytest.raises(IndexError):
             data_gen_instance.add_dimension(name="random", function=[])
 
 
@@ -100,7 +100,7 @@ class TestDataGenDailyGenerator:
 
     def test_invalid_dimension_set(self, data_gen_instance):
         
-        with pytest.raises(ValueError):
+        with pytest.raises(IndexError):
             data_gen_instance.add_dimension(name="random", function=[])
 
 
@@ -126,3 +126,43 @@ class TestDataGenSecondlyGenerator:
     def test_granularity(self, data_gen_instance):
         assert data_gen_instance.granularity == 's'
         assert data_gen_instance.data['epoch'].iloc[1] - data_gen_instance.data['epoch'].iloc[0] == np.int64(1)
+
+class TestDataScaleGenerator:
+    # Setup method to initialize the Calculator instance
+    
+    
+    @pytest.fixture
+    def data_gen_instance(self):
+        """Fixture to create a DataGen instance"""
+        data_gen = DataGen()
+        data_gen.start_datetime = "2022-01-01"
+        data_gen.end_datetime = "2022-01-02"
+        data_gen.granularity = Granularity.HOURLY
+        # Create function that will return random choice from list
+        data_gen.add_dimension(name="protocol", function=random_choice("TCP UDP".split()))
+        data_gen.add_dimension(name="category", function=random_choice("A B".split()))
+        data_gen.add_dimension(name="interface", function="X Y Z".split())
+        data_gen.add_dimension(name="const",function=[3])
+        metric1_trend = SinusoidalTrend(name="sine", amplitude=1, freq=24, phase=0, noise_level=1)
+        data_gen.add_metric(name="metric1", trends=[metric1_trend])
+        return data_gen
+
+    def test_granularity(self, data_gen_instance):
+        assert data_gen_instance.data['epoch'].iloc[1] - data_gen_instance.data['epoch'].iloc[0] == np.int64(3600)
+
+    def test_scale(self,data_gen_instance):
+        with pytest.raises(NotImplementedError):
+            data_gen_instance.normalize(method='invalid')
+        
+        saved = data_gen_instance.data['metric1'].iloc[0]
+
+        data_gen_instance.normalize()
+        assert data_gen_instance.data['metric1'].min() == 0
+        assert data_gen_instance.data['metric1'].max() == 1
+        assert data_gen_instance.data['metric1'].iloc[0] != pytest.approx(saved)
+
+
+        data_gen_instance.denormalize()
+        assert data_gen_instance.data['metric1'].iloc[0] == pytest.approx(saved)
+
+

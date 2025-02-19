@@ -2,10 +2,12 @@
 Core DataGen class implementation
 """
 
-from typing import Optional, Union, Dict, Set, List, Generator
+from typing import Optional, Union, Set, List, Generator
 from .schema.models import Metrics, Dimensions, Granularity
 from .utils.trends import Trends
 import pandas as pd
+from .utils.functions import constant
+from itertools import cycle
 from datetime import datetime
 
 
@@ -27,6 +29,7 @@ class DataGen:
         self._start_datetime = start_datetime
         self._end_datetime = end_datetime
         self._granularity = granularity
+        self._scale_factors = {}
         self.metric_data = pd.DataFrame()
         self.dimension_data = pd.DataFrame()
         self.data = pd.DataFrame()
@@ -159,8 +162,19 @@ class DataGen:
             >>> my_object.add_dimension(name="category", function=sample_generator())
         """
         # validate the function
-        if not isinstance(function, Union[int,float,str,Generator]):
+        if not isinstance(function, Union[int,float,str,list,Generator]):
             raise ValueError(f'Function of the dimension {name} has to be int, float, str or generator object')
+        
+        if isinstance(function, Union[int,float,str]):
+
+            function = constant(function)
+
+        if isinstance(function, list):
+
+            if not function: # if empty list
+                raise IndexError
+            function = cycle(function)
+
         
         dimension = Dimensions(name=name, function=function)
         # Raise error if self._dimensions already contains a dimension with the same name
@@ -316,8 +330,7 @@ class DataGen:
         self._metrics = [d for d in self._metrics if d.name != name]
 
 
-
-    def _generate_data(self, dimension_name: Optional[Union[str, List[str]]] = None, metric_name: Optional[Union[str, List[str]]] = None) -> pd.DataFrame:
+    def _generate_data(self) -> pd.DataFrame:
         """Generate a sample DataFrame with unique IDs and values.
 
         Args:
@@ -352,51 +365,80 @@ class DataGen:
             # if data present and if there is change in timestamp ranges, reset dimension, metric and data
             if len(self.data) != len(self._timestamps):
                 # Clear existing data to ensure full regeneration
-                self.metric_data = pd.DataFrame(index=self._timestamps)
-                self.dimension_data = pd.DataFrame(index=self._timestamps)
-                self.data = pd.DataFrame(index=self._timestamps)
+                self.metric_data = pd.DataFrame(columns=[], index=self._timestamps)
+                self.dimension_data = pd.DataFrame(columns=[], index=self._timestamps)
+                self.data = pd.DataFrame(columns=[], index=self._timestamps)
 
 
 
         # Generate metric data 
-        for _, metric in self.metrics.items():
+        for metric in self.metrics.values():
             
             # only proceed if metric name is not in the dataset
             if (not metric.name in self.data.columns):
-                # recursively concant the dataframe to self.data
-                
+                # recursively concant the dataframe to self.metric_data
                 self.metric_data = pd.concat([self.metric_data, metric.generate(self._timestamps)], axis=1)
-
             
             # if the metric is already in dataset, ignore with an empty dataframe
             else:
                 self.metric_data = pd.DataFrame(index=self._timestamps)
 
-        dimension_data_dict = {}
-        for column_name, dimension in self.dimensions.items():
+        # Generate dimension data
+        for dimension in self.dimensions.values():
             
-            if not 'epoch' in self.data.columns:
-                dimension_data_dict['epoch'] = self._unix_timestamp
             
+
             # only proceed if dimension name is not in the dataset
-            if not column_name in self.data.columns:
-                column_data = []
-                for _ in range(len(self._timestamps)):
-
-                    # if the dimension.function is generator object
-                    if not isinstance(dimension.function, (int, str)):
-                        column_data.append(next(dimension.function))
+            if not dimension.name in self.data.columns:
+                self.dimension_data = pd.concat([self.dimension_data,dimension.generate(self._timestamps)], axis=1)
                     
-                    else: # else the dimension.function is a constant integer or string
-                        column_data.append(dimension.function)
-                
-                dimension_data_dict[column_name] = column_data
+            else:
+                self.dimension_data = pd.DataFrame(index=self._timestamps)
             
 
 
-        self.dimension_data = pd.DataFrame(dimension_data_dict, index=self._timestamps)
+        # self.dimension_data = pd.DataFrame(dimension_data_dict, index=self._timestamps)
 
         self.data = pd.concat([self.data, self.dimension_data, self.metric_data], axis=1)
+
+        if not 'epoch' in self.data.columns:
+            self.data = pd.concat([self.data,pd.DataFrame(self._unix_timestamp, columns=['epoch'],index=self._timestamps)], axis=1)
+        
+        self._sort_df()
+    
+    def _sort_df(self):
+        colum_order = ['epoch'] + list(self.dimensions.keys()) + list(self.metrics.keys())
+        self.data = self.data.reindex(columns=colum_order)
+
+
+    def normalize(self, method = 'min-max'):
+
+        if method not in ('min-max', 'mean-std'):
+            raise NotImplementedError(f"Invalid method: {method}. Allowed values are 'min-max'")
+        
+        df_numeric = self.data.select_dtypes(include=['number'])  # Select only numeric columns
+
+        if method == 'min-max':
+            # Min-Max Scaling
+            df_scaled = (df_numeric - df_numeric.min()) / (df_numeric.max() - df_numeric.min())  # Min-Max Normalization
+
+        if method == 'mean-std':
+            # Mean-Std Scaling
+            df_scaled = (df_numeric - df_numeric.mean()) / (df_numeric.std())  # Min-Max Normalization
+        
+
+        self._scale_factors['min'] = df_numeric.min()
+        self._scale_factors['max'] = df_numeric.max()
+
+        
+        # Merge back with non-numeric columns
+        self.data[df_numeric.columns] = df_scaled
+
+    def denormalize(self):
+        df_numeric = self.data.select_dtypes(include=['number'])  # Select only numeric columns
+        # Reverse the Min-Max Scaling
+        self.data[df_numeric.columns] = self.data[df_numeric.columns] * (self._scale_factors['max'] - self._scale_factors['min']) + self._scale_factors['min']
+
 
     def plot(self, exclude: List[str] = [], include: List[str] = []):
         """
@@ -412,7 +454,7 @@ class DataGen:
         
         # Get only numeric columns
         numeric_cols = self.data.select_dtypes(include=['number']).columns.tolist()
-        numeric_cols.remove('epoch')
+        numeric_cols.remove('epoch') if 'epoch' in numeric_cols else numeric_cols
 
         if exclude:
             plot_cols = [col for col in numeric_cols if col not in exclude]
