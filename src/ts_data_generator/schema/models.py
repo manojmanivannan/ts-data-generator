@@ -81,7 +81,7 @@ class Metrics(ABC):
 
 
 class Dimensions(ABC):
-    def __init__(self, name: str, function: Union[int, str, float, Generator], key: bool = None):
+    def __init__(self, name: str, function: Union[int, str, float, Generator]):
         """Initialize a dimension with a name and value generation function.
 
         Args:
@@ -90,7 +90,6 @@ class Dimensions(ABC):
         """
         self._name = name
         self._function = function
-        self._key = key if key else False
         self._data = None
 
     @property
@@ -107,15 +106,6 @@ class Dimensions(ABC):
         """Get the value generation function."""
         return self._function
     
-    @property
-    def key(self) -> Union[int, str, float, Generator]:
-        """Get the value generation function."""
-        return self._key
-    
-    @key.setter
-    def key(self, value: bool) -> None:
-        self._key = value
-
     @function.setter
     def function(self, value: Union[int, str, float, Generator]) -> None:
         """Set the value generation function.

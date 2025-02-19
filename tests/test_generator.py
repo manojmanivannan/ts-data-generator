@@ -140,8 +140,8 @@ class TestDataScaleGenerator:
         data_gen.granularity = Granularity.HOURLY
         # Create function that will return random choice from list
         data_gen.add_dimension(name="protocol", function=random_choice("TCP UDP".split()))
-        data_gen.add_dimension(name="category", function=random_choice("A B".split()), key=True)
-        data_gen.add_dimension(name="interface", function="X Y Z".split(), key=True)
+        data_gen.add_dimension(name="category", function=random_choice("A B".split()))
+        data_gen.add_dimension(name="interface", function="X Y Z".split())
         data_gen.add_dimension(name="const",function=[3])
         metric1_trend = SinusoidalTrend(name="sine", amplitude=1, freq=24, phase=0, noise_level=1)
         data_gen.add_metric(name="metric1", trends=[metric1_trend])

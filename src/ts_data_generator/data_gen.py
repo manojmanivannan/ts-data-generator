@@ -140,7 +140,7 @@ class DataGen:
         if start > end:
             raise ValueError("start_datetime cannot be after end_datetime")
 
-    def add_dimension(self, name: str, function, key: bool = False) -> None:
+    def add_dimension(self, name: str, function) -> None:
         """
         Add a new dimension to the collection.
 
@@ -176,7 +176,7 @@ class DataGen:
             function = cycle(function)
 
         
-        dimension = Dimensions(name=name, function=function, key=key)
+        dimension = Dimensions(name=name, function=function)
         # Raise error if self._dimensions already contains a dimension with the same name
         if dimension in self._dimensions:
             raise ValueError(f"Dimension with name {name} already exists")
