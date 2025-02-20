@@ -3,7 +3,9 @@
 import random
 import numpy as np
 import pandas as pd
-from typing import Union
+from typing import Union, Iterable, Tuple, Generator, TypeVar
+from itertools import cycle
+T = TypeVar("T")
 
 def constant(value: Union[int,str,float,list]):
     """
@@ -66,8 +68,7 @@ def ordered_choice(iterable):
         iterable (iterable): The iterable to choose from.
 
     """
-    while True:
-        yield random.choice(iterable)
+    yield cycle(iterable)
 
 
 def auto_generate_name(category):
@@ -80,3 +81,14 @@ def auto_generate_name(category):
     """
     return f"{category}_{random.randint(1, 100)}"
 
+
+def random_multi_choice(*iterables: Iterable[T]) -> Generator[Tuple[T, ...], None, None]:
+    """
+    Generates an infinite sequence of random tuples,
+    selecting one random element from each given iterable.
+
+    :param iterables: One or more iterables from which to randomly select elements.
+    :return: An infinite generator yielding tuples with one random element from each iterable.
+    """
+    while True:
+        yield tuple(random.choice(list(iterable)) for iterable in iterables)

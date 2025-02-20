@@ -81,7 +81,7 @@ class Metrics(ABC):
 
 
 class Dimensions(ABC):
-    def __init__(self, name: str, function: Union[int, str, float, Generator]):
+    def __init__(self, name: str, function: Union[int, str, float, Generator], position=None):
         """Initialize a dimension with a name and value generation function.
 
         Args:
@@ -91,6 +91,7 @@ class Dimensions(ABC):
         self._name = name
         self._function = function
         self._data = None
+        self._position = position
 
     @property
     def data(self) -> pd.Series:
@@ -130,7 +131,14 @@ class Dimensions(ABC):
         """Create a generator that yields dimension values.
 
         """
-        data = [next(self._function) for _ in timestamps]
+        # try:
+        data = [
+                next(self._function) if self._position is None 
+                else next(self._function)[self._position] 
+                for _ in timestamps
+            ]
+        # except TypeError:
+        #     data = [next(self._function)  for _ in timestamps]
 
 
         self._data = pd.DataFrame(data, columns=[self._name], index=timestamps)

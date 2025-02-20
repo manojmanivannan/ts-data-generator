@@ -6,7 +6,7 @@ import pandas as pd
 import numpy as np
 from ts_data_generator import DataGen
 from ts_data_generator.schema.models import Granularity
-from ts_data_generator.utils.functions import random_choice, random_int, constant
+from ts_data_generator.utils.functions import random_choice, random_int, random_multi_choice
 from enum import Enum
 from typing import Generator
 from ts_data_generator.utils.trends import SinusoidalTrend, LinearTrend, StockTrend, WeekendTrend
@@ -166,3 +166,8 @@ class TestDataScaleGenerator:
         assert data_gen_instance.data['metric1'].iloc[0] == pytest.approx(saved)
 
 
+    def test_linked_dimension(self, data_gen_instance):
+        data_gen_instance.add_dimension(name=['dim1','dim2'],function=random_multi_choice([1,2],['A','B','C']))
+        assert 'dim2' in data_gen_instance.data.columns
+        data_gen_instance.remove_dimension('dim2')
+        assert not 'dim2' in data_gen_instance.data.columns

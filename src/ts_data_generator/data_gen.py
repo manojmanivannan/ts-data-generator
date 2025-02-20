@@ -140,7 +140,7 @@ class DataGen:
         if start > end:
             raise ValueError("start_datetime cannot be after end_datetime")
 
-    def add_dimension(self, name: str, function) -> None:
+    def add_dimension(self, name: Union[str,list], function) -> None:
         """
         Add a new dimension to the collection.
 
@@ -175,13 +175,21 @@ class DataGen:
                 raise IndexError
             function = cycle(function)
 
-        
-        dimension = Dimensions(name=name, function=function)
-        # Raise error if self._dimensions already contains a dimension with the same name
-        if dimension in self._dimensions:
-            raise ValueError(f"Dimension with name {name} already exists")
-        self._dimensions.append(dimension)
-        self._generate_data()
+        if isinstance(name, list):
+            for i,n in enumerate(name):
+                dimension = Dimensions(name=n, function=function, position=i)
+                if dimension in self._dimensions:
+                    raise ValueError(f"Dimension with name {n} already exists")               
+                self._dimensions.append(dimension)
+            self._generate_data()
+            
+        else:
+            dimension = Dimensions(name=name, function=function,)
+            # Raise error if self._dimensions already contains a dimension with the same name
+            if dimension in self._dimensions:
+                raise ValueError(f"Dimension with name {name} already exists")
+            self._dimensions.append(dimension)
+            self._generate_data()
 
     def update_dimension(self, name: str, function) -> None:
         """
