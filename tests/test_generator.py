@@ -181,4 +181,7 @@ class TestDataScaleGenerator:
         with pytest.raises(ValueError):
             data_gen_instance.add_multi_items(names='dim1 dim5 dim6'.split(),function=my_custom_function())
             
+        data_gen_instance.remove_multi_item(['dim1'])
+        assert 'dim2' not in data_gen_instance.data.columns
+            
 
