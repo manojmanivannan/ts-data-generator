@@ -155,7 +155,7 @@ class Dimensions(ABC):
 
     # add a function to represent the dimension in json format
     def to_json(self):
-        return {"name": self.name, "function": self.function.__repr__()}
+        return {"name": self.name, "function": self.function.__repr__().split(' at ')[0]}
 
 
 class MultiItems(ABC):
@@ -228,4 +228,4 @@ class MultiItems(ABC):
 
     # add a function to represent the dimension in json format
     def to_json(self):
-        return {"names": self.names, "function": self.function.__repr__()}
+        return {"names": self.names, "function": self.function.__repr__().split(' at ')[0]}

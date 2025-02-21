@@ -9,6 +9,7 @@ import pandas as pd
 from .utils.functions import constant
 from itertools import cycle, chain
 from datetime import datetime
+import json
 
 
 class DataGen:
@@ -38,15 +39,23 @@ class DataGen:
         self.data = pd.DataFrame()
 
     def __repr__(self):
-        return (
-            f"DataGen Class\n"
-            f"  dimensions      = {[d.to_json() for d in self._dimensions]}\n"
-            f"  multi_items     = {[mt.to_json() for mt in self._multi_items]}\n"
-            f"  metrics         = {[m.to_json() for m in self._metrics]}\n"
-            f"  start_datetime  = {self.start_datetime}\n"
-            f"  end_datetime    = {self.end_datetime}\n"
-            f"  granularity     = {self.granularity}"
-        )
+        repr_string = "DataGen Class\n"
+        repr_string += "  dimensions    = [\n"
+        for d in self._dimensions:
+            repr_string+=" "*20+json.dumps(d.to_json())+"\n"
+        repr_string += "                  ]\n"
+        repr_string += "  metrics       = [\n"
+        for d in self._metrics:
+            repr_string+=" "*20+json.dumps(d.to_json())+"\n"
+        repr_string += "                  ]\n"
+        repr_string += "  multi_items   = [\n"
+        for d in self._multi_items:
+            repr_string+=" "*20+json.dumps(d.to_json())+"\n"
+        repr_string += "                  ]\n"
+        repr_string +=f"  start         = {self.start_datetime}\n"
+        repr_string +=f"  end           = {self.end_datetime}\n"
+        repr_string +=f"  granularity   = {Granularity(self.granularity).name}"
+        return repr_string
 
     @property
     def start_datetime(self):
@@ -214,7 +223,7 @@ class DataGen:
         Example:
             >>> def sample_generator():
             ...     while True:
-            ...         yield ()"sample_value", "another_value")
+            ...         yield ("sample_value", "another_value")
             ...
             >>> my_object.add_multi_items(name="category", function=sample_generator())
         """
@@ -259,7 +268,9 @@ class DataGen:
             data_gen.remove_multi_item(name=["item1","item2"])
             ```
         """
-
+        if isinstance(names,str):
+            names=list(names)
+            
         # if any of the items in the names is present in a multi-item collection,
         # that collection is completely removed
         if overlapping_items:=[mt for mt in self._multi_items if set(names) & set(mt.names)]:
