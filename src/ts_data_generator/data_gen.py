@@ -204,81 +204,7 @@ class DataGen:
         # Raise error if self._dimensions already contains a dimension with the same name
         
         self._generate_data()
-        
-    def add_multi_items(self, names: list, function: Union[int, float, str, list, Generator]) -> None:
-        """
-        Add a new dimension to the collection.
-
-        A dimension represents an additional attribute or aspect of the dataset. Each dimension is
-        identified by a unique name and associated with a function that generates its values.
-
-        Args:
-            names (list): The list of names of the items (dimension or metric).
-            function (int | float | str | Generator): A callable (e.g., generator function) that produces values for the items.
-                                                    Should return the same number of values as the items
-
-        Raises:
-            ValueError: If a dimension with the same name already exists in the collection.
-
-        Example:
-            >>> def sample_generator():
-            ...     while True:
-            ...         yield ("sample_value", "another_value")
-            ...
-            >>> my_object.add_multi_items(name="category", function=sample_generator())
-        """
-        # validate the function
-        if not isinstance(function, Union[int,float,str,list,Generator]):
-            raise ValueError(f'Function of the dimensions {names} has to be int, float, str or generator object')
-        
-        if isinstance(function, Union[int,float,str]):
-
-            function = constant(function)
-
-        if isinstance(function, list):
-
-            if not function: # if empty list
-                raise IndexError
-            function = cycle(function)
-
-        # if isinstance(names, list):
-            # for i,n in enumerate(names):
-
-        items = MultiItems(names=names, function=function)
-
-        if any((overlapping := set(names) & set(mt.names)) for mt in self._multi_items):
-            raise ValueError(f"Multi items with name(s) {overlapping} already exists")
-
-        self._multi_items.append(items)
-        
-        self._generate_data()
-        
-    def remove_multi_item(self, names: list) -> None:
-        """
-        Remove the dimension from the data generator by its name
-
-        Args:
-            names (list): The name of the items to remove.
-
-        Raises:
-            ValueError: If the multi-item with the specified names does not exist.
-
-        Example:
-            ```python
-            data_gen.remove_multi_item(name=["item1","item2"])
-            ```
-        """
-        if isinstance(names,str):
-            names=list(names)
-            
-        # if any of the items in the names is present in a multi-item collection,
-        # that collection is completely removed
-        if overlapping_items:=[mt for mt in self._multi_items if set(names) & set(mt.names)]:
-            for i in overlapping_items:
-                self.data = self.data.drop(i.names,axis=1)
-                self._multi_items = [mt for mt in self._multi_items if mt.names != i.names]
-
-        
+      
     def update_dimension(self, name: str, function) -> None:
         """
         Update an existing dimension in the DataGen instance.
@@ -343,7 +269,83 @@ class DataGen:
 
         # drop the dimension from dimension list
         self._dimensions = [d for d in self._dimensions if d.name != name]
+  
+    def add_multi_items(self, names: list, function: Union[int, float, str, list, Generator]) -> None:
+        """
+        Add a new dimension to the collection.
 
+        A dimension represents an additional attribute or aspect of the dataset. Each dimension is
+        identified by a unique name and associated with a function that generates its values.
+
+        Args:
+            names (list): The list of names of the items (dimension or metric).
+            function (int | float | str | Generator): A callable (e.g., generator function) that produces values for the items.
+                                                    Should return the same number of values as the items
+
+        Raises:
+            ValueError: If a dimension with the same name already exists in the collection.
+
+        Example:
+            >>> def sample_generator():
+            ...     while True:
+            ...         yield ("sample_value", "another_value")
+            ...
+            >>> my_object.add_multi_items(name="category", function=sample_generator())
+        """
+        # validate the function
+        if not isinstance(function, Union[int,float,str,list,Generator]):
+            raise ValueError(f'Function of the dimensions {names} has to be int, float, str or generator object')
+        
+        if isinstance(function, Union[int,float,str]):
+
+            function = constant(function)
+
+        if isinstance(function, list):
+
+            if not function: # if empty list
+                raise IndexError
+            function = cycle(function)
+
+        # if isinstance(names, list):
+            # for i,n in enumerate(names):
+
+        items = MultiItems(names=names, function=function)
+
+        if any((overlapping := set(names) & set(mt.names)) for mt in self._multi_items):
+            raise ValueError(f"Multi items with name(s) {overlapping} already exists")
+
+        self._multi_items.append(items)
+        
+        try:
+            self._generate_data()
+        except Exception as e:
+            self._multi_items.remove(items)
+            raise ValueError(e)
+        
+    def remove_multi_item(self, names: list) -> None:
+        """
+        Remove the dimension from the data generator by its name
+
+        Args:
+            names (list): The name of the items to remove.
+
+        Raises:
+            ValueError: If the multi-item with the specified names does not exist.
+
+        Example:
+            ```python
+            data_gen.remove_multi_item(name=["item1","item2"])
+            ```
+        """
+        if isinstance(names,str):
+            names=list(names)
+            
+        # if any of the items in the names is present in a multi-item collection,
+        # that collection is completely removed
+        if overlapping_items:=[mt for mt in self._multi_items if set(names) & set(mt.names)]:
+            for i in overlapping_items:
+                self.data.drop(i.names,axis=1, inplace=True)
+                self._multi_items = [mt for mt in self._multi_items if mt.names != i.names]
 
     def add_metric(
         self,
@@ -425,7 +427,6 @@ class DataGen:
         # drop the dimension from dimension list
         self._metrics = [d for d in self._metrics if d.name != name]
 
-
     def _generate_data(self) -> pd.DataFrame:
         """Generate a sample DataFrame with unique IDs and values.
 
@@ -505,7 +506,10 @@ class DataGen:
         if not 'epoch' in self.data.columns:
             self.data = pd.concat([self.data,pd.DataFrame(self._unix_timestamp, columns=['epoch'],index=self._timestamps)], axis=1)
         
-        self._sort_df()
+        try:
+            self._sort_df()
+        except Exception as e:
+            pass
     
     def _sort_df(self):
         colum_order = ['epoch'] + list(self.dimensions.keys()) + list(self.metrics.keys()) + list(chain(*[s.split(',') for s in self.multi_items.keys()]))
