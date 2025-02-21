@@ -56,6 +56,66 @@ class DataGen:
         repr_string +=f"  end           = {self.end_datetime}\n"
         repr_string +=f"  granularity   = {Granularity(self.granularity).name}"
         return repr_string
+    
+    def __len__(self):
+        return len(self.data)
+    
+    def shape(self):
+        return self.data.shape
+    
+    def head(self,n: int=5):
+        return self.data.head(n=n)
+    
+    def to_hourly(self):
+        """
+        Sets the granularity of the data to hourly.
+
+        If the current granularity is not already set to hourly ('h'),
+        it updates it to `Granularity.HOURLY`.
+        """
+        if self.granularity != 'h':
+            self.granularity = Granularity.HOURLY
+
+    def to_daily(self):
+        """
+        Sets the granularity of the data to daily.
+
+        If the current granularity is not already set to daily ('D'),
+        it updates it to `Granularity.DAILY`.
+        """
+        if self.granularity != 'D':
+            self.granularity = Granularity.DAILY
+
+    def to_5min(self):
+        """
+        Sets the granularity of the data to 5-minute intervals.
+
+        If the current granularity is not already set to 5 minutes ('5min'),
+        it updates it to `Granularity.FIVE_MIN`.
+        """
+        if self.granularity != '5min':
+            self.granularity = Granularity.FIVE_MIN
+
+    def to_1min(self):
+        """
+        Sets the granularity of the data to 1-minute intervals.
+
+        If the current granularity is not already set to 1 minute ('min'),
+        it updates it to `Granularity.ONE_MIN`.
+        """
+        if self.granularity != 'min':
+            self.granularity = Granularity.ONE_MIN
+
+    def to_1second(self):
+        """
+        Sets the granularity of the data to 1-second intervals.
+
+        If the current granularity is not already set to 1 second ('s'),
+        it updates it to `Granularity.ONE_SECOND`.
+        """
+        if self.granularity != 's':
+            self.granularity = Granularity.ONE_SECOND
+
 
     @property
     def start_datetime(self):
@@ -116,6 +176,7 @@ class DataGen:
             except ValueError:
                 raise ValueError("Granularity must be 5min, H or D")
         self._granularity = value
+        self._generate_data()
 
     @property
     def dimensions(self):
