@@ -81,7 +81,7 @@ class Metrics(ABC):
 
 
 class Dimensions(ABC):
-    def __init__(self, name: str, function: Union[int, str, float, Generator]):
+    def __init__(self, name: Union[str,list], function: Union[int, str, float, Generator]):
         """Initialize a dimension with a name and value generation function.
 
         Args:
@@ -91,13 +91,14 @@ class Dimensions(ABC):
         self._name = name
         self._function = function
         self._data = None
+        # self._position = position
 
     @property
     def data(self) -> pd.Series:
         return self._data
 
     @property
-    def name(self) -> str:
+    def name(self) -> Union[str,list]:
         """Get the name of the dimension."""
         return self._name
 
@@ -130,10 +131,16 @@ class Dimensions(ABC):
         """Create a generator that yields dimension values.
 
         """
-        data = [next(self._function) for _ in timestamps]
+        # try:
+        data = [list(next(self._function)) if isinstance(self._name, list) else [next(self._function)]
+                for _ in timestamps]
+
+        columns = self._name if isinstance(self._name, list) else [self._name]
+        # except TypeError:
+        #     data = [next(self._function)  for _ in timestamps]
 
 
-        self._data = pd.DataFrame(data, columns=[self._name], index=timestamps)
+        self._data = pd.DataFrame(data, columns=columns, index=timestamps)
         return self._data
 
     def __eq__(self, other: object) -> bool:
@@ -148,4 +155,77 @@ class Dimensions(ABC):
 
     # add a function to represent the dimension in json format
     def to_json(self):
-        return {"name": self.name, "function": self.function.__repr__()}
+        return {"name": self.name, "function": self.function.__repr__().split(' at ')[0]}
+
+
+class MultiItems(ABC):
+    def __init__(self, names: list, function: Union[int, str, float, Generator]):
+        """Initialize a dimension with a name and value generation function.
+
+        Args:
+            name: Name of the dimension
+            function: Function that generates values for this dimension
+        """
+        self._names = names
+        self._function = function
+        self._data = None
+        # self._position = position
+
+    @property
+    def data(self) -> pd.Series:
+        return self._data
+
+    @property
+    def names(self) -> list:
+        """Get the name of the dimension."""
+        return self._names
+
+    @property
+    def function(self) -> Union[int, str, float, Generator]:
+        """Get the value generation function."""
+        return self._function
+    
+    @function.setter
+    def function(self, value: Union[int, str, float, Generator]) -> None:
+        """Set the value generation function.
+
+        Args:
+            value: Function that generates values for this dimension. Should be a generator object
+        """
+        # validate if value is a generator object
+        if (
+            not isinstance(value, int)
+            and not isinstance(value, str)
+            and not isinstance(value, float)
+            and not isinstance(value, Generator)
+            and not isinstance(value, list)
+        ):
+            raise ValueError(
+                "function must be a generator object or int or str or float"
+            )
+        self._function = value
+
+    def generate(self, timestamps) -> pd.DataFrame:
+        """Create a generator that yields dimension values.
+
+        """
+        # try:
+        data = [list(next(self._function)) for _ in timestamps]
+
+
+        self._data = pd.DataFrame(data, columns=self._names, index=timestamps)
+        return self._data
+
+    def __eq__(self, other: object) -> bool:
+        """Enable equality comparison for set operations."""
+        if not isinstance(other, MultiItems):
+            raise NotImplementedError
+        return self._names == other.names
+
+    def __hash__(self) -> int:
+        """Enable hashing for set operations."""
+        return hash(self._names)
+
+    # add a function to represent the dimension in json format
+    def to_json(self):
+        return {"names": self.names, "function": self.function.__repr__().split(' at ')[0]}

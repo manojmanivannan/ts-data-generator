@@ -3,12 +3,13 @@ Core DataGen class implementation
 """
 
 from typing import Optional, Union, Set, List, Generator
-from .schema.models import Metrics, Dimensions, Granularity
+from .schema.models import Metrics, Dimensions, MultiItems, Granularity
 from .utils.trends import Trends
 import pandas as pd
 from .utils.functions import constant
-from itertools import cycle
+from itertools import cycle, chain
 from datetime import datetime
+import json
 
 
 class DataGen:
@@ -18,6 +19,7 @@ class DataGen:
         self,
         dimensions: List[Dimensions] = None,
         metrics: List[Metrics] = None,
+        multi_items: List[MultiItems] = None,
         start_datetime: Optional[str] = None,
         end_datetime: Optional[str] = None,
         granularity: Granularity = Granularity.FIVE_MIN,
@@ -26,22 +28,34 @@ class DataGen:
 
         self._dimensions = dimensions or []  # Initialize to an empty set if None
         self._metrics = metrics or []  # Initialize to an empty set if None
+        self._multi_items = multi_items or []
         self._start_datetime = start_datetime
         self._end_datetime = end_datetime
         self._granularity = granularity
         self._scale_factors = {}
         self.metric_data = pd.DataFrame()
         self.dimension_data = pd.DataFrame()
+        self.multi_item_data = pd.DataFrame()
         self.data = pd.DataFrame()
 
     def __repr__(self):
-        return f"""DataGen Class
-            dimensions  = {[d.to_json() for d in self._dimensions]}, 
-            metrics     = {[m.to_json() for m in self._metrics]}, 
-            start_datetime  = {self.start_datetime}, 
-            end_datetime    = {self.end_datetime}, 
-            granularity = {self.granularity})
-            """
+        repr_string = "DataGen Class\n"
+        repr_string += "  dimensions    = [\n"
+        for d in self._dimensions:
+            repr_string+=" "*20+json.dumps(d.to_json())+"\n"
+        repr_string += "                  ]\n"
+        repr_string += "  metrics       = [\n"
+        for d in self._metrics:
+            repr_string+=" "*20+json.dumps(d.to_json())+"\n"
+        repr_string += "                  ]\n"
+        repr_string += "  multi_items   = [\n"
+        for d in self._multi_items:
+            repr_string+=" "*20+json.dumps(d.to_json())+"\n"
+        repr_string += "                  ]\n"
+        repr_string +=f"  start         = {self.start_datetime}\n"
+        repr_string +=f"  end           = {self.end_datetime}\n"
+        repr_string +=f"  granularity   = {Granularity(self.granularity).name}"
+        return repr_string
 
     @property
     def start_datetime(self):
@@ -105,7 +119,11 @@ class DataGen:
 
     @property
     def dimensions(self):
-        return {d.name: d for d in self._dimensions}
+        return {name: d for d in self._dimensions for name in ([d.name] if isinstance(d.name, str) else d.name)}
+
+    @property
+    def multi_items(self):
+        return {','.join(names): mt for mt in self._multi_items for names in ([mt.names] if isinstance(mt.names, list) else mt.names)}
 
     @property
     def metrics(self):
@@ -140,7 +158,7 @@ class DataGen:
         if start > end:
             raise ValueError("start_datetime cannot be after end_datetime")
 
-    def add_dimension(self, name: str, function) -> None:
+    def add_dimension(self, name: str, function: Union[int, float, str, list, Generator]) -> None:
         """
         Add a new dimension to the collection.
 
@@ -175,14 +193,92 @@ class DataGen:
                 raise IndexError
             function = cycle(function)
 
+
         
         dimension = Dimensions(name=name, function=function)
-        # Raise error if self._dimensions already contains a dimension with the same name
-        if dimension in self._dimensions:
-            raise ValueError(f"Dimension with name {name} already exists")
-        self._dimensions.append(dimension)
-        self._generate_data()
 
+        if dimension in self._dimensions:
+            raise ValueError(f"Dimension with name {dimension.name} already exists")
+        
+        self._dimensions.append(dimension)
+        # Raise error if self._dimensions already contains a dimension with the same name
+        
+        self._generate_data()
+        
+    def add_multi_items(self, names: list, function: Union[int, float, str, list, Generator]) -> None:
+        """
+        Add a new dimension to the collection.
+
+        A dimension represents an additional attribute or aspect of the dataset. Each dimension is
+        identified by a unique name and associated with a function that generates its values.
+
+        Args:
+            names (list): The list of names of the items (dimension or metric).
+            function (int | float | str | Generator): A callable (e.g., generator function) that produces values for the items.
+                                                    Should return the same number of values as the items
+
+        Raises:
+            ValueError: If a dimension with the same name already exists in the collection.
+
+        Example:
+            >>> def sample_generator():
+            ...     while True:
+            ...         yield ("sample_value", "another_value")
+            ...
+            >>> my_object.add_multi_items(name="category", function=sample_generator())
+        """
+        # validate the function
+        if not isinstance(function, Union[int,float,str,list,Generator]):
+            raise ValueError(f'Function of the dimensions {names} has to be int, float, str or generator object')
+        
+        if isinstance(function, Union[int,float,str]):
+
+            function = constant(function)
+
+        if isinstance(function, list):
+
+            if not function: # if empty list
+                raise IndexError
+            function = cycle(function)
+
+        # if isinstance(names, list):
+            # for i,n in enumerate(names):
+
+        items = MultiItems(names=names, function=function)
+
+        if any((overlapping := set(names) & set(mt.names)) for mt in self._multi_items):
+            raise ValueError(f"Multi items with name(s) {overlapping} already exists")
+
+        self._multi_items.append(items)
+        
+        self._generate_data()
+        
+    def remove_multi_item(self, names: list) -> None:
+        """
+        Remove the dimension from the data generator by its name
+
+        Args:
+            names (list): The name of the items to remove.
+
+        Raises:
+            ValueError: If the multi-item with the specified names does not exist.
+
+        Example:
+            ```python
+            data_gen.remove_multi_item(name=["item1","item2"])
+            ```
+        """
+        if isinstance(names,str):
+            names=list(names)
+            
+        # if any of the items in the names is present in a multi-item collection,
+        # that collection is completely removed
+        if overlapping_items:=[mt for mt in self._multi_items if set(names) & set(mt.names)]:
+            for i in overlapping_items:
+                self.data = self.data.drop(i.names,axis=1)
+                self._multi_items = [mt for mt in self._multi_items if mt.names != i.names]
+
+        
     def update_dimension(self, name: str, function) -> None:
         """
         Update an existing dimension in the DataGen instance.
@@ -359,6 +455,9 @@ class DataGen:
         if self.dimension_data.empty:
             self.dimension_data = pd.DataFrame(index=self._timestamps)
         
+        if self.multi_item_data.empty:
+            self.multi_item_data = pd.DataFrame(index=self._timestamps)
+            
         if self.data.empty:
             self.data = pd.DataFrame(index=self._timestamps)
         else:
@@ -367,6 +466,7 @@ class DataGen:
                 # Clear existing data to ensure full regeneration
                 self.metric_data = pd.DataFrame(columns=[], index=self._timestamps)
                 self.dimension_data = pd.DataFrame(columns=[], index=self._timestamps)
+                self.multi_item_data = pd.DataFrame(columns=[], index=self._timestamps)
                 self.data = pd.DataFrame(columns=[], index=self._timestamps)
 
 
@@ -385,21 +485,22 @@ class DataGen:
 
         # Generate dimension data
         for dimension in self.dimensions.values():
-            
-            
 
-            # only proceed if dimension name is not in the dataset
-            if not dimension.name in self.data.columns:
-                self.dimension_data = pd.concat([self.dimension_data,dimension.generate(self._timestamps)], axis=1)
-                    
+            # only proceed if dimension name is not in the dataset            
+            if dimension.name not in self.data.columns:
+                self.dimension_data = pd.concat([self.dimension_data, dimension.generate(self._timestamps)], axis=1)
             else:
                 self.dimension_data = pd.DataFrame(index=self._timestamps)
             
-
+        for multi_item in self.multi_items.values():
+            if any(item not in self.data.columns for item in multi_item.names):
+                self.multi_item_data = pd.concat([self.multi_item_data, multi_item.generate(self._timestamps)], axis=1)
+            else:
+                self.multi_item_data = pd.DataFrame(index=self._timestamps)
 
         # self.dimension_data = pd.DataFrame(dimension_data_dict, index=self._timestamps)
 
-        self.data = pd.concat([self.data, self.dimension_data, self.metric_data], axis=1)
+        self.data = pd.concat([self.data, self.dimension_data, self.metric_data, self.multi_item_data], axis=1)
 
         if not 'epoch' in self.data.columns:
             self.data = pd.concat([self.data,pd.DataFrame(self._unix_timestamp, columns=['epoch'],index=self._timestamps)], axis=1)
@@ -407,7 +508,7 @@ class DataGen:
         self._sort_df()
     
     def _sort_df(self):
-        colum_order = ['epoch'] + list(self.dimensions.keys()) + list(self.metrics.keys())
+        colum_order = ['epoch'] + list(self.dimensions.keys()) + list(self.metrics.keys()) + list(chain(*[s.split(',') for s in self.multi_items.keys()]))
         self.data = self.data.reindex(columns=colum_order)
 
 

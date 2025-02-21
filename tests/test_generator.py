@@ -6,7 +6,7 @@ import pandas as pd
 import numpy as np
 from ts_data_generator import DataGen
 from ts_data_generator.schema.models import Granularity
-from ts_data_generator.utils.functions import random_choice, random_int, constant
+from ts_data_generator.utils.functions import random_choice, random_int, random_multi_choice
 from enum import Enum
 from typing import Generator
 from ts_data_generator.utils.trends import SinusoidalTrend, LinearTrend, StockTrend, WeekendTrend
@@ -140,9 +140,7 @@ class TestDataScaleGenerator:
         data_gen.granularity = Granularity.HOURLY
         # Create function that will return random choice from list
         data_gen.add_dimension(name="protocol", function=random_choice("TCP UDP".split()))
-        data_gen.add_dimension(name="category", function=random_choice("A B".split()))
         data_gen.add_dimension(name="interface", function="X Y Z".split())
-        data_gen.add_dimension(name="const",function=[3])
         metric1_trend = SinusoidalTrend(name="sine", amplitude=1, freq=24, phase=0, noise_level=1)
         data_gen.add_metric(name="metric1", trends=[metric1_trend])
         return data_gen
@@ -165,4 +163,25 @@ class TestDataScaleGenerator:
         data_gen_instance.denormalize()
         assert data_gen_instance.data['metric1'].iloc[0] == pytest.approx(saved)
 
+
+    def test_linked_dimension(self, data_gen_instance):
+        import random
+        def my_custom_function():
+            while True:
+                val1 = random.randint(1,100)
+                val2 =  random.randint(1,100)
+                val3 = val1 + val2
+                yield (val1, val2, val3)
+                
+        data_gen_instance.add_multi_items(names=['dim1','dim2','dim3'],function=my_custom_function())
+        assert np.True_ is ((data_gen_instance.data['dim1'] + data_gen_instance.data['dim2'] == data_gen_instance.data['dim3']).values.all())
+        with pytest.raises(ValueError):
+            data_gen_instance.add_multi_items(names='dim1 dim2'.split(),function=my_custom_function())
+            
+        with pytest.raises(ValueError):
+            data_gen_instance.add_multi_items(names='dim1 dim5 dim6'.split(),function=my_custom_function())
+            
+        data_gen_instance.remove_multi_item(['dim1'])
+        assert 'dim2' not in data_gen_instance.data.columns
+            
 
