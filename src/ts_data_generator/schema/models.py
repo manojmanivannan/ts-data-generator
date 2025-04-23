@@ -18,7 +18,7 @@ class Granularity(Enum):
     ONE_MIN = "min"
     ONE_SECOND = "s"
     WEEKLY = "W"
-    MONTHLY = "M"
+    MONTHLY = "ME"
     YEARLY = "Y"
 
 

@@ -625,12 +625,12 @@ class DataGen:
             ValueError: If the requested granularity is finer than the current data granularity.
         """
         # Map string granularities to pandas offset aliases for comparison
-        granularity_order = {"s": 0, "min": 1, "5min": 2, "h": 3, "D": 4, "W": 5, "M": 6, "Y": 7}
+        granularity_order = {"s": 0, "min": 1, "5min": 2, "h": 3, "D": 4, "W": 5, "ME": 6, "Y": 7}
 
 
         if granularity_order[granularity] < granularity_order[self.granularity]:
             raise ValueError(
-                f"Cannot aggregate to a finer granularity ({granularity}) than current data granularity ({current_gran})"
+                f"Cannot aggregate to a finer granularity ({granularity}) than current data granularity ({self.granularity})"
             )
 
 
