@@ -12,11 +12,11 @@ T = TypeVar("T")
 
 
 class Granularity(Enum):
+    ONE_SECOND = "s"
+    ONE_MIN = "min"
     FIVE_MIN = "5min"
     HOURLY = "h"
     DAILY = "D"
-    ONE_MIN = "min"
-    ONE_SECOND = "s"
     WEEKLY = "W"
     MONTHLY = "ME"
     YEARLY = "Y"
