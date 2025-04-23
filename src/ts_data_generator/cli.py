@@ -53,7 +53,6 @@ def generate(start, end, granularity, dims, mets, output):
     data_gen = DataGen()
     data_gen.start_datetime = start
     data_gen.end_datetime = end
-    # data_gen.granularity = Granularity[granularity.upper()]
     data_gen.to_granularity(granularity)
 
     # Add dimensions
