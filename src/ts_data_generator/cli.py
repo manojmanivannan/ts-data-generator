@@ -20,7 +20,7 @@ def main():
 @click.option(
     "--granularity",
     required=True,
-    type=click.Choice(["FIVE_MIN", "HOURLY", "DAILY"], case_sensitive=False),
+    type=click.Choice([s.value for s in Granularity], case_sensitive=False),
     help="Granularity of the time series data",
 )
 @click.option(
@@ -53,7 +53,7 @@ def generate(start, end, granularity, dims, mets, output):
     data_gen = DataGen()
     data_gen.start_datetime = start
     data_gen.end_datetime = end
-    data_gen.granularity = Granularity[granularity.upper()]
+    data_gen.to_granularity(granularity)
 
     # Add dimensions
     for dimension in dims.split(";"):

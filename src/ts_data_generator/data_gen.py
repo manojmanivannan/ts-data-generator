@@ -2,14 +2,16 @@
 Core DataGen class implementation
 """
 
-from typing import Optional, Union, Set, List, Generator
-from .schema.models import Metrics, Dimensions, MultiItems, Granularity
-from .utils.trends import Trends
-import pandas as pd
-from .utils.functions import constant
-from itertools import cycle, chain
-from datetime import datetime
 import json
+from datetime import datetime
+from itertools import chain, cycle
+from typing import Generator, List, Literal, Optional, Set, Union
+
+import pandas as pd
+
+from .schema.models import AggregationType, Dimensions, Granularity, Metrics, MultiItems
+from .utils.functions import constant
+from .utils.trends import Trends
 
 
 class DataGen:
@@ -42,80 +44,42 @@ class DataGen:
         repr_string = "DataGen Class\n"
         repr_string += "  dimensions    = [\n"
         for d in self._dimensions:
-            repr_string+=" "*20+json.dumps(d.to_json())+"\n"
+            repr_string += " " * 20 + json.dumps(d.to_json()) + "\n"
         repr_string += "                  ]\n"
         repr_string += "  metrics       = [\n"
         for d in self._metrics:
-            repr_string+=" "*20+json.dumps(d.to_json())+"\n"
+            repr_string += " " * 20 + json.dumps(d.to_json()) + "\n"
         repr_string += "                  ]\n"
         repr_string += "  multi_items   = [\n"
         for d in self._multi_items:
-            repr_string+=" "*20+json.dumps(d.to_json())+"\n"
+            repr_string += " " * 20 + json.dumps(d.to_json()) + "\n"
         repr_string += "                  ]\n"
-        repr_string +=f"  start         = {self.start_datetime}\n"
-        repr_string +=f"  end           = {self.end_datetime}\n"
-        repr_string +=f"  granularity   = {Granularity(self.granularity).name}"
+        repr_string += f"  start         = {self.start_datetime}\n"
+        repr_string += f"  end           = {self.end_datetime}\n"
+        repr_string += f"  granularity   = {Granularity(self.granularity).name}"
         return repr_string
-    
+
     def __len__(self):
         return len(self.data)
-    
+
     def shape(self):
         return self.data.shape
-    
-    def head(self,n: int=5):
+
+    def head(self, n: int = 5):
         return self.data.head(n=n)
+
+    def tail(self, n: int = 5):
+        return self.data.tail(n=n)
     
-    def to_hourly(self):
+    def to_granularity(self, granularity: Granularity):
         """
-        Sets the granularity of the data to hourly.
+        Sets the granularity of the data to the specified value.
 
-        If the current granularity is not already set to hourly ('h'),
-        it updates it to `Granularity.HOURLY`.
+        Args:
+            granularity (str): The desired granularity . "s", "min", "5min", "h", "D", "W", "M", "Y".
         """
-        if self.granularity != 'h':
-            self.granularity = Granularity.HOURLY
 
-    def to_daily(self):
-        """
-        Sets the granularity of the data to daily.
-
-        If the current granularity is not already set to daily ('D'),
-        it updates it to `Granularity.DAILY`.
-        """
-        if self.granularity != 'D':
-            self.granularity = Granularity.DAILY
-
-    def to_5min(self):
-        """
-        Sets the granularity of the data to 5-minute intervals.
-
-        If the current granularity is not already set to 5 minutes ('5min'),
-        it updates it to `Granularity.FIVE_MIN`.
-        """
-        if self.granularity != '5min':
-            self.granularity = Granularity.FIVE_MIN
-
-    def to_1min(self):
-        """
-        Sets the granularity of the data to 1-minute intervals.
-
-        If the current granularity is not already set to 1 minute ('min'),
-        it updates it to `Granularity.ONE_MIN`.
-        """
-        if self.granularity != 'min':
-            self.granularity = Granularity.ONE_MIN
-
-    def to_1second(self):
-        """
-        Sets the granularity of the data to 1-second intervals.
-
-        If the current granularity is not already set to 1 second ('s'),
-        it updates it to `Granularity.ONE_SECOND`.
-        """
-        if self.granularity != 's':
-            self.granularity = Granularity.ONE_SECOND
-
+        self.granularity = Granularity(granularity)
 
     @property
     def start_datetime(self):
@@ -174,27 +138,33 @@ class DataGen:
             try:
                 Granularity(value)
             except ValueError:
-                raise ValueError("Granularity must be 5min, H or D")
+                raise ValueError("Granularity must be one of 's', 'min', '5min', 'h', 'D', 'W', 'M', 'Y'")
         self._granularity = value
         self._generate_data()
 
     @property
     def dimensions(self):
-        return {name: d for d in self._dimensions for name in ([d.name] if isinstance(d.name, str) else d.name)}
+        return {
+            name: d
+            for d in self._dimensions
+            for name in ([d.name] if isinstance(d.name, str) else d.name)
+        }
 
     @property
     def multi_items(self):
-        return {','.join(names): mt for mt in self._multi_items for names in ([mt.names] if isinstance(mt.names, list) else mt.names)}
+        return {
+            ",".join(names): mt
+            for mt in self._multi_items
+            for names in ([mt.names] if isinstance(mt.names, list) else mt.names)
+        }
 
     @property
     def metrics(self):
         return {m.name: m for m in self._metrics}
-    
+
     @property
     def trends(self):
         return {m.name: {t.name: t for t in m._trends} for m in self._metrics}
-
-
 
     def _validate_dates(self) -> None:
         """Validate start_datetime and end_datetime format and logic.
@@ -219,7 +189,9 @@ class DataGen:
         if start > end:
             raise ValueError("start_datetime cannot be after end_datetime")
 
-    def add_dimension(self, name: str, function: Union[int, float, str, list, Generator]) -> None:
+    def add_dimension(
+        self, name: str, function: Union[int, float, str, list, Generator]
+    ) -> None:
         """
         Add a new dimension to the collection.
 
@@ -241,31 +213,29 @@ class DataGen:
             >>> my_object.add_dimension(name="category", function=sample_generator())
         """
         # validate the function
-        if not isinstance(function, Union[int,float,str,list,Generator]):
-            raise ValueError(f'Function of the dimension {name} has to be int, float, str or generator object')
-        
-        if isinstance(function, Union[int,float,str]):
+        if not isinstance(function, Union[int, float, str, list, Generator]):
+            raise ValueError(
+                f"Function of the dimension {name} has to be int, float, str or generator object"
+            )
 
+        if isinstance(function, Union[int, float, str]):
             function = constant(function)
 
         if isinstance(function, list):
-
-            if not function: # if empty list
+            if not function:  # if empty list
                 raise IndexError
             function = cycle(function)
 
-
-        
         dimension = Dimensions(name=name, function=function)
 
         if dimension in self._dimensions:
             raise ValueError(f"Dimension with name {dimension.name} already exists")
-        
+
         self._dimensions.append(dimension)
         # Raise error if self._dimensions already contains a dimension with the same name
-        
+
         self._generate_data()
-      
+
     def update_dimension(self, name: str, function) -> None:
         """
         Update an existing dimension in the DataGen instance.
@@ -325,13 +295,17 @@ class DataGen:
         """
         if name in self.dimensions:
             # update the data
-            self.data = self.data.drop([name],axis=1)
-            
+            self.data = self.data.drop([name], axis=1)
 
         # drop the dimension from dimension list
         self._dimensions = [d for d in self._dimensions if d.name != name]
-  
-    def add_multi_items(self, names: list, function: Union[int, float, str, list, Generator]) -> None:
+
+    def add_multi_items(
+        self,
+        names: list,
+        function: Union[int, float, str, list, Generator],
+        aggregation_type: Optional[List] = None,
+    ) -> None:
         """
         Add a new dimension to the collection.
 
@@ -342,6 +316,7 @@ class DataGen:
             names (list): The list of names of the items (dimension or metric).
             function (int | float | str | Generator): A callable (e.g., generator function) that produces values for the items.
                                                     Should return the same number of values as the items
+            aggregation_type (Optional[List]): The aggregation type for the multi-item. Must be one of ["mean", "sum", "min", "max"]. Item will be treaded as a metric if provided.
 
         Raises:
             ValueError: If a dimension with the same name already exists in the collection.
@@ -351,38 +326,40 @@ class DataGen:
             ...     while True:
             ...         yield ("sample_value", "another_value")
             ...
-            >>> my_object.add_multi_items(name="category", function=sample_generator())
+            >>> my_object.add_multi_items(names=["category"], function=sample_generator(), aggregation_type=["mean"])
         """
         # validate the function
-        if not isinstance(function, Union[int,float,str,list,Generator]):
-            raise ValueError(f'Function of the dimensions {names} has to be int, float, str or generator object')
-        
-        if isinstance(function, Union[int,float,str]):
+        if not isinstance(function, Union[int, float, str, list, Generator]):
+            raise ValueError(
+                f"Function of the dimensions {names} has to be int, float, str or generator object"
+            )
 
+        if isinstance(function, Union[int, float, str]):
             function = constant(function)
 
         if isinstance(function, list):
-
-            if not function: # if empty list
+            if not function:  # if empty list
                 raise IndexError
             function = cycle(function)
 
         # if isinstance(names, list):
-            # for i,n in enumerate(names):
+        # for i,n in enumerate(names):
 
-        items = MultiItems(names=names, function=function)
+        items = MultiItems(
+            names=names, function=function, aggregation_type=aggregation_type
+        )
 
         if any((overlapping := set(names) & set(mt.names)) for mt in self._multi_items):
             raise ValueError(f"Multi items with name(s) {overlapping} already exists")
 
         self._multi_items.append(items)
-        
+
         try:
             self._generate_data()
         except Exception as e:
             self._multi_items.remove(items)
             raise ValueError(e)
-        
+
     def remove_multi_item(self, names: list) -> None:
         """
         Remove the dimension from the data generator by its name
@@ -398,20 +375,25 @@ class DataGen:
             data_gen.remove_multi_item(name=["item1","item2"])
             ```
         """
-        if isinstance(names,str):
-            names=list(names)
-            
+        if isinstance(names, str):
+            names = list(names)
+
         # if any of the items in the names is present in a multi-item collection,
         # that collection is completely removed
-        if overlapping_items:=[mt for mt in self._multi_items if set(names) & set(mt.names)]:
+        if overlapping_items := [
+            mt for mt in self._multi_items if set(names) & set(mt.names)
+        ]:
             for i in overlapping_items:
-                self.data.drop(i.names,axis=1, inplace=True)
-                self._multi_items = [mt for mt in self._multi_items if mt.names != i.names]
+                self.data.drop(i.names, axis=1, inplace=True)
+                self._multi_items = [
+                    mt for mt in self._multi_items if mt.names != i.names
+                ]
 
     def add_metric(
         self,
         name: str,
-        trends: Set[Trends]
+        trends: Set[Trends],
+        aggregation_type: AggregationType = AggregationType.AVG,
     ) -> None:
         """
         Add a metric to the DataGen instance.
@@ -455,10 +437,7 @@ class DataGen:
             )
             ```
         """
-        metric = Metrics(
-            name=name,
-            trends=trends
-        )
+        metric = Metrics(name=name, trends=trends, aggregation_type=aggregation_type)
         # Raise error if self._metrics already contains a metric with the same name
         for m in self._metrics:
             if name == m.name:
@@ -483,7 +462,7 @@ class DataGen:
         """
         if name in self.metrics:
             # update the data
-            self.data = self.data.drop([name],axis=1)
+            self.data = self.data.drop([name], axis=1)
 
         # drop the dimension from dimension list
         self._metrics = [d for d in self._metrics if d.name != name]
@@ -513,13 +492,13 @@ class DataGen:
         # create an empty dataframe with timestamps as index
         if self.metric_data.empty:
             self.metric_data = pd.DataFrame(index=self._timestamps)
-        
+
         if self.dimension_data.empty:
             self.dimension_data = pd.DataFrame(index=self._timestamps)
-        
+
         if self.multi_item_data.empty:
             self.multi_item_data = pd.DataFrame(index=self._timestamps)
-            
+
         if self.data.empty:
             self.data = pd.DataFrame(index=self._timestamps)
         else:
@@ -531,80 +510,161 @@ class DataGen:
                 self.multi_item_data = pd.DataFrame(columns=[], index=self._timestamps)
                 self.data = pd.DataFrame(columns=[], index=self._timestamps)
 
-
-
-        # Generate metric data 
+        # Generate metric data
         for metric in self.metrics.values():
-            
             # only proceed if metric name is not in the dataset
-            if (not metric.name in self.data.columns):
+            if metric.name not in self.data.columns:
                 # recursively concant the dataframe to self.metric_data
-                self.metric_data = pd.concat([self.metric_data, metric.generate(self._timestamps)], axis=1)
-            
+                self.metric_data = pd.concat(
+                    [self.metric_data, metric.generate(self._timestamps)], axis=1
+                )
+
             # if the metric is already in dataset, ignore with an empty dataframe
             else:
                 self.metric_data = pd.DataFrame(index=self._timestamps)
 
         # Generate dimension data
         for dimension in self.dimensions.values():
-
-            # only proceed if dimension name is not in the dataset            
+            # only proceed if dimension name is not in the dataset
             if dimension.name not in self.data.columns:
-                self.dimension_data = pd.concat([self.dimension_data, dimension.generate(self._timestamps)], axis=1)
+                self.dimension_data = pd.concat(
+                    [self.dimension_data, dimension.generate(self._timestamps)], axis=1
+                )
             else:
                 self.dimension_data = pd.DataFrame(index=self._timestamps)
-            
+
         for multi_item in self.multi_items.values():
             if any(item not in self.data.columns for item in multi_item.names):
-                self.multi_item_data = pd.concat([self.multi_item_data, multi_item.generate(self._timestamps)], axis=1)
+                self.multi_item_data = pd.concat(
+                    [self.multi_item_data, multi_item.generate(self._timestamps)],
+                    axis=1,
+                )
             else:
                 self.multi_item_data = pd.DataFrame(index=self._timestamps)
 
         # self.dimension_data = pd.DataFrame(dimension_data_dict, index=self._timestamps)
 
-        self.data = pd.concat([self.data, self.dimension_data, self.metric_data, self.multi_item_data], axis=1)
+        self.data = pd.concat(
+            [self.data, self.dimension_data, self.metric_data, self.multi_item_data],
+            axis=1,
+        )
 
-        if not 'epoch' in self.data.columns:
-            self.data = pd.concat([self.data,pd.DataFrame(self._unix_timestamp, columns=['epoch'],index=self._timestamps)], axis=1)
-        
+        if "epoch" not in self.data.columns:
+            self.data = pd.concat(
+                [
+                    self.data,
+                    pd.DataFrame(
+                        self._unix_timestamp, columns=["epoch"], index=self._timestamps
+                    ),
+                ],
+                axis=1,
+            )
+
         try:
             self._sort_df()
-        except Exception as e:
+        except Exception:
             pass
-    
+
+    def aggregate(self, granularity: Granularity) -> pd.DataFrame:
+        """
+        Aggregate the data to a coarser granularity if requested.
+
+        Args:
+            granularity: The target granularity for aggregation.
+
+        Raises:
+            ValueError: If the requested granularity is finer than the current data granularity.
+        """
+        # Map string granularities to pandas offset aliases for comparison
+        granularity_order = {"s": 0, "min": 1, "5min": 2, "h": 3, "D": 4, "W": 5, "ME": 6, "Y": 7}
+
+
+        if granularity_order[granularity] < granularity_order[self.granularity]:
+            raise ValueError(
+                f"Cannot aggregate to a finer granularity ({granularity}) than current data granularity ({self.granularity})"
+            )
+
+
+        # Prepare aggregation dictionary
+        agg_dict = {k: v.aggregation_type for k, v in self.metrics.items()}
+
+        # Resample and aggregate
+        group_keys = list(self.dimensions.keys())
+
+        # Append to agg_dict
+        for k, v in self.multi_items.items():
+            if v.aggregation_type:
+                for i, item in enumerate(k.split(",")):
+                    agg_dict[item] = v.aggregation_type[i]
+
+            else:
+                group_keys.extend(k.split(","))
+
+        # Always keep 'epoch' out of groupby, as it will be recalculated
+        resampled = (
+            self.data.drop("epoch",axis=1).reset_index()
+            .groupby(group_keys)
+            .resample(granularity,on="index")
+            .agg(agg_dict)
+            .reset_index()
+            .set_index("index")
+            .sort_index()
+        )
+
+        resampled.columns = resampled.columns.get_level_values(0)
+        # Recalculate epoch column
+        resampled["epoch"] = resampled.index.astype("int64") // 10**9
+        # resampled.set_index("index", inplace=True)
+
+        return resampled
+
     def _sort_df(self):
-        colum_order = ['epoch'] + list(self.dimensions.keys()) + list(self.metrics.keys()) + list(chain(*[s.split(',') for s in self.multi_items.keys()]))
+        colum_order = (
+            ["epoch"]
+            + list(self.dimensions.keys())
+            + list(self.metrics.keys())
+            + list(chain(*[s.split(",") for s in self.multi_items.keys()]))
+        )
         self.data = self.data.reindex(columns=colum_order)
 
+    def normalize(self, method="min-max"):
+        if method not in ("min-max", "mean-std"):
+            raise NotImplementedError(
+                f"Invalid method: {method}. Allowed values are 'min-max'"
+            )
 
-    def normalize(self, method = 'min-max'):
+        df_numeric = self.data.select_dtypes(
+            include=["number"]
+        )  # Select only numeric columns
 
-        if method not in ('min-max', 'mean-std'):
-            raise NotImplementedError(f"Invalid method: {method}. Allowed values are 'min-max'")
-        
-        df_numeric = self.data.select_dtypes(include=['number'])  # Select only numeric columns
-
-        if method == 'min-max':
+        if method == "min-max":
             # Min-Max Scaling
-            df_scaled = (df_numeric - df_numeric.min()) / (df_numeric.max() - df_numeric.min())  # Min-Max Normalization
+            df_scaled = (df_numeric - df_numeric.min()) / (
+                df_numeric.max() - df_numeric.min()
+            )  # Min-Max Normalization
 
-        if method == 'mean-std':
+        if method == "mean-std":
             # Mean-Std Scaling
-            df_scaled = (df_numeric - df_numeric.mean()) / (df_numeric.std())  # Min-Max Normalization
-        
+            df_scaled = (df_numeric - df_numeric.mean()) / (
+                df_numeric.std()
+            )  # Min-Max Normalization
 
-        self._scale_factors['min'] = df_numeric.min()
-        self._scale_factors['max'] = df_numeric.max()
+        self._scale_factors["min"] = df_numeric.min()
+        self._scale_factors["max"] = df_numeric.max()
 
-        
         # Merge back with non-numeric columns
         self.data[df_numeric.columns] = df_scaled
 
     def denormalize(self):
-        df_numeric = self.data.select_dtypes(include=['number'])  # Select only numeric columns
+        df_numeric = self.data.select_dtypes(
+            include=["number"]
+        )  # Select only numeric columns
         # Reverse the Min-Max Scaling
-        self.data[df_numeric.columns] = self.data[df_numeric.columns] * (self._scale_factors['max'] - self._scale_factors['min']) + self._scale_factors['min']
-
+        self.data[df_numeric.columns] = (
+            self.data[df_numeric.columns]
+            * (self._scale_factors["max"] - self._scale_factors["min"])
+            + self._scale_factors["min"]
+        )
 
     def plot(self, exclude: List[str] = [], include: List[str] = []):
         """
@@ -616,11 +676,13 @@ class DataGen:
         None
         """
         if exclude and include:
-            raise ValueError("Only one of 'exclude' or 'include' should be provided, not both.")
-        
+            raise ValueError(
+                "Only one of 'exclude' or 'include' should be provided, not both."
+            )
+
         # Get only numeric columns
-        numeric_cols = self.data.select_dtypes(include=['number']).columns.tolist()
-        numeric_cols.remove('epoch') if 'epoch' in numeric_cols else numeric_cols
+        numeric_cols = self.data.select_dtypes(include=["number"]).columns.tolist()
+        numeric_cols.remove("epoch") if "epoch" in numeric_cols else numeric_cols
 
         if exclude:
             plot_cols = [col for col in numeric_cols if col not in exclude]
