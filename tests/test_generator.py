@@ -185,3 +185,29 @@ class TestDataScaleGenerator:
         assert 'dim2' not in data_gen_instance.data.columns
             
 
+class TestDataAggregation:
+    # Setup method to initialize the Calculator instance
+    
+    
+    @pytest.fixture
+    def data_gen_instance(self):
+        """Fixture to create a DataGen instance"""
+        data_gen = DataGen()
+        data_gen.start_datetime = "2022-01-01 00:00:00"
+        data_gen.end_datetime = "2022-01-01 00:15:00"
+        data_gen.granularity = Granularity.FIVE_MIN
+        # Create function that will return random choice from list
+        data_gen.add_dimension(name="protocol", function=random_choice("TCP UDP".split()))
+        data_gen.add_dimension(name="interface", function="X Y Z".split())
+        def my_custom_function():
+            while True:
+                for x,y,z in zip(range(1,10),range(2,11),range(3,12)):
+                    yield (x,y,z)
+        data_gen.add_multi_items(names=['dim1','dim2','dim3'],function=my_custom_function())
+        return data_gen
+    
+    def test_aggregate(self, data_gen_instance):
+        print(data_gen_instance.data)
+        print(data_gen_instance.aggregate())
+        print(data_gen_instance.data)
+        

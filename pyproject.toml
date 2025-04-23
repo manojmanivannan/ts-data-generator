@@ -17,6 +17,7 @@ dependencies = [
     "pydantic",
     "matplotlib",
     "click",
+    "ipykernel>=6.29.5",
 ]
 readme = "README.md"
 authors = [
