@@ -203,11 +203,12 @@ class TestDataAggregation:
             while True:
                 for x,y,z in zip(range(1,10),range(2,11),range(3,12)):
                     yield (x,y,z)
-        data_gen.add_multi_items(names=['dim1','dim2','dim3'],function=my_custom_function())
+
+        data_gen.add_multi_items(names="val1 val2 val3".split(), function=my_custom_function(), aggregation_type="sum mean max".split())
         return data_gen
     
     def test_aggregate(self, data_gen_instance):
         print(data_gen_instance.data)
-        print(data_gen_instance.aggregate())
+        print(data_gen_instance.aggregate("W"))
         print(data_gen_instance.data)
         
