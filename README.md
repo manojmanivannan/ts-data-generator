@@ -44,9 +44,9 @@ Usage: tsdata generate [OPTIONS]
 Options:
   --start TEXT                    Start datetime 'YYYY-MM-DD'  [required]
   --end TEXT                      End datetime 'YYYY-MM-DD'  [required]
-  --granularity [FIVE_MIN|HOURLY|DAILY]
+  --granularity [s|min|5min|h|d|w|me|y]
                                   Granularity of the time series data  [required]
-  --dims TEXT                     + separated list of dimensions definition of format 'name:function:values'  [required]
+  --dims TEXT                     Dimensions definition of format 'name:function:values'  [required]
   --mets TEXT                     + separated list of metrics definition trends of format 'name:trend(*params)'  [required]
   --output TEXT                   Output file name  [required]
   --help                          Show this message and exit.
@@ -56,7 +56,7 @@ For example you can call this cli tool like below to generate data
 tsdata generate \
   --start "2019-01-01" \
   --end "2019-01-12" \
-  --granularity "FIVE_MIN" \
+  --granularity "5min" \
   --dims "product:random_choice:A,B,C,D" \
   --dims "product_id:random_float:1,4" \
   --dims "const:constant:5" \
