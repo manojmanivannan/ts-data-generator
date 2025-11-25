@@ -32,6 +32,12 @@ pip install --editable .
 1. To check out constructing for time series data, check the sample notebook [here](https://github.com/manojmanivannan/ts-data-generator/blob/main/notebooks/sample.ipynb)
 2. To extract the trends from an existing data, check this sample notebook [here](https://github.com/manojmanivannan/ts-data-generator/blob/main/notebooks/imputer.ipynb)
 
+### UV
+You can easily run it using `uv`
+```bash
+uvx --python 3.9 --from ts-data-generator tsdata
+```
+
 ### CLI
 
 You can also use the command line utility `tsdata` to generate the data.
