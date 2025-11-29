@@ -3,11 +3,11 @@ from abc import ABC, abstractmethod
 from typing import Any, Callable, TypeVar, Generator, Literal, Optional, Union
 import pandas as pd
 
+
 class Trends(ABC):
     def __init__(
-            self,
-            name: str = "default",
-
+        self,
+        name: str = "default",
     ):
         """
         Initialize a Trends object.
@@ -37,8 +37,10 @@ class Trends(ABC):
         """
         pass
 
-        
+
 class SinusoidalTrend(Trends):
+    _example = "sales:SinusoidalTrend(amplitude=1,freq=24,phase=0,noise_level=0)"
+
     def __init__(
         self,
         name: str = "default",
@@ -66,15 +68,15 @@ class SinusoidalTrend(Trends):
     @property
     def amplitude(self) -> float:
         return self._amplitude
-    
+
     @property
     def freq(self) -> float:
         return self._freq
-    
+
     @property
     def phase(self) -> float:
         return self._phase
-    
+
     @property
     def noise_level(self) -> float:
         return self._noise_level
@@ -96,17 +98,20 @@ class SinusoidalTrend(Trends):
         phase_in_days = self._phase / 24.0
 
         # Calculate the sinusoidal wave
-        base_wave = self._amplitude * np.sin(2 * np.pi * (1/self._freq) * (time_in_days + phase_in_days))
+        base_wave = self._amplitude * np.sin(
+            2 * np.pi * (1 / self._freq) * (time_in_days + phase_in_days)
+        )
 
         # Add noise
         noise = np.random.normal(0, self._noise_level, len(timestamps))
         sinusoidal_wave = base_wave + noise
 
         return sinusoidal_wave
-    
-    
+
 
 class LinearTrend(Trends):
+    _example = "sales:LinearTrend(offset=0,noise_level=1,limit=10)"
+
     def __init__(
         self,
         name: str = "default",
@@ -155,7 +160,7 @@ class LinearTrend(Trends):
             np.ndarray: Generated linear trend values.
         """
         # Calculate time differences in the appropriate unit
-        time_deltas = (timestamps - timestamps[0])
+        time_deltas = timestamps - timestamps[0]
 
         if timestamps.freq == "5min":  # 5-minute granularity
             time_numeric = time_deltas.total_seconds() / 60.0  # Convert to minutes
@@ -167,11 +172,13 @@ class LinearTrend(Trends):
             time_numeric = time_deltas.total_seconds() / 60.0 / 5
         elif timestamps.freq == "D":  # Daily granularity
             time_numeric = time_deltas.days  # Use days directly
-            
-        else:
-            raise ValueError(f"Unsupported granularity {timestamps.freq}. Use 5T, H, or D.")
 
-        self._coefficient = np.radians(np.sin(self._limit/len(time_numeric)))
+        else:
+            raise ValueError(
+                f"Unsupported granularity {timestamps.freq}. Use 5T, H, or D."
+            )
+
+        self._coefficient = np.radians(np.sin(self._limit / len(time_numeric)))
 
         # Calculate the linear trend
         base_trend = self._coefficient * time_numeric + self._offset
@@ -182,7 +189,12 @@ class LinearTrend(Trends):
 
         return trend_with_noise
 
+
 class WeekendTrend(Trends):
+    _example = (
+        "sales:WeekendTrend(weekend_effect=10,direction='up',noise_level=0.5,limit=10)"
+    )
+
     def __init__(
         self,
         name: str = "default",
@@ -240,9 +252,10 @@ class WeekendTrend(Trends):
         is_weekend = timestamps.weekday >= 5
 
         # Apply the weekend effect
-        weekend_adjustment = self._weekend_effect if self._direction == "up" else -self._weekend_effect
+        weekend_adjustment = (
+            self._weekend_effect if self._direction == "up" else -self._weekend_effect
+        )
         trend[is_weekend] = weekend_adjustment
-
 
         # Clip the trend to the specified limit
         trend = np.clip(trend, -self._limit, self._limit)
@@ -253,7 +266,10 @@ class WeekendTrend(Trends):
 
         return trend
 
+
 class StockTrend(Trends):
+    _example = "sales:StockTrend(amplitude=15.0,direction='up',noise_level=0.0)"
+
     def __init__(
         self,
         name: str = "default",
@@ -278,7 +294,6 @@ class StockTrend(Trends):
         self._direction = direction
         self._noise_level = noise_level
 
-
     @property
     def amplitude(self) -> float:
         return self._amplitude
@@ -290,7 +305,6 @@ class StockTrend(Trends):
     @property
     def noise_level(self) -> float:
         return self._noise_level
-
 
     def generate(self, timestamps: pd.DatetimeIndex) -> np.ndarray:
         """
@@ -319,16 +333,16 @@ class StockTrend(Trends):
             step = drift_per_step + volatility
             trend[i] = trend[i - 1] + step
 
-
         time_in_days = (timestamps - timestamps[0]).total_seconds() / (24 * 3600)
         base_wave = (
-                    self._amplitude * np.sin(2 * np.pi * (time_in_days/5)) - self._amplitude +
-                    2*self._amplitude * np.sin(2 * np.pi * (time_in_days/30)) - self._amplitude + 
-                    2*self._amplitude * np.sin(2 * np.pi * (time_in_days/45))+ 
-                    3*self._amplitude * np.sin(2 * np.pi * (time_in_days/180))
-                )
-        if self._direction =='down':
+            self._amplitude * np.sin(2 * np.pi * (time_in_days / 5))
+            - self._amplitude
+            + 2 * self._amplitude * np.sin(2 * np.pi * (time_in_days / 30))
+            - self._amplitude
+            + 2 * self._amplitude * np.sin(2 * np.pi * (time_in_days / 45))
+            + 3 * self._amplitude * np.sin(2 * np.pi * (time_in_days / 180))
+        )
+        if self._direction == "down":
             base_wave = base_wave[::-1]
 
         return base_wave + trend
-    
