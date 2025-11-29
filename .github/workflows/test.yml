@@ -26,7 +26,7 @@ jobs:
 
       - name: Set project version with UV
         run: |
-            uvx --fromtoml-cli toml set pyproject.toml project.version "${{ needs.details.outputs.new_version }}"
+            uvx --from toml-cli toml set pyproject.toml project.version "${{ needs.details.outputs.new_version }}"
   
       - name: Install dependencies
         run: uv sync --locked
