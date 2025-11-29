@@ -3,6 +3,7 @@ from ts_data_generator import DataGen
 from ts_data_generator.schema.models import Granularity
 import ts_data_generator.utils.functions as util_functions
 import ts_data_generator.utils.trends as trends_functions
+from click.core import Context
 
 
 @click.group(context_settings={"max_content_width": 220})
@@ -11,43 +12,40 @@ def main():
 
 
 @main.command()
-@click.option(
-    "--start", required=True, type=str, help="Start datetime 'YYYY-MM-DD'"
-)
-@click.option(
-    "--end", required=True, type=str, help="End datetime 'YYYY-MM-DD'"
-)
+@click.option("--start", required=False, type=str, help="Start datetime 'YYYY-MM-DD'")
+@click.option("--end", required=False, type=str, help="End datetime 'YYYY-MM-DD'")
 @click.option(
     "--granularity",
-    required=True,
+    required=False,
     type=click.Choice([s.value for s in Granularity], case_sensitive=False),
     help="Granularity of the time series data",
 )
 @click.option(
     "--dims",
-    required=True,
+    required=False,
     type=str,
     help="+ separated list of dimensions definition of format 'name:function:values'",
     multiple=True,
 )
 @click.option(
     "--mets",
-    required=True,
+    required=False,
     type=str,
     help="+ separated list of metrics definition trends of format 'name:trend(*params)'",
     multiple=True,
 )
-@click.option(
-    "--output", required=True, type=str, help="Output file name"
-)
-def generate(start, end, granularity, dims, mets, output):
+@click.option("--output", required=False, type=str, help="Output file name")
+@click.pass_context
+def generate(ctx: Context, start, end, granularity, dims, mets, output):
     """
     Generate time series data and save it to a CSV file.
     """
+    if not any([start, end, granularity, dims, mets, output]):
+        click.echo(ctx.get_help())
+        ctx.exit()
+
     mets = ";".join(mets)
     dims = ";".join(dims)
-    
-    from click.core import Context
 
     # Initialize the data generator
     data_gen = DataGen()
@@ -153,16 +151,20 @@ def dimensions():
     functions = [
         f
         for f in dir(util_functions)
-        if callable(getattr(util_functions, f)) and not f.startswith("_")
+        if callable(getattr(util_functions, f))
+        and not f.startswith("_")
+        and f not in ["TypeVar", "Generator", "Iterable", "Tuple", "Union", "cycle"]
     ]
     click.echo("Available dimension functions are:")
     for func in functions:
         # Get the function object
         func_obj = getattr(util_functions, func)
+        example = getattr(func_obj, "_example", "No example available")
         # Get the function signature
         signature = inspect.signature(func_obj)
         # Print the function name and its arguments
-        click.echo(f"- {func}{signature}")
+        name_sig = f"{func}{signature}"
+        click.echo(f"- {name_sig}\n\tExample: {example}")
 
 
 @main.command()
@@ -184,8 +186,9 @@ def metrics():
         func_obj = getattr(trends_functions, func)
         # Get the function signature
         signature = inspect.signature(func_obj)
-        # Print the function name and its arguments
-        click.echo(f"- {func}{signature}")
+        example = getattr(func_obj, "_example", "No example available")
+        name_sig = f"{func}{signature}"
+        click.echo(f"- {name_sig}\n\tExample: {example:>10}")
 
 
 if __name__ == "__main__":
