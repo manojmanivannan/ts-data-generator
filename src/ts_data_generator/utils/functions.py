@@ -5,9 +5,11 @@ import numpy as np
 import pandas as pd
 from typing import Union, Iterable, Tuple, Generator, TypeVar
 from itertools import cycle
+
 T = TypeVar("T")
 
-def constant(value: Union[int,str,float,list]):
+
+def constant(value: Union[int, str, float, list]):
     """
     Returns a constant value.
 
@@ -21,7 +23,11 @@ def constant(value: Union[int,str,float,list]):
             yield value[0]
         else:
             yield value
-        
+
+
+constant._example = "name:constant:10"
+
+
 def random_choice(iterable):
     """
     Returns a random element from the given iterable.
@@ -32,6 +38,9 @@ def random_choice(iterable):
     """
     while True:
         yield random.choice(iterable)
+
+
+random_choice._example = "name:random_choice:A,B,C"
 
 
 def random_int(start: int, end: int):
@@ -47,6 +56,9 @@ def random_int(start: int, end: int):
         yield random.randint(start, end)
 
 
+random_int._example = "name:random_int:1,100"
+
+
 def random_float(start: float, end: float):
     """
     Returns a random float between start and end, inclusive.
@@ -60,6 +72,9 @@ def random_float(start: float, end: float):
         yield random.uniform(start, end)
 
 
+random_float._example = "name:random_float:0.0,1.0"
+
+
 def ordered_choice(iterable):
     """
     Returns a random element from the given iterable in order.
@@ -71,6 +86,9 @@ def ordered_choice(iterable):
     yield cycle(iterable)
 
 
+ordered_choice._example = "name:ordered_choice:A,B,C"
+
+
 def auto_generate_name(category):
     """
     Generates a unique name for a metric or dimension.
@@ -79,10 +97,15 @@ def auto_generate_name(category):
         category (str): The category of the name, either 'metric' or 'dimension'.
 
     """
-    return f"{category}_{random.randint(1, 100)}"
+    return f"{category[0]}_{random.randint(1, 100)}"
 
 
-def random_multi_choice(*iterables: Iterable[T]) -> Generator[Tuple[T, ...], None, None]:
+auto_generate_name._example = "name:auto_generate_name:mycat"
+
+
+def random_multi_choice(
+    *iterables: Iterable[T],
+) -> Generator[Tuple[T, ...], None, None]:
     """
     Generates an infinite sequence of random tuples,
     selecting one random element from each given iterable.
@@ -91,4 +114,11 @@ def random_multi_choice(*iterables: Iterable[T]) -> Generator[Tuple[T, ...], Non
     :return: An infinite generator yielding tuples with one random element from each iterable.
     """
     while True:
-        yield tuple(random.choice(list(iterable)) for iterable in iterables)
+        choices = [random.choice(list(iterable)) for iterable in iterables]
+        if len(choices) == 1:
+            yield choices[0]
+        else:
+            yield tuple(choices)
+
+
+random_multi_choice._example = "name:random_multi_choice:A,B:C,D:E,F"
