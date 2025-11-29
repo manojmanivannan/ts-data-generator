@@ -18,7 +18,7 @@ def constant(value: Union[int,str,float,list]):
     while True:
         # if value is iterable, return the first element
         if isinstance(value, (list, tuple)):
-            yield [value]
+            yield value[0]
         else:
             yield value
         

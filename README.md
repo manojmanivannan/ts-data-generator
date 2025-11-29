@@ -35,7 +35,15 @@ pip install --editable .
 ### UV
 You can easily run it using `uv`
 ```bash
-uvx --python 3.9 --from ts-data-generator tsdata
+uvx --python 3.11 --from ts-data-generator tsdata generate \
+    --start "2019-01-01" \
+    --end "2019-01-12" \
+    --granularity "5min" \
+    --dims "product_id:random_float:1,4" \
+    --dims "const:constant:5" 
+    --mets "sales:LinearTrend(limit=500)+WeekendTrend(weekend_effect=50)" 
+    --mets "trend:LinearTrend(limit=10)" 
+    --output "data.csv"
 ```
 
 ### CLI
@@ -62,7 +70,7 @@ For example you can call this cli tool like below to generate data
 tsdata generate \
   --start "2019-01-01" \
   --end "2019-01-12" \
-  --granularity "FIVE_MIN" \
+  --granularity "5min" \
   --dims "product:random_choice:A,B,C,D" \
   --dims "product_id:random_float:1,4" \
   --dims "const:constant:5" \
