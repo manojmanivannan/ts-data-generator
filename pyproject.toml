@@ -30,6 +30,8 @@ classifiers = [
 ]
 keywords = ["synthetic data", "data generator", "python", "time series"]
 
+[project.urls]
+Repository = "https://github.com/manojmanivannan/ts-data-generator.git"
 
 [tool.pytest.ini_options]
 addopts = "-ra -q"
