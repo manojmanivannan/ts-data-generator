@@ -27,10 +27,12 @@ def _load_env_defaults() -> dict:
 
     for key, value in os.environ.items():
         if key.startswith(prefix):
-            config_key = key[len(prefix):].lower()
+            config_key = key[len(prefix) :].lower()
             defaults[config_key] = value
 
     return defaults
+
+
 from ts_data_generator.schema.models import Granularity
 from ts_data_generator.utils import functions as dimension_functions
 from ts_data_generator.utils import trends as trend_functions
@@ -39,19 +41,24 @@ from ts_data_generator.utils import trends as trend_functions
 # Pydantic models for config validation
 class DimensionSpec(BaseModel):
     """A dimension specification in config."""
+
     name: str = Field(..., description="Dimension name")
-    function: str = Field(default="random_choice", description="Dimension function name")
+    function: str = Field(
+        default="random_choice", description="Dimension function name"
+    )
     values: List[str] = Field(..., description="Dimension values")
 
 
 class MetricSpec(BaseModel):
     """A metric specification in config."""
+
     name: str = Field(..., description="Metric name")
     trends: str = Field(..., description="Trend specifications (comma-separated)")
 
 
 class GeneratorConfig(BaseModel):
     """Configuration for data generation."""
+
     start: str = Field(..., description="Start datetime (YYYY-MM-DD)")
     end: str = Field(..., description="End datetime (YYYY-MM-DD)")
     granularity: str = Field(..., description="Data granularity")
@@ -76,15 +83,18 @@ PRESETS: dict = {
         "granularity": "D",
         "dimensions": ["product:A,B,C,D", "region:X,Y,Z"],
         "metrics": ["sales:LinearTrend(limit=1000)+WeekendTrend(weekend_effect=100)"],
-        "output": "daily_sales.csv"
+        "output": "daily_sales.csv",
     },
     "hourly-metrics": {
         "start": "2024-01-01",
         "end": "2024-01-02",
         "granularity": "h",
         "dimensions": ["sensor:random_choice:S1,S2,S3"],
-        "metrics": ["temperature:LinearTrend(limit=50)", "humidity:SinusoidalTrend(amplitude=20,freq=24)"],
-        "output": "hourly_metrics.csv"
+        "metrics": [
+            "temperature:LinearTrend(limit=50)",
+            "humidity:SinusoidalTrend(amplitude=20,freq=24)",
+        ],
+        "output": "hourly_metrics.csv",
     },
     "minute-stock": {
         "start": "2024-01-01",
@@ -92,7 +102,7 @@ PRESETS: dict = {
         "granularity": "5min",
         "dimensions": ["symbol:random_choice:API,GOOG,MSFT"],
         "metrics": ["price:StockTrend(amplitude=5,direction=up,noise_level=0.01)"],
-        "output": "minute_stock.csv"
+        "output": "minute_stock.csv",
     },
     "weekly-revenue": {
         "start": "2024-01-01",
@@ -100,7 +110,7 @@ PRESETS: dict = {
         "granularity": "D",
         "dimensions": ["quarter:Q1,Q2,Q3,Q4", "region:North,South,East,West"],
         "metrics": ["revenue:LinearTrend(limit=100)+WeekendTrend(weekend_effect=50)"],
-        "output": "weekly_revenue.csv"
+        "output": "weekly_revenue.csv",
     },
     "monthly-recurring": {
         "start": "2024-01-01",
@@ -108,7 +118,7 @@ PRESETS: dict = {
         "granularity": "D",
         "dimensions": ["plan:Basic,Pro,Enterprise"],
         "metrics": ["mrr:LinearTrend(limit=100)"],
-        "output": "monthly_mrr.csv"
+        "output": "monthly_mrr.csv",
     },
 }
 
@@ -154,11 +164,14 @@ def _parse_dimension_spec(spec: str) -> tuple[str, str, tuple | list]:
 
     # Parse values - convert to tuple of ints/floats if all values are numeric
     value_list = values.split(VALUE_SEPARATOR)
-    if all(v.lstrip('-').replace('.', '', 1).isdigit() for v in value_list if v):
+    if all(v.lstrip("-").replace(".", "", 1).isdigit() for v in value_list if v):
         # All are numeric - convert to int or float
         parsed_values = tuple(
-            int(v) if v.isdigit() or (v.startswith('-') and v[1:].isdigit())
-            else float(v)
+            (
+                int(v)
+                if v.isdigit() or (v.startswith("-") and v[1:].isdigit())
+                else float(v)
+            )
             for v in value_list
         )
     else:
@@ -200,7 +213,8 @@ def _get_dimension_function(function_name: str) -> callable:
         return getattr(dimension_functions, function_name)
     except AttributeError:
         available = [
-            f for f in dir(dimension_functions)
+            f
+            for f in dir(dimension_functions)
             if callable(getattr(dimension_functions, f)) and not f.startswith("_")
         ]
         raise click.BadParameter(
@@ -215,7 +229,8 @@ def _get_trend_function(function_name: str) -> callable:
         return getattr(trend_functions, function_name)
     except AttributeError:
         available = [
-            f for f in dir(trend_functions)
+            f
+            for f in dir(trend_functions)
             if callable(getattr(trend_functions, f)) and "Trend" in f
         ]
         raise click.BadParameter(
@@ -293,6 +308,7 @@ def generate(start, end, granularity, dims, mets, output, config, preset):
     Generate synthetic time series data and save to CSV.
 
     Examples:
+
         # Simple dimension (defaults to random_choice)
         tsdata generate --dims "product:A,B,C" --mets "sales:LinearTrend(limit=100)" ...
 
@@ -305,6 +321,9 @@ def generate(start, end, granularity, dims, mets, output, config, preset):
         # Multiple trends (additive)
         tsdata generate --mets "sales:LinearTrend(limit=500)+WeekendTrend(weekend_effect=50)" ...
 
+        # Full example
+        tsdata generate --dims  product:auto_generate_name:prod --mets "sales:LinearTrend(limit=500)" --mets "sales2:WeekendTrend(weekend_effect=50)" --start 2026-04-17 --end 2026-04-18 --granularity 5min --output output.csv
+
         # Using config file
         tsdata generate --config config.json
 
@@ -312,14 +331,8 @@ def generate(start, end, granularity, dims, mets, output, config, preset):
         # TSDATA_START=2019-01-01 TSDATA_END=2019-01-12 TSDATA_GRANULARITY=5min tsdata generate ...
 
     Config file schema:
-    {
-        "start": "2019-01-01",
-        "end": "2019-01-12",
-        "granularity": "5min",
-        "dimensions": ["product:A,B,C", "region:X,Y,Z"],
-        "metrics": ["sales:LinearTrend(limit=500)+WeekendTrend(weekend_effect=50)"],
-        "output": "data.csv"
-    }
+
+    {"start": "2019-01-01", "end": "2019-01-12", "granularity": "5min", "dimensions": ["product:A,B,C", "region:X,Y,Z"], "metrics": ["sales:LinearTrend(limit=500)+WeekendTrend(weekend_effect=50)","sales1:LinearTrend(limit=200)"], "output": "data.csv"}
     """
     # Load environment variable defaults
     env_defaults = _load_env_defaults()
@@ -366,7 +379,9 @@ def generate(start, end, granularity, dims, mets, output, config, preset):
 
     # Validate required arguments
     if not all([start, end, granularity, dims, mets, output]):
-        click.echo(main.get_command(main, "generate").get_help(click.get_current_context()))
+        click.echo(
+            main.get_command(main, "generate").get_help(click.get_current_context())
+        )
         return
 
     # Initialize data generator
@@ -431,7 +446,8 @@ def generate(start, end, granularity, dims, mets, output, config, preset):
 def dimensions():
     """List available dimension functions."""
     funcs = [
-        f for f in dir(dimension_functions)
+        f
+        for f in dir(dimension_functions)
         if callable(getattr(dimension_functions, f))
         and not f.startswith("_")
         and f not in ("TypeVar", "Generator", "Iterable", "Tuple", "Union", "cycle")
@@ -451,7 +467,8 @@ def dimensions():
 def metrics():
     """List available trend functions."""
     funcs = [
-        f for f in dir(trend_functions)
+        f
+        for f in dir(trend_functions)
         if callable(getattr(trend_functions, f))
         and not f.startswith("_")
         and "Trend" in f
@@ -478,7 +495,9 @@ def presets(preset_name: str | None):
     """
     if preset_name:
         if preset_name not in PRESETS:
-            raise click.ClickException(f"Unknown preset '{preset_name}'. Use 'tsdata presets' to list all.")
+            raise click.ClickException(
+                f"Unknown preset '{preset_name}'. Use 'tsdata presets' to list all."
+            )
         config = PRESETS[preset_name]
         click.echo(f"Preset: {preset_name}\n")
         click.echo(f"  Start: {config['start']}")
@@ -487,15 +506,23 @@ def presets(preset_name: str | None):
         click.echo(f"  Dimensions: {', '.join(config['dimensions'])}")
         click.echo(f"  Metrics: {', '.join(config['metrics'])}")
         click.echo(f"  Output: {config['output']}")
-        click.echo(f"\nUsage: tsdata generate --preset {preset_name} --output <output.csv>")
+        click.echo(
+            f"\nUsage: tsdata generate --preset {preset_name} --output <output.csv>"
+        )
         click.echo("Or override specific values:")
-        click.echo(f"  tsdata generate --preset {preset_name} --start 2024-02-01 --output mydata.csv")
+        click.echo(
+            f"  tsdata generate --preset {preset_name} --start 2024-02-01 --output mydata.csv"
+        )
     else:
         click.echo("Available presets:\n")
         for name, config in PRESETS.items():
             click.echo(f"  {name}")
-            click.echo(f"    Start: {config['start']}, End: {config['end']}, Granularity: {config['granularity']}")
-            click.echo(f"    Dimensions: {len(config['dimensions'])}, Metrics: {len(config['metrics'])}")
+            click.echo(
+                f"    Start: {config['start']}, End: {config['end']}, Granularity: {config['granularity']}"
+            )
+            click.echo(
+                f"    Dimensions: {len(config['dimensions'])}, Metrics: {len(config['metrics'])}"
+            )
             click.echo(f"    Output: {config['output']}")
             click.echo()
         click.echo("Use 'tsdata presets <name>' for detailed info on a preset.")
