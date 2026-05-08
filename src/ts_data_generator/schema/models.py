@@ -33,7 +33,7 @@ class Metrics(ABC):
     def __init__(
         self,
         name: str = "default",
-        trends: Set[Trends] = list(),
+        trends: Set[Trends] = set(),
         aggregation_type: AggregationType = AggregationType.AVG,
     ):
         """
@@ -151,9 +151,11 @@ class Dimensions(ABC):
         """Create a generator that yields dimension values."""
         # try:
         data = [
-            list(next(self._function))
-            if isinstance(self._name, list)
-            else [next(self._function)]
+            (
+                list(next(self._function))
+                if isinstance(self._name, list)
+                else [next(self._function)]
+            )
             for _ in timestamps
         ]
 
