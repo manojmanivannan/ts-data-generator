@@ -262,17 +262,40 @@ class TestDataAggregation:
         print(data_gen_instance.aggregate("W"))
         print(data_gen_instance.data)
 
+
 def test_add_metric_duplicate_trends():
     data_gen = DataGen(
         start_datetime="2023-01-01",
         end_datetime="2023-01-02",
-        granularity=Granularity.DAILY
+        granularity=Granularity.DAILY,
     )
     trend = LinearTrend(offset=0.5)
-    
+
     # Should work without error
     data_gen.add_metric(name="metric_unique", trends=[trend])
-    
+
     # Should raise error with duplicate trends
     with pytest.raises(ValueError, match="Duplicate trends are present"):
         data_gen.add_metric(name="metric_duplicate", trends=[trend, trend])
+
+
+class TestToGranularity:
+    @pytest.fixture
+    def data_gen_instance(self):
+        """Fixture to create a DataGen instance"""
+        data_gen = DataGen()
+        data_gen.start_datetime = "2022-01-01"
+        data_gen.end_datetime = "2022-01-02"
+        return data_gen
+
+    def test_to_granularity_with_enum(self, data_gen_instance):
+        data_gen_instance.to_granularity(Granularity.HOURLY)
+        assert data_gen_instance.granularity == "h"
+
+    def test_to_granularity_with_string(self, data_gen_instance):
+        data_gen_instance.to_granularity("5min")
+        assert data_gen_instance.granularity == "5min"
+
+    def test_to_granularity_invalid_string(self, data_gen_instance):
+        with pytest.raises(ValueError):
+            data_gen_instance.to_granularity("invalid")
