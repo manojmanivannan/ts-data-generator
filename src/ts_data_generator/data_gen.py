@@ -70,8 +70,8 @@ class DataGen:
 
     def tail(self, n: int = 5):
         return self.data.tail(n=n)
-    
-    def to_granularity(self, granularity: Granularity):
+
+    def to_granularity(self, granularity: Granularity | str):
         """
         Sets the granularity of the data to the specified value.
 
@@ -138,7 +138,9 @@ class DataGen:
             try:
                 Granularity(value)
             except ValueError:
-                raise ValueError("Granularity must be one of 's', 'min', '5min', 'h', 'D', 'W', 'M', 'Y'")
+                raise ValueError(
+                    "Granularity must be one of 's', 'min', '5min', 'h', 'D', 'W', 'M', 'Y'"
+                )
         self._granularity = value
         self._generate_data()
 
@@ -439,8 +441,10 @@ class DataGen:
         """
         if len(trends) != len(set(trends)):
             raise ValueError("Duplicate trends are present")
-        
-        metric = Metrics(name=name, trends=set(trends), aggregation_type=aggregation_type)
+
+        metric = Metrics(
+            name=name, trends=set(trends), aggregation_type=aggregation_type
+        )
         # Raise error if self._metrics already contains a metric with the same name
         for m in self._metrics:
             if name == m.name:
@@ -579,14 +583,21 @@ class DataGen:
             ValueError: If the requested granularity is finer than the current data granularity.
         """
         # Map string granularities to pandas offset aliases for comparison
-        granularity_order = {"s": 0, "min": 1, "5min": 2, "h": 3, "D": 4, "W": 5, "ME": 6, "Y": 7}
-
+        granularity_order = {
+            "s": 0,
+            "min": 1,
+            "5min": 2,
+            "h": 3,
+            "D": 4,
+            "W": 5,
+            "ME": 6,
+            "Y": 7,
+        }
 
         if granularity_order[granularity] < granularity_order[self.granularity]:
             raise ValueError(
                 f"Cannot aggregate to a finer granularity ({granularity}) than current data granularity ({self.granularity})"
             )
-
 
         # Prepare aggregation dictionary
         agg_dict = {k: v.aggregation_type for k, v in self.metrics.items()}
@@ -605,9 +616,10 @@ class DataGen:
 
         # Always keep 'epoch' out of groupby, as it will be recalculated
         resampled = (
-            self.data.drop("epoch",axis=1).reset_index()
+            self.data.drop("epoch", axis=1)
+            .reset_index()
             .groupby(group_keys)
-            .resample(granularity,on="index")
+            .resample(granularity, on="index")
             .agg(agg_dict)
             .reset_index()
             .set_index("index")
