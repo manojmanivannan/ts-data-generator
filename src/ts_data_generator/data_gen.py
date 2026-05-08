@@ -392,7 +392,7 @@ class DataGen:
     def add_metric(
         self,
         name: str,
-        trends: Set[Trends],
+        trends: Union[List[Trends], Set[Trends]],
         aggregation_type: AggregationType = AggregationType.AVG,
     ) -> None:
         """
@@ -437,7 +437,10 @@ class DataGen:
             )
             ```
         """
-        metric = Metrics(name=name, trends=trends, aggregation_type=aggregation_type)
+        if len(trends) != len(set(trends)):
+            raise ValueError("Duplicate trends are present")
+        
+        metric = Metrics(name=name, trends=set(trends), aggregation_type=aggregation_type)
         # Raise error if self._metrics already contains a metric with the same name
         for m in self._metrics:
             if name == m.name:

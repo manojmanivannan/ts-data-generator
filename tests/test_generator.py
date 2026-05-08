@@ -261,3 +261,18 @@ class TestDataAggregation:
         print(data_gen_instance.data)
         print(data_gen_instance.aggregate("W"))
         print(data_gen_instance.data)
+
+def test_add_metric_duplicate_trends():
+    data_gen = DataGen(
+        start_datetime="2023-01-01",
+        end_datetime="2023-01-02",
+        granularity=Granularity.DAILY
+    )
+    trend = LinearTrend(offset=0.5)
+    
+    # Should work without error
+    data_gen.add_metric(name="metric_unique", trends=[trend])
+    
+    # Should raise error with duplicate trends
+    with pytest.raises(ValueError, match="Duplicate trends are present"):
+        data_gen.add_metric(name="metric_duplicate", trends=[trend, trend])
