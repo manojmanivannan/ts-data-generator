@@ -79,7 +79,7 @@ class TestSchemaConverter:
 
     def test_analyze_numeric_trends_with_numeric_column(self, sample_csv_with_index):
         """Test trend analysis on numeric column"""
-        csv_path = "/Users/manoj/Github/ts-data-generator/etc/data/sample.csv"
+        csv_path = "etc/data/sample.csv"
         converter = SchemaConverter(csv_file_path=csv_path, index_col=0)
         trends = converter.analyze_numeric_trends(columns=["sales"])
         assert "sales" in trends
@@ -101,7 +101,7 @@ class TestSchemaConverter:
 
     def test_analyze_numeric_trends_with_all_columns(self, sample_csv_with_index):
         """Test trend analysis on all columns"""
-        csv_path = "/Users/manoj/Github/ts-data-generator/etc/data/sample.csv"
+        csv_path = "etc/data/sample.csv"
         converter = SchemaConverter(csv_file_path=csv_path, index_col=0)
         trends = converter.analyze_numeric_trends()
         assert "sales" in trends
@@ -120,7 +120,7 @@ class TestSchemaConverter:
 
     def test_analyze_numeric_trends_with_custom_dataframe(self, sample_csv_with_index):
         """Test trend analysis with external dataframe"""
-        csv_path = "/Users/manoj/Github/ts-data-generator/etc/data/sample.csv"
+        csv_path = "etc/data/sample.csv"
         converter = SchemaConverter(csv_file_path=csv_path, index_col=0)
         external_df = pd.DataFrame({"col1": [1, 2, 3, 4, 5], "col2": [5, 4, 3, 2, 1]})
         trends = converter.analyze_numeric_trends(
@@ -133,7 +133,7 @@ class TestSchemaConverter:
 
     def test_analyze_numeric_trends_top_freq_parameter(self, sample_csv_with_index):
         """Test trend analysis respects top_freq parameter"""
-        csv_path = "/Users/manoj/Github/ts-data-generator/etc/data/sample.csv"
+        csv_path = "etc/data/sample.csv"
         converter = SchemaConverter(csv_file_path=csv_path, index_col=0)
         trends = converter.analyze_numeric_trends(columns=["sales"], top_freq=2)
         assert "sales" in trends
@@ -312,7 +312,7 @@ class TestSchemaConverterSampleFiles:
 
     def test_analyze_sinusoidal_data(self):
         """Test trend analysis on data with sinusoidal pattern (sample2.csv)"""
-        csv_path = "/Users/manoj/Github/ts-data-generator/etc/data/sample2.csv"
+        csv_path = "etc/data/sample2.csv"
         converter = SchemaConverter(csv_file_path=csv_path, index_col=0)
         trends = converter.analyze_numeric_trends(columns=["sales"])
         assert "sales" in trends
@@ -331,7 +331,7 @@ class TestSchemaConverterSampleFiles:
 
     def test_analyze_simple_linear_data(self):
         """Test trend analysis on data with simple linear pattern (sample3.csv)"""
-        csv_path = "/Users/manoj/Github/ts-data-generator/etc/data/sample3.csv"
+        csv_path = "etc/data/sample3.csv"
         converter = SchemaConverter(csv_file_path=csv_path, index_col=0)
         trends = converter.analyze_numeric_trends(columns=["sales"])
         assert "sales" in trends
@@ -347,7 +347,7 @@ class TestSchemaConverterSampleFiles:
 
     def test_analyze_stock_trend_data(self):
         """Test trend analysis on data with stock-like trend (sample4.csv)"""
-        csv_path = "/Users/manoj/Github/ts-data-generator/etc/data/sample4.csv"
+        csv_path = "etc/data/sample4.csv"
         converter = SchemaConverter(csv_file_path=csv_path, index_col=0)
         trends = converter.analyze_numeric_trends(columns=["sales"])
         assert "sales" in trends
@@ -370,7 +370,7 @@ class TestSchemaConverterSampleFiles:
             "sample3.csv",
             "sample4.csv",
         ]
-        base_path = "/Users/manoj/Github/ts-data-generator/etc/data/"
+        base_path = "etc/data/"
 
         for sample_file in sample_files:
             csv_path = base_path + sample_file
