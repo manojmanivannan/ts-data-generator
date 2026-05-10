@@ -25,7 +25,7 @@ jobs:
           echo "$HOME/.local/bin" >> $GITHUB_PATH
 
       - name: Install dependencies
-        run: uv sync --extra dev
+        run: uv sync --all-extras
 
       - name: Run PyTest 🧪
         shell: bash
