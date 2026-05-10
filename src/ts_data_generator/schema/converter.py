@@ -2,17 +2,19 @@ import numpy as np
 import pandas as pd
 import scipy.optimize
 
+
 class SchemaConverter:
     def __init__(self, csv_file_path, index_col, column_names=None):
         self.csv_file_path = csv_file_path
         self.column_names = column_names
         self.index_col = index_col
         self.data = self._load_data()
-        
 
     def _load_data(self):
         if self.column_names:
-            return pd.read_csv(self.csv_file_path, names=self.column_names,index_col=self.index_col)
+            return pd.read_csv(
+                self.csv_file_path, names=self.column_names, index_col=self.index_col
+            )
         else:
             return pd.read_csv(self.csv_file_path, index_col=self.index_col)
 
@@ -41,7 +43,9 @@ class SchemaConverter:
             if isinstance(self.data, pd.DataFrame):
                 dataframe = self.data
             else:
-                raise ValueError("No valid dataframe provided or available in the instance.")
+                raise ValueError(
+                    "No valid dataframe provided or available in the instance."
+                )
 
         trends = {}
 
@@ -71,25 +75,26 @@ class SchemaConverter:
             x = np.arange(len(data))
             linear_coeffs = np.polyfit(x, data, 1)  # First-degree polynomial fit
             column_trends = {
-                'linear': {
-                    'slope': linear_coeffs[0],
-                    'intercept': linear_coeffs[1]
-                }
+                "linear": {"slope": linear_coeffs[0], "intercept": linear_coeffs[1]}
             }
 
             # Sinusoidal trend analysis (modified approach)
-            fft = np.fft.fft(data - np.mean(data))  # Remove mean for better frequency detection
+            fft = np.fft.fft(
+                data - np.mean(data)
+            )  # Remove mean for better frequency detection
             frequencies = np.fft.fftfreq(len(data))
             magnitudes = np.abs(fft)
             phases = np.angle(fft)
 
             # Find the top frequencies (excluding the zero frequency)
-            positive_freqs = frequencies[:len(frequencies)//2]
-            positive_magnitudes = magnitudes[:len(magnitudes)//2]
-            positive_phases = phases[:len(phases)//2]
+            positive_freqs = frequencies[: len(frequencies) // 2]
+            positive_magnitudes = magnitudes[: len(magnitudes) // 2]
+            positive_phases = phases[: len(phases) // 2]
 
             # Sort the magnitudes and get the indices of the top `top_freq` frequencies
-            sorted_indices = np.argsort(positive_magnitudes[1:])[::-1] + 1  # Exclude zero-frequency component
+            sorted_indices = (
+                np.argsort(positive_magnitudes[1:])[::-1] + 1
+            )  # Exclude zero-frequency component
             top_indices = sorted_indices[:top_freq]
 
             # Initialize guess parameters for the fitting function
@@ -103,7 +108,9 @@ class SchemaConverter:
             # Define the sinusoidal function for curve fitting
             def sinfunc(t, *params):
                 result = 0
-                for i in range(top_freq):
+                # Use actual number of fitted components based on params length
+                num_components = len(params) // 3
+                for i in range(num_components):
                     A = params[i * 3]  # Amplitude
                     w = params[i * 3 + 1]  # Angular frequency
                     p = params[i * 3 + 2]  # Phase
@@ -117,23 +124,24 @@ class SchemaConverter:
                 trends[column] = "Fitting failed"
                 continue
 
+            # Determine actual number of fitted sinusoidal components
+            # (popt has 3 params per component + 1 offset)
+            num_fitted = (len(popt) - 1) // 3
+
             # Store the sinusoidal trend information
             sinusoidal_trends = []
-            for i in range(top_freq):
+            for i in range(num_fitted):
                 A = popt[i * 3]  # Amplitude
                 w = popt[i * 3 + 1]  # Angular frequency
                 p = popt[i * 3 + 2]  # Phase
-                sinusoidal_trends.append({
-                    'angular_frequency': w,
-                    'magnitude': A,
-                    'phase_offset': p
-                })
-            column_trends['sinusoidal'] = sinusoidal_trends
+                sinusoidal_trends.append(
+                    {"angular_frequency": w, "magnitude": A, "phase_offset": p}
+                )
+            column_trends["sinusoidal"] = sinusoidal_trends
 
             trends[column] = column_trends
 
         return trends
-
 
     def construct_trend_column(self, column_name, trend_info):
         """
@@ -147,7 +155,7 @@ class SchemaConverter:
             pd.Series: A new series representing the trend values.
         """
         trend_column_name = f"{column_name}_constructed"
-        
+
         if column_name not in self.data.columns:
             raise ValueError(f"Column '{column_name}' does not exist in the dataframe.")
 
@@ -156,18 +164,23 @@ class SchemaConverter:
 
         # Initialize trend with linear component
         try:
-            trend = (trend_info['linear']['slope'] * x + trend_info['linear']['intercept'])
+            trend = (
+                trend_info["linear"]["slope"] * x + trend_info["linear"]["intercept"]
+            )
         except Exception as e:
-            print("WARNING: unable to reconstruct trend. Amplitude or Frequency too high\nTry analysis with lower or higher top_freq")
-            #TODO iteratively find the right top_freq. for now, set to np.nan
+            print(
+                "WARNING: unable to reconstruct trend. Amplitude or Frequency too high\nTry analysis with lower or higher top_freq"
+            )
+            # TODO iteratively find the right top_freq. for now, set to np.nan
             self.data[trend_column_name] = np.nan
             return
 
         # Add sinusoidal components
-        for sinusoid in trend_info['sinusoidal']:
-            trend += (sinusoid['magnitude'] * 
-                      np.sin(sinusoid['angular_frequency'] * x + sinusoid['phase_offset']))
+        for sinusoid in trend_info["sinusoidal"]:
+            trend += sinusoid["magnitude"] * np.sin(
+                sinusoid["angular_frequency"] * x + sinusoid["phase_offset"]
+            )
 
         # Add the trend column to the dataframe
-        
+
         self.data[trend_column_name] = trend

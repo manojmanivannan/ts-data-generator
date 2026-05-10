@@ -600,7 +600,7 @@ class DataGen:
             )
 
         # Prepare aggregation dictionary
-        agg_dict = {k: v.aggregation_type for k, v in self.metrics.items()}
+        agg_dict = {k: v.aggregation_type.value for k, v in self.metrics.items()}
 
         # Resample and aggregate
         group_keys = list(self.dimensions.keys())
@@ -609,7 +609,11 @@ class DataGen:
         for k, v in self.multi_items.items():
             if v.aggregation_type:
                 for i, item in enumerate(k.split(",")):
-                    agg_dict[item] = v.aggregation_type[i]
+                    agg_dict[item] = (
+                        v.aggregation_type[i].value
+                        if isinstance(v.aggregation_type[i], AggregationType)
+                        else v.aggregation_type[i]
+                    )
 
             else:
                 group_keys.extend(k.split(","))

@@ -16,21 +16,25 @@ A Python library for generating synthetic time series data
 </div>
 
 ## Installation
-### PyPi (recommended)
-You can install with pip directly by
+### For Dev
+You can install with uv directly by
 ```bash
-pip install ts-data-generator
+uv sync --extra dev
 ```
 
-### Repo
-After cloning this repo and creating a virtual environment, run the following command:
-```bash
-pip install --editable .
+### Standalone
 ```
+uv pip install ts-data-generator
+```
+
+> If imputer is required, then `uv pip install "ts-data-generator[imputer]"`.
+> See imputer [usage](./notebooks/imputer.ipynb)
+
+
 
 ## Usage
 1. To check out constructing for time series data, check the sample notebook [here](https://github.com/manojmanivannan/ts-data-generator/blob/main/notebooks/sample.ipynb)
-2. To extract the trends from an existing data, check this sample notebook [here](https://github.com/manojmanivannan/ts-data-generator/blob/main/notebooks/imputer.ipynb)
+2. To extract the trends from an existing data (requires `scipy`), check this sample notebook [here](https://github.com/manojmanivannan/ts-data-generator/blob/main/notebooks/imputer.ipynb)
 
 ### UV
 You can easily run it using `uv`
