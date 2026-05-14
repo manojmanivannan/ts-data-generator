@@ -5,6 +5,7 @@ import random
 import pytest
 import pandas as pd
 from ts_data_generator import DataGen
+from ts_data_generator.exceptions import DimensionError
 from ts_data_generator.utils.functions import random_choice, random_int
 from ts_data_generator.utils.trends import SinusoidalTrend
 
@@ -36,7 +37,7 @@ class TestDataGenInitialization:
     def test_dimension_protocol_values(self, data_gen_instance):
         assert data_gen_instance.dimensions["protocol"].name == "protocol"
         assert next(data_gen_instance.dimensions["protocol"].function) in ["TCP", "UDP"]
-        with pytest.raises(ValueError):
+        with pytest.raises(DimensionError):
             data_gen_instance.add_dimension(name="port", function="INVALID_FUNCTION")
     
     def test_granularity(self, data_gen_instance):
@@ -53,5 +54,5 @@ class TestDataGenInitialization:
         assert data_gen_instance.trends['metric1']["sine"].noise_level == 1
         
     def test_can_not_add_duplicate_dimension(self, data_gen_instance):
-        with pytest.raises(ValueError):
+        with pytest.raises(DimensionError):
             data_gen_instance.add_dimension(name="port", function=random_int(1, 65536))

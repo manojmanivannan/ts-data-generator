@@ -1,64 +1,87 @@
-import numpy as np
+"""Trend generators for time series metrics.
+
+Each trend class inherits from the abstract ``Trends`` base and implements
+``generate(timestamps)`` to produce a numpy array of values.
+"""
+
+import logging
 from abc import ABC, abstractmethod
-from typing import Any, Callable, TypeVar, Generator, Literal, Optional, Union
+from typing import Literal
+
+import numpy as np
 import pandas as pd
+
+logger = logging.getLogger(__name__)
+
+# Map pandas frequency strings to conversion functions for LinearTrend.
+# Each function takes (time_deltas, timestamps) and returns numeric time units.
+_FREQ_CONVERTERS: dict[str, object] = {
+    "s": lambda d, _: d.total_seconds() / 60.0 / 5,
+    "min": lambda d, _: d.total_seconds() / 60.0 / 5,
+    "5min": lambda d, _: d.total_seconds() / 60.0,
+    "h": lambda d, _: d.total_seconds() / 3600.0,
+    "D": lambda d, _: d.days,
+    "W": lambda d, _: d.days / 7.0,
+    "ME": lambda d, _: d.days / 30.0,
+    "Y": lambda d, _: d.days / 365.0,
+}
 
 
 class Trends(ABC):
-    def __init__(
-        self,
-        name: str = "default",
-    ):
-        """
-        Initialize a Trends object.
+    """Abstract base for all trend generators.
 
-        Args:
-            name (str): Name of the trend.
+    Subclasses must implement ``generate(timestamps)`` to produce a numpy
+    array of values matching the length of the given timestamps.
 
-        """
+    Args:
+        name: Human-readable name for this trend.
+    """
+
+    def __init__(self, name: str = "default") -> None:
         self._name = name
 
     @property
     def name(self) -> str:
+        """The human-readable name for this trend."""
         return self._name
 
     @abstractmethod
-    def generate(
-        self,
-        timestamps: pd.DatetimeIndex,
-    ) -> np.array:
-        """
-        Generate a time series trend.
+    def generate(self, timestamps: pd.DatetimeIndex) -> np.ndarray:
+        """Generate trend values for the given timestamps.
 
         Args:
-            start_datetime (Union[str, pd.Timestamp]): Start datetime of the trend.
-            end_datetime (Union[str, pd.Timestamp]): End datetime of the trend.
+            timestamps: DatetimeIndex of time points.
 
+        Returns:
+            Numpy array of trend values with length matching timestamps.
         """
-        pass
+        ...
 
 
 class SinusoidalTrend(Trends):
+    """Generate a sinusoidal wave with optional noise.
+
+    Args:
+        name: Human-readable name.
+        amplitude: Peak amplitude of the sine wave.
+        freq: Period of oscillation in days.
+        phase: Phase offset in hours.
+        noise_level: Standard deviation of Gaussian noise to add.
+
+    Example:
+        CLI shorthand: ``SinusoidalTrend(amplitude=1,freq=24,phase=0,noise_level=0)``
+    """
+
     _example = "sales:SinusoidalTrend(amplitude=1,freq=24,phase=0,noise_level=0)"
 
     def __init__(
         self,
         name: str = "default",
-        amplitude: float = 1,
-        freq: float = 1,
-        phase: float = 0,
-        noise_level: float = 0,
-    ):
-        """
-        Initialize a SinusoidalTrend object.
-
-        Args:
-            name (str): Name of the trend.
-            amplitude (float): Amplitude of the sinusoidal wave.
-            freq (float): Frequency of the sinusoidal wave in days.
-            phase (float): Phase offset of the sinusoidal wave in hours.
-            noise_level (float): Standard deviation of the noise.
-        """
+        amplitude: float = 1.0,
+        freq: float = 1.0,
+        phase: float = 0.0,
+        noise_level: float = 0.0,
+    ) -> None:
         super().__init__(name)
         self._amplitude = amplitude
         self._freq = freq
@@ -82,34 +105,34 @@ class SinusoidalTrend(Trends):
         return self._noise_level
 
     def generate(self, timestamps: pd.DatetimeIndex) -> np.ndarray:
-        """
-        Generate a sinusoidal wave with added noise.
-
-        Args:
-            timestamps (pd.DatetimeIndex): Array of timestamps.
-
-        Returns:
-            np.ndarray: Sinusoidal wave with noise.
-        """
-        # Calculate the time in fractional days
         time_in_days = (timestamps - timestamps[0]).total_seconds() / (24 * 3600)
-
-        # Convert phase to fractional days
         phase_in_days = self._phase / 24.0
-
-        # Calculate the sinusoidal wave
         base_wave = self._amplitude * np.sin(
             2 * np.pi * (1 / self._freq) * (time_in_days + phase_in_days)
         )
-
-        # Add noise
         noise = np.random.normal(0, self._noise_level, len(timestamps))
-        sinusoidal_wave = base_wave + noise
-
-        return sinusoidal_wave
+        return base_wave + noise
 
 
 class LinearTrend(Trends):
+    """Generate a linear trend with optional noise.
+
+    The slope is derived from the limit and the number of timestamps.
+    Time units vary by granularity (minutes, hours, days, etc.).
+
+    Args:
+        name: Human-readable name.
+        offset: Intercept (value at t=0).
+        noise_level: Standard deviation of Gaussian noise.
+        limit: Controls the slope; must be in [1, 1000].
+
+    Raises:
+        ValueError: If limit is outside [1, 1000].
+
+    Example:
+        CLI shorthand: ``LinearTrend(offset=0,noise_level=1,limit=10)``
+    """
+
     _example = "sales:LinearTrend(offset=0,noise_level=1,limit=10)"
 
     def __init__(
@@ -118,23 +141,12 @@ class LinearTrend(Trends):
         offset: float = 0.0,
         noise_level: float = 0.0,
         limit: float = 2.0,
-    ):
-        """
-        Initialize a LinearTrend object.
-
-        Args:
-            name (str): Name of the trend.
-            limit (float): Upper limit of the linear trend.
-            offset (float): Intercept (b) of the linear trend.
-            noise_level (float): Standard deviation of the noise.
-        """
+    ) -> None:
         super().__init__(name)
-
         self._offset = offset
         self._noise_level = noise_level
-        # check if limit is within the range of 1 and 100
         if limit < 1 or limit > 1000:
-            raise ValueError("Limit must be within the range of 1 and 100")
+            raise ValueError("Limit must be within the range of 1 and 1000")
         self._limit = limit * 10
 
     @property
@@ -149,51 +161,41 @@ class LinearTrend(Trends):
     def noise_level(self) -> float:
         return self._noise_level
 
-    def generate(self, timestamps) -> np.ndarray:
-        """
-        Generate a linear trend with optional noise.
-
-        Args:
-            timestamps (pd.DatetimeIndex): Array of timestamps.
-
-        Returns:
-            np.ndarray: Generated linear trend values.
-        """
-        # Calculate time differences in the appropriate unit
+    def generate(self, timestamps: pd.DatetimeIndex) -> np.ndarray:
         time_deltas = timestamps - timestamps[0]
 
-        if timestamps.freq == "5min":  # 5-minute granularity
-            time_numeric = time_deltas.total_seconds() / 60.0  # Convert to minutes
-        elif timestamps.freq == "h":  # Hourly granularity
-            time_numeric = time_deltas.total_seconds() / 3600.0  # Convert to hours
-        elif timestamps.freq == "min":
-            time_numeric = time_deltas.total_seconds() / 60.0 / 5
-        elif timestamps.freq == "s":
-            time_numeric = time_deltas.total_seconds() / 60.0 / 5
-        elif timestamps.freq == "D":  # Daily granularity
-            time_numeric = time_deltas.days  # Use days directly
-
-        else:
-            raise ValueError(
-                f"Unsupported granularity {timestamps.freq}. Use 5T, H, or D."
+        freq_str = timestamps.freqstr if timestamps.freq else "D"
+        converter = _FREQ_CONVERTERS.get(freq_str)
+        if converter is None:
+            logger.warning(
+                "Unrecognised frequency %r for LinearTrend; defaulting to daily units.",
+                freq_str,
             )
+            converter = lambda d, _: d.days  # noqa: E731
+
+        time_numeric = converter(time_deltas, timestamps)
 
         self._coefficient = np.radians(np.sin(self._limit / len(time_numeric)))
-
-        # Calculate the linear trend
         base_trend = self._coefficient * time_numeric + self._offset
-
-        # Add noise
         noise = np.random.normal(0, self._noise_level, len(timestamps))
-        trend_with_noise = base_trend + noise
-
-        return trend_with_noise
+        return base_trend + noise
 
 
 class WeekendTrend(Trends):
-    _example = (
-        "sales:WeekendTrend(weekend_effect=10,direction='up',noise_level=0.5,limit=10)"
-    )
+    """Generate a trend that spikes (up or down) on weekends.
+
+    Args:
+        name: Human-readable name.
+        weekend_effect: Magnitude of the weekend adjustment.
+        direction: ``'up'`` increases the value on weekends, ``'down'`` decreases.
+        noise_level: Standard deviation of Gaussian noise.
+        limit: Clamp value to [-limit, limit].
+
+    Example:
+        CLI shorthand: ``WeekendTrend(weekend_effect=10,direction='up',noise_level=0.5,limit=10)``
+    """
+
+    _example = "sales:WeekendTrend(weekend_effect=10,direction='up',noise_level=0.5,limit=10)"
 
     def __init__(
         self,
@@ -202,17 +204,7 @@ class WeekendTrend(Trends):
         direction: Literal["up", "down"] = "up",
         noise_level: float = 0.0,
         limit: float = 10.0,
-    ):
-        """
-        Initialize a WeekendTrend object.
-
-        Args:
-            name (str): Name of the trend.
-            weekend_effect (float): Magnitude of the weekend effect.
-            direction (Literal["up", "down"]): Direction of the weekend effect.
-            noise_level (float): Standard deviation of the noise.
-            limit (float): Maximum value for the weekend effect.
-        """
+    ) -> None:
         super().__init__(name)
         self._weekend_effect = weekend_effect
         self._direction = direction
@@ -236,38 +228,30 @@ class WeekendTrend(Trends):
         return self._limit
 
     def generate(self, timestamps: pd.DatetimeIndex) -> np.ndarray:
-        """
-        Generate a weekend-specific trend.
-
-        Args:
-            timestamps (pd.DatetimeIndex): Array of timestamps.
-
-        Returns:
-            np.ndarray: Trend values with weekend effect.
-        """
-        # Initialize the trend with zeros
         trend = np.zeros(len(timestamps))
-
-        # Determine if each timestamp falls on a weekend (Saturday or Sunday)
         is_weekend = timestamps.weekday >= 5
-
-        # Apply the weekend effect
-        weekend_adjustment = (
+        adjustment = (
             self._weekend_effect if self._direction == "up" else -self._weekend_effect
         )
-        trend[is_weekend] = weekend_adjustment
-
-        # Clip the trend to the specified limit
+        trend[is_weekend] = adjustment
         trend = np.clip(trend, -self._limit, self._limit)
-
-        # Add noise
         noise = np.random.normal(0, self._noise_level, len(timestamps))
-        trend += noise
-
-        return trend
+        return trend + noise
 
 
 class StockTrend(Trends):
+    """Generate a stock-like trend with random walk and multi-scale sine components.
+
+    Args:
+        name: Human-readable name.
+        amplitude: Overall scale of the trend.
+        direction: ``'up'`` for rising, ``'down'`` for falling.
+        noise_level: Volatility of the random walk component.
+
+    Example:
+        CLI shorthand: ``StockTrend(amplitude=15.0,direction='up',noise_level=0.0)``
+    """
+
     _example = "sales:StockTrend(amplitude=15.0,direction='up',noise_level=0.0)"
 
     def __init__(
@@ -276,19 +260,7 @@ class StockTrend(Trends):
         amplitude: float = 15.0,
         direction: Literal["up", "down"] = "up",
         noise_level: float = 0.0,
-    ):
-        """
-        Initialize a StockTrend object.
-
-        Args:
-            name (str): Name of the trend.
-            amplitude (float): Amplitude of the trend.
-            direction (str): Direction of the trend ('up' or 'down').
-            noise_level (float): Standard deviation of the noise.
-
-        Raises:
-            ValueError: If the end value is not consistent with the direction.
-        """
+    ) -> None:
         super().__init__(name)
         self._amplitude = amplitude
         self._direction = direction
@@ -307,31 +279,13 @@ class StockTrend(Trends):
         return self._noise_level
 
     def generate(self, timestamps: pd.DatetimeIndex) -> np.ndarray:
-        """
-        Generate a stock price-like trend.
-
-        Args:
-            timestamps (pd.DatetimeIndex): Array of timestamps.
-
-        Returns:
-            np.ndarray: Generated stock price trend values.
-        """
-        # Initialize the trend array
         num_steps = len(timestamps)
         trend = np.zeros(num_steps)
-        trend[0] = 0
+        drift_per_step = self._amplitude / num_steps if num_steps > 0 else 0
 
-        # Calculate the drift per step to guide the trend toward the end value
-        drift_per_step = self._amplitude / num_steps
-
-        # Generate the trend using a random walk
         for i in range(1, num_steps):
-            # Calculate random fluctuation (volatility)
             volatility = np.random.normal(0, self._noise_level)
-
-            # Add drift and volatility to the previous value
-            step = drift_per_step + volatility
-            trend[i] = trend[i - 1] + step
+            trend[i] = trend[i - 1] + drift_per_step + volatility
 
         time_in_days = (timestamps - timestamps[0]).total_seconds() / (24 * 3600)
         base_wave = (

@@ -6,6 +6,7 @@ import pytest
 import pandas as pd
 import numpy as np
 from ts_data_generator import DataGen
+from ts_data_generator.exceptions import AggregationError
 from ts_data_generator.schema.models import Granularity, AggregationType
 from ts_data_generator.utils.functions import random_choice
 from ts_data_generator.utils.trends import SinusoidalTrend, LinearTrend
@@ -105,8 +106,8 @@ class TestAggregation:
         assert aggregated is not None
 
     def test_aggregate_finer_granularity_raises_error(self, data_gen_hourly_instance):
-        """Test that aggregating to finer granularity raises ValueError"""
-        with pytest.raises(ValueError, match="finer granularity"):
+        """Test that aggregating to finer granularity raises AggregationError."""
+        with pytest.raises(AggregationError, match="finer granularity"):
             data_gen_hourly_instance.aggregate("min")
 
     def test_aggregate_invalid_granularity(self, data_gen_5min_instance):

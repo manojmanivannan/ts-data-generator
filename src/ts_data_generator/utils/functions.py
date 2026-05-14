@@ -1,27 +1,37 @@
-# create several out of the box generator functions to be used in the DataGen class
+"""Dimension generator functions that produce values for time series dimensions.
+
+Each function returns an infinite generator yielding values at each time step.
+Most accept parameters from the CLI shorthand syntax (e.g. ``name:random_choice:A,B,C``).
+"""
 
 import random
-import numpy as np
-import pandas as pd
-from typing import Union, Iterable, Tuple, Generator, TypeVar
+from collections.abc import Generator, Iterable
 from itertools import cycle
+from typing import TypeVar
 
 T = TypeVar("T")
 
 
-def constant(value: Union[int, str, float, list]):
-    """
-    Returns a constant value.
+def constant(value: int | str | float | list | tuple) -> Generator[int | str | float, None, None]:
+    """Yield the same constant value indefinitely.
+
+    If given a list or tuple, cycles through the values — each timestamp
+    gets the next element.
 
     Args:
-        value: A single constant int, string or float value to return.
+        value: A constant value, or a list/tuple of values to cycle through.
 
+    Yields:
+        The constant value (or next cycled value) at each step.
+
+    Example:
+        CLI shorthand: ``name:constant:10`` or ``name:constant:X,Y,Z``
     """
-    while True:
-        # if value is iterable, return the first element
-        if isinstance(value, (list, tuple)):
-            yield value[0]
-        else:
+    if isinstance(value, (list, tuple)):
+        while True:
+            yield from cycle(value)
+    else:
+        while True:
             yield value
 
 
@@ -29,28 +39,36 @@ constant._example = "name:constant:10"
 
 
 def random_choice(iterable: Iterable[T]) -> Generator[T, None, None]:
-    """
-    Returns a random element from the given iterable.
+    """Yield a random element from the iterable at each step.
 
     Args:
-        iterable (iterable): The iterable to choose from.
+        iterable: The collection to choose from.
 
+    Yields:
+        A randomly selected element at each step.
+
+    Example:
+        CLI shorthand: ``name:random_choice:A,B,C``
     """
     while True:
-        yield random.choice(iterable)
+        yield random.choice(list(iterable))
 
 
 random_choice._example = "name:random_choice:A,B,C"
 
 
 def random_int(start: int, end: int) -> Generator[int, None, None]:
-    """
-    Returns a random integer between start and end, inclusive.
+    """Yield a random integer in [start, end] inclusive at each step.
 
     Args:
-        start (int): The starting value of the range.
-        end (int): The ending value of the range.
+        start: Lower bound (inclusive).
+        end: Upper bound (inclusive).
 
+    Yields:
+        A random integer at each step.
+
+    Example:
+        CLI shorthand: ``name:random_int:1,100``
     """
     while True:
         yield random.randint(start, end)
@@ -59,14 +77,18 @@ def random_int(start: int, end: int) -> Generator[int, None, None]:
 random_int._example = "name:random_int:1,100"
 
 
-def random_float(start: float, end: float):
-    """
-    Returns a random float between start and end, inclusive.
+def random_float(start: float, end: float) -> Generator[float, None, None]:
+    """Yield a random float in [start, end) at each step.
 
     Args:
-        start (float): The starting value of the range.
-        end (float): The ending value of the range.
+        start: Lower bound (inclusive).
+        end: Upper bound (exclusive).
 
+    Yields:
+        A random float at each step.
+
+    Example:
+        CLI shorthand: ``name:random_float:0.0,1.0``
     """
     while True:
         yield random.uniform(start, end)
@@ -75,29 +97,36 @@ def random_float(start: float, end: float):
 random_float._example = "name:random_float:0.0,1.0"
 
 
-def ordered_choice(iterable):
-    """
-    Returns a random element from the given iterable in order.
+def ordered_choice(iterable: Iterable[T]) -> Generator[T, None, None]:
+    """Yield elements from the iterable in repeating order.
 
     Args:
-        iterable (iterable): The iterable to choose from.
+        iterable: The collection to cycle through.
 
+    Yields:
+        The next element in sequence at each step.
+
+    Example:
+        CLI shorthand: ``name:ordered_choice:A,B,C``
     """
-    yield cycle(iterable)
+    while True:
+        yield from cycle(iterable)
 
 
 ordered_choice._example = "name:ordered_choice:A,B,C"
 
 
 def auto_generate_name(category: str) -> str:
-    """
-    Generates a unique name for a metric or dimension.
+    """Generate a unique identifier for a metric or dimension.
 
     Args:
-        category (str): The category of the name, either 'metric' or 'dimension'.
+        category: Either 'metric' or 'dimension'.
 
+    Returns:
+        A string like ``'m_42'`` for metrics or ``'d_17'`` for dimensions.
     """
-    return f"{category[0]}_{random.randint(1, 100)}"
+    prefix = category[0] if category else "x"
+    return f"{prefix}_{random.randint(1, 100)}"
 
 
 auto_generate_name._example = "name:auto_generate_name:mycat"
