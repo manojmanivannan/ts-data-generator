@@ -6,6 +6,11 @@ import pytest
 import pandas as pd
 import numpy as np
 from ts_data_generator import DataGen
+from ts_data_generator.exceptions import (
+    MetricError,
+    MultiItemError,
+    ValidationError,
+)
 from ts_data_generator.schema.models import Granularity
 from ts_data_generator.utils.functions import (
     random_choice,
@@ -101,7 +106,7 @@ class TestDataGenHourlyGenerator:
 
     def test_invalid_dimension_set(self, data_gen_instance):
 
-        with pytest.raises(IndexError):
+        with pytest.raises(ValidationError):
             data_gen_instance.add_dimension(name="random", function=[])
 
 
@@ -126,7 +131,7 @@ class TestDataGenDailyGenerator:
 
     def test_invalid_dimension_set(self, data_gen_instance):
 
-        with pytest.raises(IndexError):
+        with pytest.raises(ValidationError):
             data_gen_instance.add_dimension(name="random", function=[])
 
 
@@ -183,7 +188,7 @@ class TestDataScaleGenerator:
         ].iloc[0] == np.int64(3600)
 
     def test_scale(self, data_gen_instance):
-        with pytest.raises(NotImplementedError):
+        with pytest.raises(ValidationError):
             data_gen_instance.normalize(method="invalid")
 
         saved = data_gen_instance.data["metric1"].iloc[0]
@@ -215,12 +220,12 @@ class TestDataScaleGenerator:
                 == data_gen_instance.data["dim3"]
             ).values.all()
         )
-        with pytest.raises(ValueError):
+        with pytest.raises(MultiItemError):
             data_gen_instance.add_multi_items(
                 names="dim1 dim2".split(), function=my_custom_function()
             )
 
-        with pytest.raises(ValueError):
+        with pytest.raises(MultiItemError):
             data_gen_instance.add_multi_items(
                 names="dim1 dim5 dim6".split(), function=my_custom_function()
             )
@@ -275,7 +280,7 @@ def test_add_metric_duplicate_trends():
     data_gen.add_metric(name="metric_unique", trends=[trend])
 
     # Should raise error with duplicate trends
-    with pytest.raises(ValueError, match="Duplicate trends are present"):
+    with pytest.raises(MetricError, match="Duplicate trends are present"):
         data_gen.add_metric(name="metric_duplicate", trends=[trend, trend])
 
 

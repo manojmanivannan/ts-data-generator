@@ -7,30 +7,78 @@ packages = ["src/ts_data_generator"]
 
 [project]
 name = "ts-data-generator"
-version = "0.0.1"
+version = "0.1.0"
 description = "A Python library for generating synthetic time series data"
-requires-python = ">=3.8"
-dependencies = ["python-dotenv", "pandas", "pydantic", "matplotlib", "click"]
+requires-python = ">=3.10"
+dependencies = [
+    "click>=8.0",
+    "matplotlib>=3.5",
+    "pandas>=1.5",
+    "pydantic>=2.0",
+    "python-dotenv>=1.0",
+]
 readme = "README.md"
 authors = [{ name = "Manoj Manivannan", email = "manojm18@live.in" }]
 license = { text = "MIT" }
 classifiers = [
-    "Programming Language :: Python :: 3",
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Scientific/Engineering :: Information Analysis",
 ]
-keywords = ["synthetic data", "data generator", "python", "time series"]
+keywords = [
+    "synthetic data",
+    "data generator",
+    "python",
+    "time series",
+    "data engineering",
+]
 
 [project.urls]
 Repository = "https://github.com/manojmanivannan/ts-data-generator.git"
+Issues = "https://github.com/manojmanivannan/ts-data-generator/issues"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "ruff>=0.3",
+]
+imputer = ["scipy>=1.7"]
+test = [
+    "pytest>=7.0",
+    "ruff>=0.3",
+]
+
+[project.scripts]
+tsdata = "ts_data_generator.cli:main"
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "UP",  # pyupgrade
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "auto"
 
 [tool.pytest.ini_options]
 addopts = "-ra -q"
 testpaths = ["tests"]
-
-[project.optional-dependencies]
-dev = ["ruff", "pytest"]
-imputer = ["scipy"]
-
-[project.scripts]
-tsdata = "ts_data_generator.cli:main"

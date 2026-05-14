@@ -1,17 +1,25 @@
-from abc import ABC
+"""Data model classes for time series generation.
+
+Defines the enums and entity classes used to configure and execute
+synthetic time series data generation.
+"""
+
+import logging
+from collections.abc import Generator
 from enum import Enum
-from typing import Generator, List, Optional, Set, TypeVar, Union
 
 import numpy as np
 import pandas as pd
 
-from ..utils.functions import auto_generate_name
-from ..utils.trends import Trends
+from ts_data_generator.utils.functions import auto_generate_name
+from ts_data_generator.utils.trends import Trends
 
-T = TypeVar("T")
+logger = logging.getLogger(__name__)
 
 
 class Granularity(Enum):
+    """Time granularity for generated data intervals."""
+
     ONE_SECOND = "s"
     ONE_MIN = "min"
     FIVE_MIN = "5min"
@@ -23,133 +31,130 @@ class Granularity(Enum):
 
 
 class AggregationType(Enum):
+    """Aggregation method used when resampling data to a coarser granularity."""
+
     AVG = "mean"
     SUM = "sum"
     MAX = "max"
     MIN = "min"
 
 
-class Metrics(ABC):
+class Metrics:
+    """A metric combines one or more trends additively to produce a numeric column.
+
+    Args:
+        name: Unique name for this metric. Defaults to an auto-generated name.
+        trends: Set of Trends instances that are summed to produce the metric.
+        aggregation_type: Aggregation method when resampling.
+
+    Example:
+        >>> trend = SinusoidalTrend(amplitude=5, freq=24)
+        >>> metric = Metrics(name="temperature", trends={trend})
+    """
+
     def __init__(
         self,
         name: str = "default",
-        trends: Set[Trends] = set(),
+        trends: set[Trends] | None = None,
         aggregation_type: AggregationType = AggregationType.AVG,
-    ):
-        """
-        Initialize a Metrics object.
-
-        Args:
-            name (str): Name of the metric.
-            function_type (Literal): Type of function to generate data (e.g., "sine", "cosine", "constant", "generator").
-            function_value (Optional[Generator]): A generator function for this metric; required if function_type is "generator".
-            frequency_in_hour (Optional[str]): Frequency of trend to oscillate in hours; required if function_type in [sine, cosine].
-            offset_in_minutes (Optional[str]): Phase offset of trend in minutes; required if function_type in [sine, cosine].
-            scale (Optional[float]): Amplitude of the wave; required if function_type in [sine, cosine].
-        """
-        self._name = (
-            auto_generate_name(category="metric") if name == "default" else name
-        )
-        self._trends = trends
+    ) -> None:
+        self._name = auto_generate_name(category="metric") if name == "default" else name
+        self._trends: set[Trends] = trends or set()
         self._aggregation_type = aggregation_type
 
     @property
     def name(self) -> str:
-        """Get the name of the metric."""
+        """The unique name of this metric."""
         return self._name
 
     @property
-    def trends(self) -> Set[Trends]:
-        """Get the trends of the metric."""
+    def trends(self) -> set[Trends]:
+        """The set of trends that compose this metric."""
         return self._trends
 
     @property
     def aggregation_type(self) -> AggregationType:
-        """Get the aggregation type of the metric."""
+        """The aggregation method for resampling."""
         return self._aggregation_type
 
-    def generate(self, timestamps) -> pd.DataFrame:
-        """Generate data for this metric.
+    def generate(self, timestamps: pd.DatetimeIndex) -> pd.DataFrame:
+        """Generate metric values for the given timestamps.
 
         Args:
-            timestamps: List of timestamps from pd.date_range
+            timestamps: DatetimeIndex of time points.
+
+        Returns:
+            DataFrame with a single column named after this metric.
         """
-
         data = np.zeros(len(timestamps))
-
-        for t in self._trends:
-            data += t.generate(timestamps)
-
+        for trend in self._trends:
+            data += trend.generate(timestamps)
         self._data = pd.DataFrame(data, columns=[self._name], index=timestamps)
         return self._data
 
-    def __repr__(self):
-        # drop few keys from the dictionary
-        json_data = self.to_json()
+    def __repr__(self) -> str:
+        return str(self.to_json())
 
-        return str(json_data)
-
-    # add a function to represent the metric in json format
-    def to_json(self):
+    def to_json(self) -> dict:
+        """Serialize the metric to a JSON-compatible dict."""
         return {
             "name": self._name,
-            "trends": [t._name for t in self._trends],
+            "trends": [t.name for t in self._trends],
             "aggregation_type": self._aggregation_type.value,
         }
 
 
-class Dimensions(ABC):
-    def __init__(
-        self, name: Union[str, list], function: Union[int, str, float, Generator]
-    ):
-        """Initialize a dimension with a name and value generation function.
+class Dimensions:
+    """A dimension generates categorical or continuous values for each timestamp.
 
-        Args:
-            name: Name of the dimension
-            function: Function that generates values for this dimension
-        """
+    Args:
+        name: Name of the dimension column.
+        function: An infinite generator that produces values for each time step.
+
+    Example:
+        >>> d = Dimensions(name="region", function=random_choice(["US", "EU"]))
+    """
+
+    def __init__(
+        self,
+        name: str | list[str],
+        function: int | str | float | Generator,
+    ) -> None:
         self._name = name
         self._function = function
-        self._data = None
-        # self._position = position
+        self._data: pd.DataFrame | None = None
 
     @property
-    def data(self) -> pd.Series:
+    def data(self) -> pd.Series | None:
         return self._data
 
     @property
-    def name(self) -> Union[str, list]:
-        """Get the name of the dimension."""
+    def name(self) -> str | list[str]:
+        """The name(s) of this dimension."""
         return self._name
 
     @property
-    def function(self) -> Union[int, str, float, Generator]:
-        """Get the value generation function."""
+    def function(self) -> int | str | float | Generator:
+        """The generator function producing dimension values."""
         return self._function
 
     @function.setter
-    def function(self, value: Union[int, str, float, Generator]) -> None:
-        """Set the value generation function.
-
-        Args:
-            value: Function that generates values for this dimension. Should be a generator object
-        """
-        # validate if value is a generator object
-        if (
-            not isinstance(value, int)
-            and not isinstance(value, str)
-            and not isinstance(value, float)
-            and not isinstance(value, Generator)
-            and not isinstance(value, list)
-        ):
+    def function(self, value: int | str | float | Generator) -> None:
+        if not isinstance(value, (int, str, float, Generator, list)):
             raise ValueError(
-                "function must be a generator object or int or str or float"
+                "function must be a generator object or int, str, float, or list"
             )
         self._function = value
 
-    def generate(self, timestamps) -> pd.DataFrame:
-        """Create a generator that yields dimension values."""
-        # try:
+    def generate(self, timestamps: pd.DatetimeIndex) -> pd.DataFrame:
+        """Generate dimension values for the given timestamps.
+
+        Args:
+            timestamps: DatetimeIndex of time points.
+
+        Returns:
+            DataFrame with one column (or multiple if name is a list of names).
+        """
         data = [
             (
                 list(next(self._function))
@@ -158,110 +163,105 @@ class Dimensions(ABC):
             )
             for _ in timestamps
         ]
-
         columns = self._name if isinstance(self._name, list) else [self._name]
-        # except TypeError:
-        #     data = [next(self._function)  for _ in timestamps]
-
         self._data = pd.DataFrame(data, columns=columns, index=timestamps)
         return self._data
 
     def __eq__(self, other: object) -> bool:
-        """Enable equality comparison for set operations."""
         if not isinstance(other, Dimensions):
-            raise NotImplementedError
+            return NotImplemented
         return self._name == other.name
 
     def __hash__(self) -> int:
-        """Enable hashing for set operations."""
-        return hash(self._name)
+        return hash(self._name if isinstance(self._name, str) else tuple(self._name))
 
-    # add a function to represent the dimension in json format
-    def to_json(self):
+    def to_json(self) -> dict:
+        """Serialize the dimension to a JSON-compatible dict."""
         return {
             "name": self.name,
             "function": self.function.__repr__().split(" at ")[0],
         }
 
 
-class MultiItems(ABC):
+class MultiItems:
+    """A group of linked columns generated simultaneously from one function.
+
+    Useful when columns have dependencies (e.g., ``col3 = col1 + col2``).
+
+    Args:
+        names: List of column names for this multi-item group.
+        function: Generator that yields tuples of values matching len(names).
+        aggregation_type: Optional list of aggregation methods for resampling.
+            If provided, the items are treated as metrics during aggregation.
+
+    Example:
+        >>> def linked_gen():
+        ...     while True:
+        ...         yield (1, 2, 3)
+        >>> mi = MultiItems(names=["a", "b", "c"], function=linked_gen())
+    """
+
     def __init__(
         self,
-        names: list,
-        function: Union[int, str, float, Generator],
-        aggregation_type: Optional[List],
-    ):
-        """Initialize a dimension with a name and value generation function.
-
-        Args:
-            name: Name of the dimension
-            function: Function that generates values for this dimension
-        """
+        names: list[str],
+        function: int | str | float | Generator,
+        aggregation_type: list[AggregationType | str] | None = None,
+    ) -> None:
         self._names = names
         self._function = function
-        self._data = None
+        self._data: pd.DataFrame | None = None
         self._aggregation_type = aggregation_type
-        # self._position = position
 
     @property
-    def data(self) -> pd.Series:
+    def data(self) -> pd.DataFrame | None:
         return self._data
 
     @property
-    def names(self) -> list:
-        """Get the name of the dimension."""
+    def names(self) -> list[str]:
+        """The column names in this multi-item group."""
         return self._names
 
     @property
-    def function(self) -> Union[int, str, float, Generator]:
-        """Get the value generation function."""
+    def function(self) -> int | str | float | Generator:
+        """The generator function producing linked values."""
         return self._function
 
     @property
-    def aggregation_type(self) -> list:
-        """Get the aggregation type of the metric."""
+    def aggregation_type(self) -> list[AggregationType | str] | None:
+        """Aggregation methods for resampling, or None if treated as dimensions."""
         return self._aggregation_type
 
     @function.setter
-    def function(self, value: Union[int, str, float, Generator]) -> None:
-        """Set the value generation function.
-
-        Args:
-            value: Function that generates values for this dimension. Should be a generator object
-        """
-        # validate if value is a generator object
-        if (
-            not isinstance(value, int)
-            and not isinstance(value, str)
-            and not isinstance(value, float)
-            and not isinstance(value, Generator)
-            and not isinstance(value, list)
-        ):
+    def function(self, value: int | str | float | Generator) -> None:
+        if not isinstance(value, (int, str, float, Generator, list)):
             raise ValueError(
-                "function must be a generator object or int or str or float"
+                "function must be a generator object or int, str, float, or list"
             )
         self._function = value
 
-    def generate(self, timestamps) -> pd.DataFrame:
-        """Create a generator that yields dimension values."""
-        # try:
-        data = [list(next(self._function)) for _ in timestamps]
+    def generate(self, timestamps: pd.DatetimeIndex) -> pd.DataFrame:
+        """Generate linked values for all names at each timestamp.
 
+        Args:
+            timestamps: DatetimeIndex of time points.
+
+        Returns:
+            DataFrame with one column per name in the multi-item group.
+        """
+        data = [list(next(self._function)) for _ in timestamps]
         self._data = pd.DataFrame(data, columns=self._names, index=timestamps)
         return self._data
 
     def __eq__(self, other: object) -> bool:
-        """Enable equality comparison for set operations."""
         if not isinstance(other, MultiItems):
-            raise NotImplementedError
+            return NotImplemented
         return self._names == other.names
 
     def __hash__(self) -> int:
-        """Enable hashing for set operations."""
-        return hash(self._names)
+        return hash(tuple(self._names))
 
-    # add a function to represent the dimension in json format
-    def to_json(self):
+    def to_json(self) -> dict:
+        """Serialize the multi-item to a JSON-compatible dict."""
         return {
             "names": self.names,
             "function": self.function.__repr__().split(" at ")[0],

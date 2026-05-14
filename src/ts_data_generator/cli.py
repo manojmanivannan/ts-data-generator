@@ -1,52 +1,43 @@
-"""
-CLI module for ts-data-generator.
-Provides command-line interface for generating synthetic time series data.
+"""CLI module for ts-data-generator.
+
+Provides the ``tsdata`` command-line interface via Click.
 """
 
 import inspect
 import json
+import logging
 import os
 import re
 from pathlib import Path
-from typing import List, Optional
 
 import click
 from pydantic import BaseModel, Field, field_validator
 
 from ts_data_generator import DataGen
-
-
-# Environment variable prefix for configuration
-ENV_PREFIX = "TSDATA_"
-
-
-def _load_env_defaults() -> dict:
-    """Load default values from environment variables."""
-    defaults = {}
-    prefix = ENV_PREFIX
-
-    for key, value in os.environ.items():
-        if key.startswith(prefix):
-            config_key = key[len(prefix) :].lower()
-            defaults[config_key] = value
-
-    return defaults
-
-
 from ts_data_generator.schema.models import Granularity
 from ts_data_generator.utils import functions as dimension_functions
 from ts_data_generator.utils import trends as trend_functions
 
+logger = logging.getLogger(__name__)
 
-# Pydantic models for config validation
+ENV_PREFIX = "TSDATA_"
+DIM_SEPARATOR = ";"
+TREND_SEPARATOR = "+"
+VALUE_SEPARATOR = ","
+DEFAULT_DIMENSION_FUNCTION = "random_choice"
+
+
+# ---------------------------------------------------------------------------
+# Pydantic config models
+# ---------------------------------------------------------------------------
+
+
 class DimensionSpec(BaseModel):
     """A dimension specification in config."""
 
     name: str = Field(..., description="Dimension name")
-    function: str = Field(
-        default="random_choice", description="Dimension function name"
-    )
-    values: List[str] = Field(..., description="Dimension values")
+    function: str = Field(default=DEFAULT_DIMENSION_FUNCTION, description="Dimension function name")
+    values: list[str] = Field(..., description="Dimension values")
 
 
 class MetricSpec(BaseModel):
@@ -62,8 +53,8 @@ class GeneratorConfig(BaseModel):
     start: str = Field(..., description="Start datetime (YYYY-MM-DD)")
     end: str = Field(..., description="End datetime (YYYY-MM-DD)")
     granularity: str = Field(..., description="Data granularity")
-    dimensions: List[str] = Field(default_factory=list, description="Dimension specs")
-    metrics: List[str] = Field(default_factory=list, description="Metric specs")
+    dimensions: list[str] = Field(default_factory=list, description="Dimension specs")
+    metrics: list[str] = Field(default_factory=list, description="Metric specs")
     output: str = Field(..., description="Output CSV file path")
 
     @field_validator("granularity")
@@ -71,12 +62,15 @@ class GeneratorConfig(BaseModel):
     def validate_granularity(cls, v: str) -> str:
         valid = [g.value for g in Granularity]
         if v.lower() not in valid:
-            raise ValueError(f"Invalid granularity '{v}'. Valid: {', '.join(valid)}")
+            raise ValueError(f"Invalid granularity {v!r}. Valid: {', '.join(valid)}")
         return v.lower()
 
 
-# Preset configurations
-PRESETS: dict = {
+# ---------------------------------------------------------------------------
+# Presets
+# ---------------------------------------------------------------------------
+
+PRESETS: dict[str, dict] = {
     "daily-sales": {
         "start": "2024-01-01",
         "end": "2024-01-31",
@@ -123,82 +117,74 @@ PRESETS: dict = {
 }
 
 
-# Constants
-DIM_SEPARATOR = ";"
-TREND_SEPARATOR = "+"
-VALUE_SEPARATOR = ","
-DEFAULT_DIMENSION_FUNCTION = "random_choice"
+# ---------------------------------------------------------------------------
+# Parsing helpers
+# ---------------------------------------------------------------------------
 
 
 def _parse_value(value: str) -> int | float | str:
-    """Parse a value string into appropriate Python type."""
+    """Parse a string value into int, float, or str."""
     if value.isdigit():
         return int(value)
     if "." in value:
         try:
             return float(value)
         except ValueError:
-            return value
+            pass
     return value
 
 
 def _parse_dimension_spec(spec: str) -> tuple[str, str, tuple | list]:
-    """
-    Parse dimension specification.
+    """Parse a dimension specification string.
 
     Formats:
-    - name:function:values (e.g., "product:random_choice:A,B,C")
-    - name:values (e.g., "product:A,B,C" -> defaults to random_choice)
+      - ``name:function:values`` (e.g. ``"product:random_choice:A,B,C"``)
+      - ``name:values`` (defaults to ``random_choice``)
 
     Returns:
-        tuple: (name, function_name, values)
+        Tuple of (name, function_name, values).
     """
     parts = spec.split(":", 2)
 
     if len(parts) == 2:
-        # Shorthand: name:values -> defaults to random_choice
         name, values = parts
         function_name = DEFAULT_DIMENSION_FUNCTION
     else:
         name, function_name, values = parts
 
-    # Parse values - convert to tuple of ints/floats if all values are numeric
     value_list = values.split(VALUE_SEPARATOR)
     if all(v.lstrip("-").replace(".", "", 1).isdigit() for v in value_list if v):
-        # All are numeric - convert to int or float
-        parsed_values = tuple(
-            (
-                int(v)
-                if v.isdigit() or (v.startswith("-") and v[1:].isdigit())
-                else float(v)
-            )
+        parsed = tuple(
+            int(v) if v.isdigit() or (v.startswith("-") and v[1:].isdigit()) else float(v)
             for v in value_list
         )
     else:
-        parsed_values = value_list
+        parsed = value_list
 
-    return name, function_name, parsed_values
+    return name, function_name, parsed
 
 
 def _parse_trend_spec(trend_spec: str) -> tuple[str, dict[str, int | float | str]]:
-    """
-    Parse trend specification.
+    """Parse a trend specification string.
 
-    Format: TrendName(param1=value1,param2=value2)
+    Format: ``TrendName(param1=value1,param2=value2)``
 
     Returns:
-        tuple: (trend_name, param_dict)
+        Tuple of (trend_name, param_dict).
+
+    Raises:
+        click.BadParameter: If the format is invalid.
     """
     match = re.match(r"(\w+)\((.*?)\)", trend_spec)
     if not match:
         raise click.BadParameter(
-            f"Invalid trend format '{trend_spec}'. Expected: TrendName(param=value)"
+            f"Invalid trend format {trend_spec!r}. Expected: TrendName(param=value)"
         )
 
     trend_name = match.group(1)
     params_str = match.group(2)
 
-    param_dict = {}
+    param_dict: dict[str, int | float | str] = {}
     if params_str:
         for param in params_str.split(VALUE_SEPARATOR):
             key, value = param.split("=")
@@ -207,8 +193,12 @@ def _parse_trend_spec(trend_spec: str) -> tuple[str, dict[str, int | float | str
     return trend_name, param_dict
 
 
-def _get_dimension_function(function_name: str) -> callable:
-    """Get dimension function by name, raising a proper click error if not found."""
+def _get_dimension_function(function_name: str):
+    """Look up a dimension function by name.
+
+    Raises:
+        click.BadParameter: If the function is not found.
+    """
     try:
         return getattr(dimension_functions, function_name)
     except AttributeError:
@@ -218,13 +208,16 @@ def _get_dimension_function(function_name: str) -> callable:
             if callable(getattr(dimension_functions, f)) and not f.startswith("_")
         ]
         raise click.BadParameter(
-            f"Unknown dimension function '{function_name}'. "
-            f"Available: {', '.join(available)}"
-        )
+            f"Unknown dimension function {function_name!r}. Available: {', '.join(available)}"
+        ) from None
 
 
-def _get_trend_function(function_name: str) -> callable:
-    """Get trend function by name, raising a proper click error if not found."""
+def _get_trend_function(function_name: str):
+    """Look up a trend function by name.
+
+    Raises:
+        click.BadParameter: If the function is not found.
+    """
     try:
         return getattr(trend_functions, function_name)
     except AttributeError:
@@ -234,47 +227,70 @@ def _get_trend_function(function_name: str) -> callable:
             if callable(getattr(trend_functions, f)) and "Trend" in f
         ]
         raise click.BadParameter(
-            f"Unknown trend function '{function_name}'. "
-            f"Available: {', '.join(available)}"
-        )
+            f"Unknown trend function {function_name!r}. Available: {', '.join(available)}"
+        ) from None
+
+
+def _load_env_defaults() -> dict[str, str]:
+    """Load default parameter values from TSDATA_* environment variables."""
+    defaults: dict[str, str] = {}
+    for key, value in os.environ.items():
+        if key.startswith(ENV_PREFIX):
+            config_key = key[len(ENV_PREFIX):].lower()
+            defaults[config_key] = value
+    return defaults
 
 
 def _load_config(config_path: Path) -> dict:
-    """Load and validate JSON configuration file with pydantic."""
-    try:
-        with open(config_path) as f:
-            config = json.load(f)
-    except json.JSONDecodeError as e:
-        raise click.BadParameter(f"Invalid JSON in config file: {e}")
+    """Load and validate a JSON configuration file.
 
-    # Validate with pydantic
+    Raises:
+        click.BadParameter: If the JSON is invalid or validation fails.
+    """
+    try:
+        with open(config_path) as fh:
+            config = json.load(fh)
+    except json.JSONDecodeError as exc:
+        raise click.BadParameter(f"Invalid JSON in config file: {exc}") from exc
+
     try:
         validated = GeneratorConfig(**config)
         return validated.model_dump()
-    except Exception as e:
-        raise click.BadParameter(f"Invalid config: {e}")
+    except Exception as exc:
+        raise click.BadParameter(f"Invalid config: {exc}") from exc
 
 
-def _apply_config_overrides(config: dict, **cli_kwargs: str | None) -> dict:
-    """Apply CLI arguments as overrides to config values."""
-    result = config.copy()
-
-    # Only override if CLI provides a value (not None)
-    for key in ["start", "end", "granularity", "output"]:
+def _apply_config_overrides(
+    config: dict, **cli_kwargs: str | None
+) -> dict:
+    """Overlay CLI argument values on top of a config dict."""
+    result = dict(config)
+    for key in ("start", "end", "granularity", "output"):
         if cli_kwargs.get(key):
             result[key] = cli_kwargs[key]
-
     return result
+
+
+def _normalize_to_string(value: tuple | list | str) -> str:
+    """Convert a tuple/list/str to a semicolon-joined string for parsing."""
+    if isinstance(value, (tuple, list)):
+        return DIM_SEPARATOR.join(str(v) for v in value)
+    return value
+
+
+# ---------------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------------
 
 
 @click.group(context_settings={"max_content_width": 220})
 def main():
-    """CLI tool for generating time series data."""
+    """CLI tool for generating synthetic time series data."""
 
 
 @main.command()
-@click.option("--start", "start", type=str, help="Start datetime (YYYY-MM-DD)")
-@click.option("--end", "end", type=str, help="End datetime (YYYY-MM-DD)")
+@click.option("--start", type=str, help="Start datetime (YYYY-MM-DD)")
+@click.option("--end", type=str, help="End datetime (YYYY-MM-DD)")
 @click.option(
     "--granularity",
     type=click.Choice([g.value for g in Granularity], case_sensitive=False),
@@ -284,15 +300,17 @@ def main():
     "--dims",
     type=str,
     multiple=True,
-    help=f"Dimension specs (sep by {DIM_SEPARATOR}). Formats: 'name:function:values' or 'name:values'",
+    help=f"Dimension specs (sep by {DIM_SEPARATOR}). "
+         "Formats: 'name:function:values' or 'name:values'",
 )
 @click.option(
     "--mets",
     type=str,
     multiple=True,
-    help=f"Metric specs (sep by {DIM_SEPARATOR}). Format: 'name:Trend(param=value)+Trend2'",
+    help=f"Metric specs (sep by {DIM_SEPARATOR}). "
+         "Format: 'name:Trend(param=value)+Trend2'",
 )
-@click.option("--output", "output", type=str, help="Output CSV file path")
+@click.option("--output", type=str, help="Output CSV file path")
 @click.option(
     "--config",
     type=click.Path(exists=True, path_type=Path),
@@ -303,50 +321,74 @@ def main():
     type=click.Choice(list(PRESETS.keys())),
     help="Use a preset configuration (use with --output to customize)",
 )
-def generate(start, end, granularity, dims, mets, output, config, preset):
-    """
-    Generate synthetic time series data and save to CSV.
+def generate(
+    start: str | None,
+    end: str | None,
+    granularity: str | None,
+    dims: tuple[str, ...],
+    mets: tuple[str, ...],
+    output: str | None,
+    config: Path | None,
+    preset: str | None,
+) -> None:
+    """Generate synthetic time series data and save to CSV.
 
     Examples:
 
+    \b
         # Simple dimension (defaults to random_choice)
         tsdata generate --dims "product:A,B,C" --mets "sales:LinearTrend(limit=100)" ...
 
+    \b
         # Full syntax with function
         tsdata generate --dims "product:random_choice:A,B,C" ...
 
+    \b
         # Multiple dimensions
         tsdata generate --dims "product:A,B,C" --dims "region:X,Y,Z" ...
 
+    \b
         # Multiple trends (additive)
         tsdata generate --mets "sales:LinearTrend(limit=500)+WeekendTrend(weekend_effect=50)" ...
 
+    \b
         # Full example
-        tsdata generate --dims  product:auto_generate_name:prod --mets "sales:LinearTrend(limit=500)" --mets "sales2:WeekendTrend(weekend_effect=50)" --start 2026-04-17 --end 2026-04-18 --granularity 5min --output output.csv
+        tsdata generate --dims product:auto_generate_name:prod \\
+            --mets "sales:LinearTrend(limit=500)" \\
+            --mets "sales2:WeekendTrend(weekend_effect=50)" \\
+            --start 2026-04-17 --end 2026-04-18 --granularity 5min --output output.csv
 
+    \b
         # Using config file
         tsdata generate --config config.json
 
+    \b
         # Using environment variables (prefix with TSDATA_)
-        # TSDATA_START=2019-01-01 TSDATA_END=2019-01-12 TSDATA_GRANULARITY=5min tsdata generate ...
+        TSDATA_START=2019-01-01 tsdata generate ...
 
-    Config file schema:
+    Config file schema::
 
-    {"start": "2019-01-01", "end": "2019-01-12", "granularity": "5min", "dimensions": ["product:A,B,C", "region:X,Y,Z"], "metrics": ["sales:LinearTrend(limit=500)+WeekendTrend(weekend_effect=50)","sales1:LinearTrend(limit=200)"], "output": "data.csv"}
+        {
+          "start": "2019-01-01",
+          "end": "2019-01-12",
+          "granularity": "5min",
+          "dimensions": ["product:A,B,C", "region:X,Y,Z"],
+          "metrics": [
+            "sales:LinearTrend(limit=500)+WeekendTrend(weekend_effect=50)",
+            "sales1:LinearTrend(limit=200)"
+          ],
+          "output": "data.csv"
+        }
     """
-    # Load environment variable defaults
     env_defaults = _load_env_defaults()
 
-    # Apply env defaults to CLI args if not specified
     start = start or env_defaults.get("start")
     end = end or env_defaults.get("end")
     granularity = granularity or env_defaults.get("granularity")
     output = output or env_defaults.get("output")
 
-    # Load preset if specified
     if preset:
         preset_data = PRESETS[preset].copy()
-        # CLI args override preset values
         if not start:
             start = preset_data.get("start")
         if not end:
@@ -355,10 +397,9 @@ def generate(start, end, granularity, dims, mets, output, config, preset):
             granularity = preset_data.get("granularity")
         if not output:
             output = preset_data.get("output")
-        dims = preset_data.get("dimensions", [])
-        mets = preset_data.get("metrics", [])
+        dims = tuple(preset_data.get("dimensions", []))
+        mets = tuple(preset_data.get("metrics", []))
 
-    # Load configuration
     if config:
         config_data = _load_config(config)
         config_data = _apply_config_overrides(
@@ -367,50 +408,42 @@ def generate(start, end, granularity, dims, mets, output, config, preset):
         start = config_data.get("start")
         end = config_data.get("end")
         granularity = config_data.get("granularity")
-        dims = config_data.get("dimensions", [])
-        mets = config_data.get("metrics", [])
+        dims = tuple(config_data.get("dimensions", []))
+        mets = tuple(config_data.get("metrics", []))
         output = config_data.get("output")
 
-    # Normalize dims/mets to string (from tuple, list, or string)
-    if isinstance(dims, (tuple, list)):
-        dims = DIM_SEPARATOR.join(str(d) for d in dims)
-    if isinstance(mets, (tuple, list)):
-        mets = DIM_SEPARATOR.join(str(m) for m in mets)
+    dims_str = _normalize_to_string(dims)
+    mets_str = _normalize_to_string(mets)
 
-    # Validate required arguments
-    if not all([start, end, granularity, dims, mets, output]):
+    if not all([start, end, granularity, dims_str, mets_str, output]):
         click.echo(
             main.get_command(main, "generate").get_help(click.get_current_context())
         )
         return
 
-    # Initialize data generator
     data_gen = DataGen()
     data_gen.start_datetime = start
     data_gen.end_datetime = end
     data_gen.to_granularity(granularity)
 
-    # Add dimensions
-    for dimension in dims.split(DIM_SEPARATOR):
-        name, function_name, values = _parse_dimension_spec(dimension)
-
-        dimension_fn = _get_dimension_function(function_name)
+    for dimension in dims_str.split(DIM_SEPARATOR):
+        dim_name, func_name, values = _parse_dimension_spec(dimension)
+        dim_fn = _get_dimension_function(func_name)
 
         try:
-            data_gen.add_dimension(name, dimension_fn(values))
+            data_gen.add_dimension(dim_name, dim_fn(values))
         except TypeError:
             try:
-                # Try unpacking as separate args
-                data_gen.add_dimension(name, dimension_fn(*values))
-            except TypeError as e:
+                data_gen.add_dimension(dim_name, dim_fn(*values))
+            except TypeError as exc:
                 raise click.BadParameter(
-                    f"Invalid parameters for dimension '{name}' with function '{function_name}': {values}"
-                )
+                    f"Invalid parameters for dimension {dim_name!r} "
+                    f"with function {func_name!r}: {values}"
+                ) from exc
 
-    # Add metrics
-    for metric in mets.split(DIM_SEPARATOR):
+    for metric in mets_str.split(DIM_SEPARATOR):
         parts = metric.split(":")
-        name = parts[0]
+        metric_name = parts[0]
         trend_specs = parts[1].split(TREND_SEPARATOR) if len(parts) > 1 else []
 
         trends = []
@@ -420,37 +453,36 @@ def generate(start, end, granularity, dims, mets, output, config, preset):
 
             try:
                 trends.append(trend_fn(**params))
-            except TypeError as e:
-                # Extract bad parameter name from error message
-                bad_match = re.search(r"unexpected keyword argument '(\w+)'", str(e))
+            except TypeError as exc:
+                bad_match = re.search(r"unexpected keyword argument '(\w+)'", str(exc))
                 bad_param = bad_match.group(1) if bad_match else "unknown"
                 raise click.BadParameter(
-                    f"Invalid parameter '{bad_param}' for trend '{trend_name}'"
-                )
+                    f"Invalid parameter {bad_param!r} for trend {trend_name!r}"
+                ) from exc
 
-        data_gen.add_metric(name=name, trends=trends)
+        data_gen.add_metric(name=metric_name, trends=trends)
 
-    # Validate output path
     output_path = Path(output)
     if output_path.suffix.lower() != ".csv":
-        raise click.BadParameter("Output file must have .csv extension")
+        raise click.BadParameter("Output file must have .csv extension.")
 
-    # Generate and save data
     data = data_gen.data
     data.to_csv(output, index=True, index_label="datetime")
 
+    logger.info("Generated %s rows → %s", f"{len(data):,}", output)
     click.echo(f"Generated {len(data):,} rows → {output}")
 
 
 @main.command()
-def dimensions():
+def dimensions() -> None:
     """List available dimension functions."""
+    excluded = {"TypeVar", "Generator", "Iterable", "Tuple", "Union", "cycle"}
     funcs = [
         f
         for f in dir(dimension_functions)
         if callable(getattr(dimension_functions, f))
         and not f.startswith("_")
-        and f not in ("TypeVar", "Generator", "Iterable", "Tuple", "Union", "cycle")
+        and f not in excluded
     ]
 
     click.echo("Available dimension functions:\n")
@@ -464,7 +496,7 @@ def dimensions():
 
 
 @main.command()
-def metrics():
+def metrics() -> None:
     """List available trend functions."""
     funcs = [
         f
@@ -486,44 +518,49 @@ def metrics():
 
 @main.command()
 @click.argument("preset_name", required=False)
-def presets(preset_name: str | None):
+def presets(preset_name: str | None) -> None:
     """List available preset configurations or show details for a specific preset.
 
     Usage:
+
+    \b
         tsdata presets              # List all presets
         tsdata presets daily-sales  # Show details for daily-sales preset
     """
     if preset_name:
         if preset_name not in PRESETS:
             raise click.ClickException(
-                f"Unknown preset '{preset_name}'. Use 'tsdata presets' to list all."
+                f"Unknown preset {preset_name!r}. Use 'tsdata presets' to list all."
             )
-        config = PRESETS[preset_name]
+        cfg = PRESETS[preset_name]
         click.echo(f"Preset: {preset_name}\n")
-        click.echo(f"  Start: {config['start']}")
-        click.echo(f"  End: {config['end']}")
-        click.echo(f"  Granularity: {config['granularity']}")
-        click.echo(f"  Dimensions: {', '.join(config['dimensions'])}")
-        click.echo(f"  Metrics: {', '.join(config['metrics'])}")
-        click.echo(f"  Output: {config['output']}")
+        click.echo(f"  Start: {cfg['start']}")
+        click.echo(f"  End: {cfg['end']}")
+        click.echo(f"  Granularity: {cfg['granularity']}")
+        click.echo(f"  Dimensions: {', '.join(cfg['dimensions'])}")
+        click.echo(f"  Metrics: {', '.join(cfg['metrics'])}")
+        click.echo(f"  Output: {cfg['output']}")
         click.echo(
             f"\nUsage: tsdata generate --preset {preset_name} --output <output.csv>"
         )
         click.echo("Or override specific values:")
         click.echo(
-            f"  tsdata generate --preset {preset_name} --start 2024-02-01 --output mydata.csv"
+            f"  tsdata generate --preset {preset_name} "
+            f"--start 2024-02-01 --output mydata.csv"
         )
     else:
         click.echo("Available presets:\n")
-        for name, config in PRESETS.items():
+        for name, cfg in PRESETS.items():
             click.echo(f"  {name}")
             click.echo(
-                f"    Start: {config['start']}, End: {config['end']}, Granularity: {config['granularity']}"
+                f"    Start: {cfg['start']}, End: {cfg['end']}, "
+                f"Granularity: {cfg['granularity']}"
             )
             click.echo(
-                f"    Dimensions: {len(config['dimensions'])}, Metrics: {len(config['metrics'])}"
+                f"    Dimensions: {len(cfg['dimensions'])}, "
+                f"Metrics: {len(cfg['metrics'])}"
             )
-            click.echo(f"    Output: {config['output']}")
+            click.echo(f"    Output: {cfg['output']}")
             click.echo()
         click.echo("Use 'tsdata presets <name>' for detailed info on a preset.")
         click.echo("Example: tsdata presets daily-sales")
