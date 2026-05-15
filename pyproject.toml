@@ -52,6 +52,8 @@ dev = [
     "ruff>=0.3",
 ]
 imputer = ["scipy>=1.7"]
+holidays = ["holidays>=0.60"]
+all = ["holidays>=0.60", "scipy>=1.7"]
 test = [
     "pytest>=7.0",
     "ruff>=0.3",

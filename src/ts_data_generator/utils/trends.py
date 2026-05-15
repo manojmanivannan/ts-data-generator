@@ -516,7 +516,7 @@ class HolidayTrend(Trends):
             end_year = timestamps[-1].year
             holiday_dates = []
             for year in range(start_year, end_year + 1):
-                holiday_obj = holidays.CountryHoliday(self._country, years=[year])  # type: ignore
+                holiday_obj = holidays.country_holidays(self._country, years=year)  # type: ignore
                 holiday_dates.extend(holiday_obj.keys())
 
         timestamps_norm = timestamps.normalize()
