@@ -7,7 +7,8 @@
 [![License](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
 
 Generate realistic synthetic time series datasets with configurable dimensions,
-metrics, and composable trend functions — via a Python API or the `tsdata` CLI.
+metrics, composable trend functions, and injectable anomalies — via a Python API
+or the `tsdata` CLI.
 
 <img src="https://github.com/manojmanivannan/ts-data-generator/raw/main/notebooks/image.png" alt="sample plot" width="800"/>
 
@@ -24,20 +25,36 @@ uvx --python 3.11 --from ts-data-generator tsdata generate \
     --preset daily-sales --output sales.csv
 ```
 
+With anomalies and a fixed seed for reproducibility:
+
+```bash
+uvx --python 3.11 --from ts-data-generator tsdata generate \
+    --start 2024-01-01 --end 2024-01-07 --granularity h \
+    --dims "region:US,EU,AP" \
+    --mets "temperature:SinusoidalTrend(amplitude=10,freq=24)" \
+    --anomalies "temperature:PointAnomaly(probability=0.01,magnitude=5)" \
+    --seed 42 --output weather.csv
+```
+
 ### Python API
 
 ```python
 from ts_data_generator import DataGen
 from ts_data_generator.utils.trends import SinusoidalTrend
 from ts_data_generator.utils.functions import random_choice
+from ts_data_generator.anomalies import PointAnomaly, MissingData
 
-dg = DataGen()
+dg = DataGen(seed=42)
 dg.start_datetime = "2024-01-01"
 dg.end_datetime = "2024-01-07"
 dg.to_granularity("h")
 
 dg.add_dimension("region", random_choice(["US", "EU", "AP"]))
-dg.add_metric("temperature", {SinusoidalTrend(amplitude=10, freq=24)})
+dg.add_metric(
+    "temperature",
+    {SinusoidalTrend(amplitude=10, freq=24)},
+    anomalies=[PointAnomaly(probability=0.01, magnitude=5)],
+)
 
 print(dg.data.head())
 dg.data.to_csv("weather.csv", index_label="datetime")
@@ -95,6 +112,44 @@ Numeric columns built by additively composing one or more **trends**.
 
 Trends combine with `+`: `metric_name:Trend1(...)+Trend2(...)`.
 
+### Anomalies
+Inject realistic irregularities into metric values. Anomalies are applied per-metric after trend composition and run in order (PointAnomaly → MissingData last, so NaN values are never overwritten).
+
+| Anomaly | Description | Key parameters |
+|---|---|---|
+| `PointAnomaly` | Isolated value spikes | `probability`, `mode` (`additive`/`replacement`), `magnitude` |
+| `MissingData` | NaN gaps | `mode` (`random`/`burst`), `probability`, `min_length`, `max_length` |
+| `ConceptDrift` | Gradual regime shifts | `segments` (list of `DriftSegment`) |
+
+**PointAnomaly** supports two modes:
+- `additive` — adds the magnitude to the trend value at anomalous timestamps.
+- `replacement` — replaces the trend value with the magnitude.
+Magnitude can be a fixed scalar or a `(min, max)` tuple for uniform sampling.
+
+**MissingData** supports two modes:
+- `random` — each timestamp independently becomes NaN with the given probability.
+- `burst` — consecutive blocks of NaN of configurable length, non-overlapping.
+
+**ConceptDrift** applies gradual distribution-level shifts using `DriftSegment`:
+```python
+from ts_data_generator.anomalies import ConceptDrift, DriftSegment
+
+ConceptDrift(segments=[
+    DriftSegment(start_index=100, transition_window=50,
+                 target_mean=50, target_std=5,
+                 hold_duration=200, restore=True),
+])
+```
+Each segment alpha-blends from baseline into `N(target_mean, target_std)` over `transition_window` timestamps, holds for `hold_duration`, and optionally transitions back. Multi-segment sequences are built by repeating `--anomalies` for the same metric in the CLI, or by passing a list of segments in the API.
+
+Anomalies combine with `+` and are scoped to a metric:
+```
+metric_name:PointAnomaly(...)+MissingData(...)
+```
+
+### Deterministic generation
+Pass `seed` to `DataGen(seed=42)` or `--seed 42` in the CLI for reproducible output. The seed initializes a PCG64-backed `SeedableRNG` that is threaded through trend generation and anomaly injection, replacing global `np.random` calls.
+
 ### Multi-Items
 Linked columns generated from a single function — useful when columns have
 dependencies (e.g. `col3 = col1 + col2`).
@@ -147,12 +202,41 @@ tsdata generate \
 | `--granularity` | `s`, `min`, `5min`, `h`, `D`, `W`, `ME`, `Y` |
 | `--dims` | Dimension spec (repeatable) |
 | `--mets` | Metric spec (repeatable) |
+| `--anomalies` | Anomaly spec keyed by metric name (repeatable) |
+| `--seed` | Integer seed for deterministic generation |
 | `--output` | Output CSV path (must end in `.csv`) |
 | `--preset` | Use a built-in preset |
 | `--config` | Path to a JSON config file |
 
 **Presets** — `daily-sales`, `hourly-metrics`, `minute-stock`, `weekly-revenue`,
 `monthly-recurring`. List with `tsdata presets`.
+
+### Anomaly examples
+
+```bash
+# Point anomalies
+tsdata generate ... --anomalies "sales:PointAnomaly(probability=0.01,magnitude=5)"
+
+# Missing data (random mode)
+tsdata generate ... --anomalies "sales:MissingData(probability=0.05)"
+
+# Missing data (burst mode)
+tsdata generate ... --anomalies "sales:MissingData(mode=burst,burst_probability=0.02,min_length=3,max_length=10)"
+
+# Concept drift (single segment)
+tsdata generate ... --anomalies "sales:ConceptDrift(start_index=100,target_mean=50,target_std=5,hold_duration=200)"
+
+# Multiple anomaly types on one metric
+tsdata generate ... --anomalies "sales:PointAnomaly(probability=0.01,magnitude=5)+MissingData(probability=0.05)"
+
+# Multi-segment concept drift (repeat --anomalies for the same metric)
+tsdata generate ... \
+    --anomalies "sales:ConceptDrift(start_index=0,target_mean=50,hold_duration=200)" \
+    --anomalies "sales:ConceptDrift(start_index=300,target_mean=100,hold_duration=150,restore=true)"
+
+# Deterministic generation
+tsdata generate ... --seed 42
+```
 
 ### Other commands
 
@@ -185,6 +269,10 @@ tsdata generate --end "2024-01-02" --dims "id:A,B" --mets "val:LinearTrend(limit
     "sales:LinearTrend(limit=500)+WeekendTrend(weekend_effect=50)",
     "orders:LinearTrend(limit=200)"
   ],
+  "anomalies": [
+    "sales:PointAnomaly(probability=0.01,magnitude=5)+MissingData(probability=0.05)"
+  ],
+  "seed": 42,
   "output": "data.csv"
 }
 ```
@@ -224,21 +312,28 @@ See the [imputer notebook](./notebooks/imputer.ipynb) for a full walkthrough.
 
 ```
 ts_data_generator/
-├── __init__.py          # Public API: DataGen, __version__
-├── exceptions.py        # Custom exception hierarchy
-├── _version.py          # Package version
-├── data_gen.py          # DataGen engine (orchestrator)
-├── cli.py               # Click CLI (tsdata command)
+├── __init__.py            # Public API: DataGen
+├── exceptions.py          # Custom exception hierarchy
+├── _version.py            # Package version
+├── data_gen.py            # DataGen engine (orchestrator)
+├── cli.py                 # Click CLI (tsdata command)
+├── random.py              # SeedableRNG wrapper (PCG64-backed)
+├── anomalies/
+│   ├── __init__.py        # Anomaly, PointAnomaly, MissingData, ConceptDrift, DriftSegment
+│   ├── base.py            # Abstract Anomaly base class
+│   ├── point.py           # PointAnomaly (isolated spikes)
+│   ├── missing.py         # MissingData (NaN gaps, random & burst)
+│   └── drift.py           # ConceptDrift + DriftSegment (regime shifts)
 ├── core/
 │   └── dataframe_builder.py  # DataFrame generation logic
 ├── schema/
-│   ├── models.py        # Granularity, AggregationType, Metrics, Dimensions, MultiItems
-│   └── converter.py     # CSV schema analysis & trend imputing
+│   ├── models.py          # Granularity, AggregationType, Metrics, Dimensions
+│   └── converter.py       # CSV schema analysis & trend imputing
 ├── utils/
-│   ├── functions.py     # Dimension generator functions
-│   └── trends.py        # Trend generators (Sine, Linear, Weekend, Stock)
+│   ├── functions.py       # Dimension generator functions
+│   └── trends.py          # Trend generators (Sine, Linear, Weekend, Stock)
 └── transforms/
-    └── normalizer.py    # Min-max & standard normalization strategies
+    └── normalizer.py      # Min-max & standard normalization strategies
 ```
 
 ---
