@@ -19,11 +19,13 @@ from ts_data_generator.utils.functions import (
 from enum import Enum
 from typing import Generator
 from ts_data_generator.utils.trends import (
+    ARNoiseTrend,
     SinusoidalTrend,
     LinearTrend,
     StockTrend,
     WeekendTrend,
 )
+from ts_data_generator.random import SeedableRNG
 
 
 class TestDataGen5minGenerator:
@@ -304,3 +306,92 @@ class TestToGranularity:
     def test_to_granularity_invalid_string(self, data_gen_instance):
         with pytest.raises(ValueError):
             data_gen_instance.to_granularity("invalid")
+
+
+class TestARNoiseTrend:
+    """Tests for ARNoiseTrend — autoregressive noise model."""
+
+    @staticmethod
+    def _make_timestamps(n: int = 100) -> pd.DatetimeIndex:
+        return pd.date_range("2023-01-01", periods=n, freq="h")
+
+    def test_explicit_coefficients_basic(self):
+        """ARNoiseTrend with explicit coefficients produces output of correct length."""
+        timestamps = self._make_timestamps(50)
+        trend = ARNoiseTrend(coefficients=[0.5, -0.2], noise_std=0.5)
+        output = trend.generate(timestamps)
+        assert len(output) == 50
+        assert isinstance(output, np.ndarray)
+
+    def test_auto_generated_coefficients(self):
+        """decay + order auto-generates stable coefficients and produces output."""
+        timestamps = self._make_timestamps(50)
+        trend = ARNoiseTrend(decay=0.8, order=3, noise_std=0.5)
+        output = trend.generate(timestamps)
+        assert len(output) == 50
+        # Auto-generated coefficients must satisfy sum(|c|) < 1 (stationarity)
+        assert np.sum(np.abs(trend.coefficients)) < 1.0
+
+    def test_determinism_with_fixed_seed(self):
+        """Same seed produces identical output."""
+        timestamps = self._make_timestamps(30)
+        trend = ARNoiseTrend(coefficients=[0.5], noise_std=0.5)
+        rng1 = SeedableRNG(42)
+        rng2 = SeedableRNG(42)
+        out1 = trend.generate(timestamps, rng=rng1)
+        out2 = trend.generate(timestamps, rng=rng2)
+        np.testing.assert_array_equal(out1, out2)
+
+    def test_different_seeds_produce_different_output(self):
+        """Different seeds produce different output."""
+        timestamps = self._make_timestamps(30)
+        trend = ARNoiseTrend(coefficients=[0.5], noise_std=0.5)
+        out1 = trend.generate(timestamps, rng=SeedableRNG(1))
+        out2 = trend.generate(timestamps, rng=SeedableRNG(2))
+        assert not np.allclose(out1, out2)
+
+    def test_autocorrelation_positive_coefficient(self):
+        """AR(1) with large positive c1 should exhibit positive lag-1 autocorrelation."""
+        timestamps = self._make_timestamps(500)
+        trend = ARNoiseTrend(coefficients=[0.9], noise_std=0.1)
+        rng = SeedableRNG(123)
+        output = trend.generate(timestamps, rng=rng)
+        # Compute lag-1 autocorrelation
+        corr = np.corrcoef(output[:-1], output[1:])[0, 1]
+        assert corr > 0.3  # strong positive serial correlation
+
+    def test_autocorrelation_negative_coefficient(self):
+        """AR(1) with negative c1 should exhibit negative lag-1 autocorrelation."""
+        timestamps = self._make_timestamps(500)
+        trend = ARNoiseTrend(coefficients=[-0.7], noise_std=0.1)
+        rng = SeedableRNG(123)
+        output = trend.generate(timestamps, rng=rng)
+        corr = np.corrcoef(output[:-1], output[1:])[0, 1]
+        assert corr < -0.2  # negative serial correlation
+
+    def test_noise_std_zero_is_deterministic_ar(self):
+        """With noise_std=0 and a single coefficient, AR process follows exact recurrence."""
+        timestamps = self._make_timestamps(20)
+        trend = ARNoiseTrend(coefficients=[0.5], noise_std=0.0)
+        rng = SeedableRNG(99)
+        output = trend.generate(timestamps, rng=rng)
+        # After warmup, value[t] = 0.5 * value[t-1] exactly (noise=0)
+        # Check that the recurrence holds after the warmup period
+        for t in range(3, len(output)):
+            expected = 0.5 * output[t - 1]
+            assert output[t] == pytest.approx(expected)
+
+    def test_validation_requires_coefficients_or_decay_order(self):
+        """Must provide either coefficients or both decay and order."""
+        with pytest.raises(ValueError, match="Provide either coefficients"):
+            ARNoiseTrend(noise_std=0.5)
+
+    def test_validation_decay_range(self):
+        """decay must be in (0, 1)."""
+        with pytest.raises(ValueError, match="decay must be"):
+            ARNoiseTrend(decay=1.5, order=3)
+
+    def test_validation_empty_coefficients(self):
+        """coefficients must not be empty."""
+        with pytest.raises(ValueError, match="at least one value"):
+            ARNoiseTrend(coefficients=[])

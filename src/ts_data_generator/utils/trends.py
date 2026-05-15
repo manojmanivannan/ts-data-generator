@@ -331,6 +331,94 @@ class StockTrend(Trends):
 
         return base_wave + trend
 
+class ARNoiseTrend(Trends):
+    """Generate autoregressive noise of order p.
+
+    ``value[t] = sum(coefficients[i] * value[t-i-1]) + N(0, noise_std)``
+
+    Args:
+        name: Human-readable name.
+        coefficients: Explicit AR coefficients. Length determines order.
+            Mutually exclusive with decay/order.
+        noise_std: Standard deviation of Gaussian innovations.
+        decay: Auto-generate stable coefficients using geometric decay with
+            alternating signs. Must be in (0, 1). Requires ``order``.
+        order: Order of the AR process when using auto-generated coefficients.
+
+    Example:
+        CLI shorthand: ``ARNoiseTrend(coefficients=[0.5,-0.2],noise_std=0.5)``
+    """
+
+    _example = "sales:ARNoiseTrend(coefficients=[0.5,-0.2],noise_std=0.5)"
+
+    def __init__(
+        self,
+        name: str = "default",
+        coefficients: list[float] | None = None,
+        noise_std: float = 0.0,
+        decay: float | None = None,
+        order: int | None = None,
+    ) -> None:
+        super().__init__(name)
+        self._noise_std = noise_std
+
+        if coefficients is not None:
+            if len(coefficients) < 1:
+                raise ValueError("coefficients must contain at least one value")
+            self._coefficients = np.array(coefficients, dtype=float)
+            self._order = len(coefficients)
+        elif decay is not None and order is not None:
+            if not 0 < decay < 1:
+                raise ValueError("decay must be in (0, 1)")
+            if order < 1:
+                raise ValueError("order must be at least 1")
+            raw = np.array([decay**i for i in range(1, order + 1)])
+            signs = np.array([1.0 if i % 2 == 1 else -1.0 for i in range(1, order + 1)])
+            raw = raw * signs
+            abs_sum = float(np.sum(np.abs(raw)))
+            if abs_sum >= 1.0:
+                raw = raw / (abs_sum + 0.1)
+            self._coefficients = raw
+            self._order = order
+        else:
+            raise ValueError(
+                "Provide either coefficients or both decay and order"
+            )
+
+    @property
+    def coefficients(self) -> np.ndarray:
+        return self._coefficients
+
+    @property
+    def noise_std(self) -> float:
+        return self._noise_std
+
+    @property
+    def order(self) -> int:
+        return self._order
+
+    def generate(
+        self, timestamps: pd.DatetimeIndex, rng: SeedableRNG | None = None
+    ) -> np.ndarray:
+        n = len(timestamps)
+        order = self._order
+        total = order + n
+
+        if rng is not None:
+            innovations = rng.normal(0, self._noise_std, total)
+        else:
+            innovations = np.random.normal(0, self._noise_std, total)
+
+        values = np.zeros(total)
+        for t in range(total):
+            ar_term = 0.0
+            for i in range(min(t, order)):
+                ar_term += self._coefficients[i] * values[t - i - 1]
+            values[t] = ar_term + innovations[t]
+
+        return values[order:]
+
+
 class HolidayTrend(Trends):
     """Generate a trend that spikes on holidays with optional ramp up/down windows.
 
