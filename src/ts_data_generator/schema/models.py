@@ -18,6 +18,7 @@ from ts_data_generator.utils.functions import auto_generate_name
 from ts_data_generator.utils.trends import Trends
 
 if TYPE_CHECKING:
+    from ts_data_generator.anomalies.base import Anomaly
     from ts_data_generator.random import SeedableRNG
 
 logger = logging.getLogger(__name__)
@@ -63,10 +64,12 @@ class Metrics:
         name: str = "default",
         trends: set[Trends] | None = None,
         aggregation_type: AggregationType = AggregationType.AVG,
+        anomalies: list[Anomaly] | None = None,
     ) -> None:
         self._name = auto_generate_name(category="metric") if name == "default" else name
         self._trends: set[Trends] = trends or set()
         self._aggregation_type = aggregation_type
+        self._anomalies: list[Anomaly] = anomalies or []
 
     @property
     def name(self) -> str:
@@ -83,6 +86,11 @@ class Metrics:
         """The aggregation method for resampling."""
         return self._aggregation_type
 
+    @property
+    def anomalies(self) -> list[Anomaly]:
+        """The ordered list of anomaly injectors applied after trends."""
+        return self._anomalies
+
     def generate(
         self, timestamps: pd.DatetimeIndex, rng: SeedableRNG | None = None
     ) -> pd.DataFrame:
@@ -90,7 +98,7 @@ class Metrics:
 
         Args:
             timestamps: DatetimeIndex of time points.
-            rng: Optional SeedableRNG passed through to each trend.
+            rng: Optional SeedableRNG passed through to each trend and anomaly.
 
         Returns:
             DataFrame with a single column named after this metric.
@@ -98,6 +106,8 @@ class Metrics:
         data = np.zeros(len(timestamps))
         for trend in self._trends:
             data += trend.generate(timestamps, rng=rng)
+        for anomaly in self._anomalies:
+            data = anomaly.intervene(data, timestamps, rng=rng)
         self._data = pd.DataFrame(data, columns=[self._name], index=timestamps)
         return self._data
 
