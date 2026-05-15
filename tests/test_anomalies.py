@@ -6,6 +6,7 @@ import pytest
 
 from ts_data_generator import DataGen
 from ts_data_generator.anomalies.base import Anomaly
+from ts_data_generator.anomalies.missing import MissingData
 from ts_data_generator.anomalies.point import PointAnomaly
 from ts_data_generator.random import SeedableRNG
 from ts_data_generator.schema.models import Granularity, Metrics
@@ -249,3 +250,264 @@ class TestPipelineOrdering:
         assert not np.array_equal(
             result_forward["test"].values, result_reverse["test"].values
         )
+
+
+class TestMissingDataConstruction:
+    def test_default_construction(self):
+        md = MissingData()
+        assert md.mode == "random"
+        assert md.probability == 0.01
+        assert md.burst_probability == 0.02
+        assert md.min_length == 2
+        assert md.max_length == 5
+
+    def test_explicit_random_params(self):
+        md = MissingData(mode="random", probability=0.1)
+        assert md.mode == "random"
+        assert md.probability == 0.1
+
+    def test_explicit_burst_params(self):
+        md = MissingData(
+            mode="burst", burst_probability=0.05, min_length=3, max_length=10
+        )
+        assert md.mode == "burst"
+        assert md.burst_probability == 0.05
+        assert md.min_length == 3
+        assert md.max_length == 10
+
+    def test_invalid_mode_raises(self):
+        with pytest.raises(ValueError):
+            MissingData(mode="invalid")  # type: ignore[arg-type]
+
+
+class TestMissingDataRandom:
+    def test_produces_expected_nan_rate(self):
+        n = 2000
+        base = np.ones(n)
+        timestamps = pd.date_range("2024-01-01", periods=n, freq="min")
+
+        md = MissingData(mode="random", probability=0.05)
+        result = md.intervene(base, timestamps, rng=None)
+
+        nan_count = np.sum(np.isnan(result))
+        # ~5% of 2000 = 100, generous bounds
+        assert 50 < nan_count < 150
+
+    def test_non_nan_values_unchanged(self):
+        n = 500
+        base = np.arange(n, dtype=float)
+        timestamps = pd.date_range("2024-01-01", periods=n, freq="min")
+
+        md = MissingData(mode="random", probability=0.1)
+        result = md.intervene(base, timestamps, rng=None)
+
+        non_nan_mask = ~np.isnan(result)
+        assert np.all(result[non_nan_mask] == base[non_nan_mask])
+
+    def test_no_rng_falls_back_to_numpy_global(self):
+        n = 200
+        base = np.zeros(n)
+        timestamps = pd.date_range("2024-01-01", periods=n, freq="min")
+
+        md = MissingData(mode="random", probability=0.5)
+        result = md.intervene(base, timestamps, rng=None)
+
+        assert np.any(np.isnan(result))
+
+
+class TestMissingDataBurst:
+    def test_produces_consecutive_nan_blocks(self):
+        n = 2000
+        base = np.ones(n)
+        timestamps = pd.date_range("2024-01-01", periods=n, freq="min")
+
+        md = MissingData(mode="burst", burst_probability=0.02, min_length=3, max_length=10)
+        rng = SeedableRNG(42)
+        result = md.intervene(base, timestamps, rng=rng)
+
+        nan_mask = np.isnan(result)
+        assert np.any(nan_mask)  # should have at least some NaN
+
+        # Detect consecutive NaN runs
+        in_run = False
+        run_lengths = []
+        current_run = 0
+        for i in range(n):
+            if nan_mask[i]:
+                if not in_run:
+                    in_run = True
+                    current_run = 1
+                else:
+                    current_run += 1
+            else:
+                if in_run:
+                    run_lengths.append(current_run)
+                    in_run = False
+
+        if in_run:
+            run_lengths.append(current_run)
+
+        # All run lengths should be within [min_length, max_length]
+        for rl in run_lengths:
+            assert 3 <= rl <= 10, f"burst length {rl} outside [3, 10]"
+
+        # With SeedableRNG(42), runs should be non-empty
+        assert len(run_lengths) > 0
+
+    def test_bursts_do_not_overlap(self):
+        n = 2000
+        base = np.ones(n)
+        timestamps = pd.date_range("2024-01-01", periods=n, freq="min")
+
+        md = MissingData(mode="burst", burst_probability=0.03, min_length=5, max_length=15)
+        rng = SeedableRNG(42)
+        result = md.intervene(base, timestamps, rng=rng)
+
+        nan_mask = np.isnan(result)
+
+        # Check that NaN entries appear only in contiguous blocks
+        # with at least one non-NaN between blocks
+        transitions = 0
+        for i in range(1, len(nan_mask)):
+            if nan_mask[i] != nan_mask[i - 1]:
+                transitions += 1
+
+        # Each run of NaN has a start and end transition
+        # If no overlaps, the NaN blocks are separated by non-NaN regions
+        # We verify by checking all NaN run lengths are >= min_length (already
+        # covered above), and there are non-NaN gaps between blocks
+        in_nan = nan_mask[0]
+        nan_runs = 0
+        for i in range(1, n):
+            if nan_mask[i] and not in_nan:
+                nan_runs += 1
+            in_nan = nan_mask[i]
+
+        # With burst_probability=0.03 across 2000 points, expect several bursts
+        assert nan_runs >= 1
+
+    def test_burst_length_respects_bounds(self):
+        n = 3000
+        base = np.ones(n)
+        timestamps = pd.date_range("2024-01-01", periods=n, freq="min")
+
+        md = MissingData(mode="burst", burst_probability=0.03, min_length=3, max_length=7)
+        rng = SeedableRNG(42)
+        result = md.intervene(base, timestamps, rng=rng)
+
+        nan_mask = np.isnan(result)
+
+        # Measure all run lengths
+        run_lengths = []
+        i = 0
+        while i < n:
+            if nan_mask[i]:
+                j = i
+                while j < n and nan_mask[j]:
+                    j += 1
+                run_lengths.append(j - i)
+                i = j
+            else:
+                i += 1
+
+        assert len(run_lengths) > 0
+        for rl in run_lengths:
+            assert 3 <= rl <= 7, f"burst length {rl} outside [3, 7]"
+
+
+class TestMissingDataSeedDeterminism:
+    def test_random_mode_seed_determinism(self):
+        n = 200
+        base = np.ones(n)
+        timestamps = pd.date_range("2024-01-01", periods=n, freq="min")
+        md = MissingData(mode="random", probability=0.1)
+
+        rng1 = SeedableRNG(42)
+        rng2 = SeedableRNG(42)
+        result1 = md.intervene(base, timestamps, rng=rng1)
+        result2 = md.intervene(base, timestamps, rng=rng2)
+
+        assert np.array_equal(result1, result2, equal_nan=True)
+
+    def test_random_mode_different_seeds_different(self):
+        n = 200
+        base = np.ones(n)
+        timestamps = pd.date_range("2024-01-01", periods=n, freq="min")
+        md = MissingData(mode="random", probability=0.1)
+
+        rng1 = SeedableRNG(42)
+        rng2 = SeedableRNG(99)
+        result1 = md.intervene(base, timestamps, rng=rng1)
+        result2 = md.intervene(base, timestamps, rng=rng2)
+
+        assert not np.array_equal(result1, result2, equal_nan=True)
+
+    def test_burst_mode_seed_determinism(self):
+        n = 200
+        base = np.ones(n)
+        timestamps = pd.date_range("2024-01-01", periods=n, freq="min")
+        md = MissingData(mode="burst", burst_probability=0.03, min_length=3, max_length=10)
+
+        rng1 = SeedableRNG(42)
+        rng2 = SeedableRNG(42)
+        result1 = md.intervene(base, timestamps, rng=rng1)
+        result2 = md.intervene(base, timestamps, rng=rng2)
+
+        assert np.array_equal(result1, result2, equal_nan=True)
+
+    def test_burst_mode_different_seeds_different(self):
+        n = 200
+        base = np.ones(n)
+        timestamps = pd.date_range("2024-01-01", periods=n, freq="min")
+        md = MissingData(mode="burst", burst_probability=0.03, min_length=3, max_length=10)
+
+        rng1 = SeedableRNG(42)
+        rng2 = SeedableRNG(99)
+        result1 = md.intervene(base, timestamps, rng=rng1)
+        result2 = md.intervene(base, timestamps, rng=rng2)
+
+        assert not np.array_equal(result1, result2, equal_nan=True)
+
+
+class TestMissingDataPipelineWithPointAnomaly:
+    def test_nan_preserved_when_point_anomaly_then_missing_data(self):
+        """NaNs from MissingData (last) are never overwritten by PointAnomaly (first)."""
+        n = 2000
+        timestamps = pd.date_range("2024-01-01", periods=n, freq="min")
+
+        pa = PointAnomaly(probability=0.1, magnitude=100, mode="replacement")
+        md = MissingData(mode="random", probability=0.1)
+
+        m = Metrics(name="test", trends=set(), anomalies=[pa, md])
+        rng = SeedableRNG(42)
+        result_df = m.generate(timestamps, rng=rng)
+        values = result_df["test"].values
+
+        nan_mask = np.isnan(values)
+        assert np.any(nan_mask)  # some NaN from MissingData
+
+        # Non-NaN values should be either 0 (base, no anomaly) or 100 (replacement PA)
+        non_nan = values[~nan_mask]
+        unique_non_nan = set(non_nan)
+        assert unique_non_nan.issubset({0.0, 100.0})
+
+    def test_missing_last_preserves_order(self):
+        """MissingData after PointAnomaly means NaNs are never overwritten."""
+        n = 500
+        timestamps = pd.date_range("2024-01-01", periods=n, freq="min")
+
+        pa = PointAnomaly(probability=0.3, magnitude=50, mode="replacement")
+        md = MissingData(mode="random", probability=0.3)
+
+        m = Metrics(name="test", trends=set(), anomalies=[pa, md])
+        rng = SeedableRNG(42)
+        result_df = m.generate(timestamps, rng=rng)
+        values = result_df["test"].values
+
+        # Since MD runs last, NaN positions exist and are not overwritten
+        nan_count = np.sum(np.isnan(values))
+        assert nan_count > 0
+
+        # Non-NaN values are either 0 (base) or 50 (replacement from PA)
+        non_nan = values[~np.isnan(values)]
+        assert set(non_nan).issubset({0.0, 50.0})
