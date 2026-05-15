@@ -1,7 +1,8 @@
 """Anomaly injection package."""
 
 from ts_data_generator.anomalies.base import Anomaly
+from ts_data_generator.anomalies.drift import ConceptDrift, DriftSegment
 from ts_data_generator.anomalies.missing import MissingData
 from ts_data_generator.anomalies.point import PointAnomaly
 
-__all__ = ["Anomaly", "MissingData", "PointAnomaly"]
+__all__ = ["Anomaly", "ConceptDrift", "DriftSegment", "MissingData", "PointAnomaly"]
