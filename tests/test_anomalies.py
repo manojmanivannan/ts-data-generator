@@ -514,57 +514,46 @@ class TestMissingDataPipelineWithPointAnomaly:
 
 
 class TestDriftSegmentConstruction:
-    def test_requires_either_start_index_or_timestamp(self):
+    def test_requires_start_timestamp(self):
         from ts_data_generator.anomalies.drift import DriftSegment
 
-        with pytest.raises(ValueError, match="Either"):
-            DriftSegment()
+        with pytest.raises(TypeError):
+            DriftSegment()  # type: ignore[call-arg]
 
-    def test_rejects_both_start_index_and_timestamp(self):
+    def test_rejects_empty_start_timestamp(self):
         from ts_data_generator.anomalies.drift import DriftSegment
 
-        with pytest.raises(ValueError, match="Only one"):
-            DriftSegment(start_index=10, start_timestamp="2024-01-15")
+        with pytest.raises(ValueError, match="start_timestamp"):
+            DriftSegment(start_timestamp="")
 
-    def test_accepts_start_index(self):
+    def test_accepts_start_timestamp_with_defaults(self):
         from ts_data_generator.anomalies.drift import DriftSegment
 
-        seg = DriftSegment(start_index=100, transition_window=50, target_mean=10.0,
-                           target_std=2.0, hold_duration=200, restore=True)
-        assert seg.start_index == 100
-        assert seg.transition_window == 50
-        assert seg.target_mean == 10.0
-        assert seg.target_std == 2.0
-        assert seg.hold_duration == 200
-        assert seg.restore is True
-
-    def test_accepts_start_timestamp(self):
-        from ts_data_generator.anomalies.drift import DriftSegment
-
-        seg = DriftSegment(start_timestamp="2024-06-15", transition_window=30,
-                           target_mean=0.0, target_std=1.0, hold_duration=100)
+        seg = DriftSegment(start_timestamp="2024-06-15")
         assert seg.start_timestamp == "2024-06-15"
+        assert seg.transition_window == 1800
+        assert seg.hold_duration == 7200
         assert seg.restore is False
 
     def test_rejects_negative_transition_window(self):
         from ts_data_generator.anomalies.drift import DriftSegment
 
         with pytest.raises(ValueError, match="transition_window"):
-            DriftSegment(start_index=10, transition_window=0)
+            DriftSegment(start_timestamp="2024-01-01", transition_window=0)
 
     def test_rejects_negative_hold_duration(self):
         from ts_data_generator.anomalies.drift import DriftSegment
 
         with pytest.raises(ValueError, match="hold_duration"):
-            DriftSegment(start_index=10, hold_duration=0)
+            DriftSegment(start_timestamp="2024-01-01", hold_duration=0)
 
 
 class TestConceptDriftSkeleton:
     def test_constructs_with_one_segment(self):
         from ts_data_generator.anomalies.drift import ConceptDrift, DriftSegment
 
-        seg = DriftSegment(start_index=50, transition_window=20, target_mean=5.0,
-                           target_std=1.0, hold_duration=100)
+        seg = DriftSegment(start_timestamp="2024-01-01 00:50:00", transition_window=1200,
+                           target_mean=5.0, target_std=1.0, hold_duration=6000)
         cd = ConceptDrift(segments=[seg])
         assert len(cd.segments) == 1
 
@@ -575,8 +564,8 @@ class TestConceptDriftSkeleton:
         base = np.arange(n, dtype=float)
         timestamps = pd.date_range("2024-01-01", periods=n, freq="min")
 
-        seg = DriftSegment(start_index=50, transition_window=20, target_mean=100.0,
-                           target_std=0.0, hold_duration=80)
+        seg = DriftSegment(start_timestamp="2024-01-01 00:50:00", transition_window=1200,
+                           target_mean=100.0, target_std=0.0, hold_duration=4800)
         cd = ConceptDrift(segments=[seg])
         rng = SeedableRNG(42)
         result = cd.intervene(base, timestamps, rng=rng)
@@ -593,8 +582,8 @@ class TestConceptDriftTransition:
         base = np.full(n, 10.0)
         timestamps = pd.date_range("2024-01-01", periods=n, freq="min")
 
-        seg = DriftSegment(start_index=20, transition_window=10, target_mean=50.0,
-                           target_std=0.0, hold_duration=30, restore=False)
+        seg = DriftSegment(start_timestamp="2024-01-01 00:20:00", transition_window=600,
+                           target_mean=50.0, target_std=0.0, hold_duration=1800, restore=False)
         cd = ConceptDrift(segments=[seg])
         rng = SeedableRNG(42)
         result = cd.intervene(base, timestamps, rng=rng)
@@ -617,8 +606,8 @@ class TestConceptDriftTransition:
         base = np.full(n, 5.0)
         timestamps = pd.date_range("2024-01-01", periods=n, freq="min")
 
-        seg = DriftSegment(start_index=50, transition_window=40, target_mean=105.0,
-                           target_std=2.0, hold_duration=60, restore=False)
+        seg = DriftSegment(start_timestamp="2024-01-01 00:50:00", transition_window=2400,
+                           target_mean=105.0, target_std=2.0, hold_duration=3600, restore=False)
         cd = ConceptDrift(segments=[seg])
         rng = SeedableRNG(42)
         result = cd.intervene(base, timestamps, rng=rng)
@@ -639,8 +628,8 @@ class TestConceptDriftHold:
         base = np.zeros(n)
         timestamps = pd.date_range("2024-01-01", periods=n, freq="min")
 
-        seg = DriftSegment(start_index=30, transition_window=20, target_mean=75.0,
-                           target_std=0.0, hold_duration=50, restore=False)
+        seg = DriftSegment(start_timestamp="2024-01-01 00:30:00", transition_window=1200,
+                           target_mean=75.0, target_std=0.0, hold_duration=3000, restore=False)
         cd = ConceptDrift(segments=[seg])
         rng = SeedableRNG(42)
         result = cd.intervene(base, timestamps, rng=rng)
@@ -656,8 +645,8 @@ class TestConceptDriftHold:
         base = np.zeros(n)
         timestamps = pd.date_range("2024-01-01", periods=n, freq="min")
 
-        seg = DriftSegment(start_index=50, transition_window=100, target_mean=100.0,
-                           target_std=10.0, hold_duration=500, restore=False)
+        seg = DriftSegment(start_timestamp="2024-01-01 00:50:00", transition_window=6000,
+                           target_mean=100.0, target_std=10.0, hold_duration=30000, restore=False)
         cd = ConceptDrift(segments=[seg])
         rng = SeedableRNG(42)
         result = cd.intervene(base, timestamps, rng=rng)
@@ -678,8 +667,8 @@ class TestConceptDriftRestore:
         timestamps = pd.date_range("2024-01-01", periods=n, freq="min")
 
         # start=50, tw=20 (50-69), hold=100 (70-169), restore tw=20 (170-189), back to baseline 190+
-        seg = DriftSegment(start_index=50, transition_window=20, target_mean=80.0,
-                           target_std=0.0, hold_duration=100, restore=True)
+        seg = DriftSegment(start_timestamp="2024-01-01 00:50:00", transition_window=1200,
+                           target_mean=80.0, target_std=0.0, hold_duration=6000, restore=True)
         cd = ConceptDrift(segments=[seg])
         rng = SeedableRNG(42)
         result = cd.intervene(base, timestamps, rng=rng)
@@ -698,8 +687,8 @@ class TestConceptDriftRestore:
         base = np.full(n, 10.0)
         timestamps = pd.date_range("2024-01-01", periods=n, freq="min")
 
-        seg = DriftSegment(start_index=20, transition_window=30, target_mean=90.0,
-                           target_std=3.0, hold_duration=40, restore=True)
+        seg = DriftSegment(start_timestamp="2024-01-01 00:20:00", transition_window=1800,
+                           target_mean=90.0, target_std=3.0, hold_duration=2400, restore=True)
         cd = ConceptDrift(segments=[seg])
         rng = SeedableRNG(42)
         result = cd.intervene(base, timestamps, rng=rng)
@@ -721,8 +710,8 @@ class TestConceptDriftRestore:
         base = np.full(n, 0.0)
         timestamps = pd.date_range("2024-01-01", periods=n, freq="min")
 
-        seg = DriftSegment(start_index=10, transition_window=5, target_mean=99.0,
-                           target_std=0.0, hold_duration=20, restore=False)
+        seg = DriftSegment(start_timestamp="2024-01-01 00:10:00", transition_window=300,
+                           target_mean=99.0, target_std=0.0, hold_duration=1200, restore=False)
         cd = ConceptDrift(segments=[seg])
         rng = SeedableRNG(42)
         result = cd.intervene(base, timestamps, rng=rng)
@@ -741,8 +730,8 @@ class TestConceptDriftSeedDeterminism:
         base = np.ones(n)
         timestamps = pd.date_range("2024-01-01", periods=n, freq="min")
 
-        seg = DriftSegment(start_index=40, transition_window=30, target_mean=50.0,
-                           target_std=5.0, hold_duration=60, restore=True)
+        seg = DriftSegment(start_timestamp="2024-01-01 00:40:00", transition_window=1800,
+                           target_mean=50.0, target_std=5.0, hold_duration=3600, restore=True)
         cd = ConceptDrift(segments=[seg])
 
         rng1 = SeedableRNG(42)
@@ -759,8 +748,8 @@ class TestConceptDriftSeedDeterminism:
         base = np.ones(n)
         timestamps = pd.date_range("2024-01-01", periods=n, freq="min")
 
-        seg = DriftSegment(start_index=40, transition_window=30, target_mean=50.0,
-                           target_std=5.0, hold_duration=60, restore=True)
+        seg = DriftSegment(start_timestamp="2024-01-01 00:40:00", transition_window=1800,
+                           target_mean=50.0, target_std=5.0, hold_duration=3600, restore=True)
         cd = ConceptDrift(segments=[seg])
 
         rng1 = SeedableRNG(42)
@@ -779,8 +768,8 @@ class TestConceptDriftTimestampResolution:
         base = np.arange(n, dtype=float)
         timestamps = pd.date_range("2024-01-01", periods=n, freq="h")
 
-        seg = DriftSegment(start_timestamp="2024-01-03 00:00", transition_window=5,
-                           target_mean=999.0, target_std=0.0, hold_duration=10,
+        seg = DriftSegment(start_timestamp="2024-01-03 00:00", transition_window=18000,
+                           target_mean=999.0, target_std=0.0, hold_duration=36000,
                            restore=False)
         cd = ConceptDrift(segments=[seg])
         rng = SeedableRNG(42)
@@ -797,8 +786,8 @@ class TestConceptDriftTimestampResolution:
         base = np.arange(n, dtype=float)
         timestamps = pd.date_range("2024-01-01", periods=n, freq="D")
 
-        seg = DriftSegment(start_timestamp="2025-06-15", transition_window=5,
-                           target_mean=10.0, target_std=0.0, hold_duration=10)
+        seg = DriftSegment(start_timestamp="2025-06-15", transition_window=432000,
+                           target_mean=10.0, target_std=0.0, hold_duration=864000)
         cd = ConceptDrift(segments=[seg])
 
         with pytest.raises(ValueError, match="not found"):

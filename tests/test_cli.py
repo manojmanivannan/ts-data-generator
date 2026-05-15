@@ -738,8 +738,8 @@ class TestAnomaliesFlag:
             "--dims", "product:constant:A",
             "--mets", "sales:LinearTrend(limit=100)",
             "--anomalies",
-            "sales:ConceptDrift(start_index=0,transition_window=5,target_mean=100,"
-            "target_std=2,hold_duration=100,restore=false)",
+            "sales:ConceptDrift(start_timestamp=2019-01-01T00:00:00,transition_window=18000,target_mean=100,"
+            "target_std=2,hold_duration=360000,restore=false)",
             "--seed", "42",
             "--output", temp_output,
         ])
@@ -761,11 +761,11 @@ class TestAnomaliesFlag:
             "--dims", "product:constant:A",
             "--mets", "sales:LinearTrend(limit=100)",
             "--anomalies",
-            "sales:ConceptDrift(start_index=0,transition_window=3,"
-            "target_mean=50,target_std=1,hold_duration=10,restore=false)",
+            "sales:ConceptDrift(start_timestamp=2019-01-01T00:00:00,transition_window=10800,"
+            "target_mean=50,target_std=1,hold_duration=36000,restore=false)",
             "--anomalies",
-            "sales:ConceptDrift(start_index=15,transition_window=3,"
-            "target_mean=200,target_std=1,hold_duration=10,restore=false)",
+            "sales:ConceptDrift(start_timestamp=2019-01-01T15:00:00,transition_window=10800,"
+            "target_mean=200,target_std=1,hold_duration=36000,restore=false)",
             "--seed", "42",
             "--output", temp_output,
         ])

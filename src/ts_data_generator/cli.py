@@ -425,10 +425,11 @@ def generate(
             "min_length=3,max_length=10)" ...
 
     \b
-        # Concept drift
+        # Concept drift (single segment)
         tsdata generate --anomalies \\
-            "sales:ConceptDrift(start_index=100,target_mean=50,"
-            "target_std=5,hold_duration=200)" ...
+            "sales:ConceptDrift(start_timestamp=2019-01-01T06:00:00,"
+            "transition_window=1800,target_mean=50,target_std=5,"
+            "hold_duration=7200)" ...
 
     \b
         # Multiple anomaly types on one metric
@@ -439,10 +440,10 @@ def generate(
     \b
         # Multi-segment concept drift (repeat --anomalies)
         tsdata generate \\
-            --anomalies "sales:ConceptDrift(start_index=0,"
-            "target_mean=50,hold_duration=200)" \\
-            --anomalies "sales:ConceptDrift(start_index=300,"
-            "target_mean=100,hold_duration=150,restore=true)" ...
+            --anomalies "sales:ConceptDrift(start_timestamp=2019-01-01T00:00:00,"
+            "transition_window=1800,target_mean=50,hold_duration=7200)" \\
+            --anomalies "sales:ConceptDrift(start_timestamp=2019-01-02T00:00:00,"
+            "transition_window=3600,target_mean=100,hold_duration=7200,restore=true)" ...
 
     \b
         # Full example with seed and anomalies

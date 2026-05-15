@@ -21,8 +21,8 @@
     "anomalies": [
         "sales:PointAnomaly(probability=0.01,magnitude=-100,mode=replacement)+PointAnomaly(probability=0.005,magnitude=200)+MissingData(probability=0.01)+MissingData(mode=burst,burst_probability=0.005,min_length=3,max_length=10)",
         "temperature:PointAnomaly(probability=0.02,magnitude=15)+MissingData(mode=burst,burst_probability=0.01,min_length=5,max_length=20)",
-        "price:ConceptDrift(start_index=200,target_mean=100,target_std=8,transition_window=60,hold_duration=300,restore=true)",
-        "price:ConceptDrift(start_index=150,target_mean=200,target_std=15,transition_window=80,hold_duration=250,restore=false)",
-        "traffic:MissingData(probability=0.02)+PointAnomaly(probability=0.01,magnitude=-40)+ConceptDrift(start_index=200,target_mean=500,target_std=50,transition_window=100,hold_duration=400,restore=true)"
+        "price:ConceptDrift(start_timestamp=2024-01-04T12:00:00,target_mean=100,target_std=8,transition_window=216000,hold_duration=1080000,restore=true)",
+        "price:ConceptDrift(start_timestamp=2024-01-15T06:00:00,target_mean=200,target_std=15,transition_window=288000,hold_duration=900000,restore=false)",
+        "traffic:MissingData(probability=0.02)+PointAnomaly(probability=0.01,magnitude=-40)+ConceptDrift(start_timestamp=2024-01-09T08:00:00,target_mean=500,target_std=50,transition_window=360000,hold_duration=1440000,restore=true)"
     ]
 }

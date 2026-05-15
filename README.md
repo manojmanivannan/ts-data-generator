@@ -135,12 +135,12 @@ Magnitude can be a fixed scalar or a `(min, max)` tuple for uniform sampling.
 from ts_data_generator.anomalies import ConceptDrift, DriftSegment
 
 ConceptDrift(segments=[
-    DriftSegment(start_index=100, transition_window=50,
-                 target_mean=50, target_std=5,
-                 hold_duration=200, restore=True),
+    DriftSegment(start_timestamp="2024-01-15T06:00:00",
+                 transition_window=1800, target_mean=50, target_std=5,
+                 hold_duration=7200, restore=True),
 ])
 ```
-Each segment alpha-blends from baseline into `N(target_mean, target_std)` over `transition_window` timestamps, holds for `hold_duration`, and optionally transitions back. Multi-segment sequences are built by repeating `--anomalies` for the same metric in the CLI, or by passing a list of segments in the API.
+Each segment alpha-blends from baseline into `N(target_mean, target_std)` over `transition_window` seconds, holds for `hold_duration` seconds, and optionally transitions back. Multi-segment sequences are built by repeating `--anomalies` for the same metric in the CLI, or by passing a list of segments in the API.
 
 Anomalies combine with `+` and are scoped to a metric:
 ```
@@ -223,16 +223,16 @@ tsdata generate ... --anomalies "sales:MissingData(probability=0.05)"
 # Missing data (burst mode)
 tsdata generate ... --anomalies "sales:MissingData(mode=burst,burst_probability=0.02,min_length=3,max_length=10)"
 
-# Concept drift (single segment)
-tsdata generate ... --anomalies "sales:ConceptDrift(start_index=100,target_mean=50,target_std=5,hold_duration=200)"
+# Concept drift
+tsdata generate ... --anomalies "sales:ConceptDrift(start_timestamp=2024-01-15T06:00:00,target_mean=50,target_std=5,hold_duration=7200)"
 
 # Multiple anomaly types on one metric
 tsdata generate ... --anomalies "sales:PointAnomaly(probability=0.01,magnitude=5)+MissingData(probability=0.05)"
 
 # Multi-segment concept drift (repeat --anomalies for the same metric)
 tsdata generate ... \
-    --anomalies "sales:ConceptDrift(start_index=0,target_mean=50,hold_duration=200)" \
-    --anomalies "sales:ConceptDrift(start_index=300,target_mean=100,hold_duration=150,restore=true)"
+    --anomalies "sales:ConceptDrift(start_timestamp=2024-01-01T00:00:00,transition_window=1800,target_mean=50,hold_duration=7200)" \
+    --anomalies "sales:ConceptDrift(start_timestamp=2024-01-02T00:00:00,transition_window=3600,target_mean=100,hold_duration=7200,restore=true)"
 
 # Deterministic generation
 tsdata generate ... --seed 42

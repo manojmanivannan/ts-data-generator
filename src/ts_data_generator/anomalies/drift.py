@@ -18,35 +18,25 @@ if TYPE_CHECKING:
 class DriftSegment:
     """Parameters for a single concept drift segment.
 
-    Exactly one of ``start_index`` or ``start_timestamp`` must be provided.
-
     Args:
-        start_index: Index into the timestamps array where drift begins.
-        start_timestamp: Timestamp (resolved to index) where drift begins.
-        transition_window: Number of timestamps for gradual onset.
+        start_timestamp: Timestamp where drift begins (e.g. ``"2024-01-15T06:00:00"``).
+        transition_window: Duration in seconds for gradual onset (default 1800 = 30 min).
         target_mean: Mean of the target Gaussian distribution.
         target_std: Standard deviation of the target Gaussian distribution.
-        hold_duration: How long to stay in the new regime.
+        hold_duration: Duration in seconds to stay in the new regime (default 7200 = 2 h).
         restore: If True, transition back to baseline after hold.
     """
 
-    start_index: int | None = None
-    start_timestamp: pd.Timestamp | str | None = None
-    transition_window: int = 50
+    start_timestamp: pd.Timestamp | str
+    transition_window: float = 1800
     target_mean: float = 0.0
     target_std: float = 1.0
-    hold_duration: int = 200
+    hold_duration: float = 7200
     restore: bool = False
 
     def __post_init__(self) -> None:
-        if self.start_index is None and self.start_timestamp is None:
-            raise ValueError(
-                "Either start_index or start_timestamp must be provided"
-            )
-        if self.start_index is not None and self.start_timestamp is not None:
-            raise ValueError(
-                "Only one of start_index or start_timestamp should be provided"
-            )
+        if isinstance(self.start_timestamp, str) and not self.start_timestamp.strip():
+            raise ValueError("start_timestamp must not be empty")
         if self.transition_window <= 0:
             raise ValueError("transition_window must be positive")
         if self.hold_duration <= 0:
@@ -63,9 +53,9 @@ class ConceptDrift(Anomaly):
 
     Example:
         >>> cd = ConceptDrift(segments=[
-        ...     DriftSegment(start_index=100, transition_window=50,
-        ...                  target_mean=50, target_std=5,
-        ...                  hold_duration=200, restore=True),
+        ...     DriftSegment(start_timestamp="2024-01-15T06:00:00",
+        ...                  transition_window=1800, target_mean=50, target_std=5,
+        ...                  hold_duration=7200, restore=True),
         ... ])
     """
 
@@ -84,23 +74,18 @@ class ConceptDrift(Anomaly):
     ) -> np.ndarray:
         result = base_array.copy()
         n = len(base_array)
+        interval_seconds = (timestamps[1] - timestamps[0]).total_seconds()
 
         for seg in self._segments:
             start = self._resolve_start(seg, timestamps, n)
-            self._apply_segment(result, base_array, start, seg, n, rng)
+            self._apply_segment(
+                result, base_array, start, seg, n, rng, interval_seconds
+            )
 
         return result
 
-    def _resolve_start(
-        self, seg: DriftSegment, timestamps: pd.DatetimeIndex, n: int
-    ) -> int:
-        if seg.start_index is not None:
-            if seg.start_index < 0 or seg.start_index >= n:
-                raise ValueError(
-                    f"start_index {seg.start_index} out of bounds [0, {n})"
-                )
-            return seg.start_index
-
+    @staticmethod
+    def _resolve_start(seg: DriftSegment, timestamps: pd.DatetimeIndex, n: int) -> int:
         ts = pd.Timestamp(seg.start_timestamp)
         try:
             idx = timestamps.get_loc(ts)
@@ -122,9 +107,10 @@ class ConceptDrift(Anomaly):
         seg: DriftSegment,
         n: int,
         rng: SeedableRNG | None,
+        interval_seconds: float,
     ) -> None:
-        tw = seg.transition_window
-        hd = seg.hold_duration
+        tw = max(1, int(round(seg.transition_window / interval_seconds)))
+        hd = max(1, int(round(seg.hold_duration / interval_seconds)))
 
         # Transition into target regime
         trans_in_end = min(start + tw, n)
@@ -152,12 +138,12 @@ class ConceptDrift(Anomaly):
                 target_draws = _normal(
                     seg.target_mean, seg.target_std, len(indices), rng
                 )
-                result[indices] = (1 - alphas) * target_draws + alphas * base_array[indices]
+                result[indices] = (1 - alphas) * target_draws + alphas * base_array[
+                    indices
+                ]
 
 
-def _normal(
-    loc: float, scale: float, size: int, rng: SeedableRNG | None
-) -> np.ndarray:
+def _normal(loc: float, scale: float, size: int, rng: SeedableRNG | None) -> np.ndarray:
     if rng is not None:
         return rng.normal(loc, scale, size)
     return np.random.normal(loc, scale, size)

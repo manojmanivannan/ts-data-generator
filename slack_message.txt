@@ -1,3 +1,0 @@
-From: Product Management
-
-To elevate your library, consider adding anomaly and missing data injection (e.g., configurable point anomalies, sudden concept drifts, or dropped packets) to help users benchmark anomaly detection and pipeline robustness. Expanding your trend functionality to include localized holiday calendars and specific autoregressive noise models (like ARIMA or custom Markov chains) would drastically increase real-world fidelity.

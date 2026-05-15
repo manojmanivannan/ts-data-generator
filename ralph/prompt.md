@@ -28,7 +28,7 @@ TL;DR - build a tiny, end-to-end slice of the feature first, then expand it out.
 
 # EXPLORATION
 
-Explore the repo.
+Explore the repo. Tip: Repo uses uv
 
 # IMPLEMENTATION
 
@@ -38,8 +38,8 @@ Use /tdd to complete the task.
 
 Before committing, run the feedback loops:
 
-- `npm run test` to run the tests
-- `npm run typecheck` to run the type checker
+- `uv run pytest` to run the tests
+- `uv run ruff check` to run the type checker
 
 # COMMIT
 
