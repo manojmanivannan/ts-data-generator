@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Literal, Optional
 
 import numpy as np
 import pandas as pd
@@ -330,3 +330,126 @@ class StockTrend(Trends):
             base_wave = base_wave[::-1]
 
         return base_wave + trend
+
+class HolidayTrend(Trends):
+    """Generate a trend that spikes on holidays with optional ramp up/down windows.
+
+    Args:
+        name: Human-readable name.
+        country: Country code for which to generate holidays. Mutually exclusive with dates.
+        dates: Explicit list of holiday dates as ISO strings. If country is provided and holidays library is available, this parameter can be omitted.
+        effect: Magnitude of the holiday spike.
+        pre_window: Number of days before the holiday to ramp up the effect.
+        post_window: Number of days after the holiday to ramp down the effect.
+        direction: ``'up'`` or ``'down'`` for how the effect is applied.
+        noise_level: Standard deviation of Gaussian noise.
+
+    Example:
+        CLI shorthand: ``HolidayTrend(effect=50,country='US',pre_window=2,post_window=2,direction='up')``
+
+    Notes:
+        - If `country` is supplied and the `holidays` library is available, holiday dates are derived automatically.
+        - If `country` is not supplied or `holidays` is not installed, `dates` must be provided.
+    """
+
+    _example = "sales:HolidayTrend(effect=50,country='US',pre_window=2,post_window=2,direction='up')"
+
+    def __init__(
+        self,
+        name: str = "default",
+        country: Optional[str] = None,
+        dates: Optional[list[str]] = None,
+        effect: float = 1.0,
+        pre_window: int = 0,
+        post_window: int = 0,
+        direction: Literal["up", "down"] = "up",
+        noise_level: float = 0.0,
+    ) -> None:
+        super().__init__(name)
+        self._country = country
+        self._dates = dates
+        self._effect = effect
+        self._pre_window = pre_window
+        self._post_window = post_window
+        self._direction = direction
+        self._noise_level = noise_level
+        self._effect_sign = effect if direction == "up" else -abs(effect)
+
+        if pre_window < 0 or post_window < 0:
+            raise ValueError("pre_window and post_window must be non-negative")
+        if country is None and dates is None:
+            raise ValueError("Either country or dates must be provided for HolidayTrend")
+
+    @property
+    def country(self) -> Optional[str]:
+        return self._country
+
+    @property
+    def dates(self) -> Optional[list[str]]:
+        return self._dates
+
+    @property
+    def effect(self) -> float:
+        return self._effect
+
+    @property
+    def pre_window(self) -> int:
+        return self._pre_window
+
+    @property
+    def post_window(self) -> int:
+        return self._post_window
+
+    @property
+    def direction(self) -> str:
+        return self._direction
+
+    @property
+    def noise_level(self) -> float:
+        return self._noise_level
+
+    def generate(
+        self, timestamps: pd.DatetimeIndex, rng: SeedableRNG | None = None
+    ) -> np.ndarray:
+        trend = np.zeros(len(timestamps))
+
+        # Determine holiday dates
+        if self._dates is not None:
+            holiday_dates = [pd.Timestamp(d) for d in self._dates]
+        else:
+            try:
+                import holidays  # type: ignore
+            except ImportError as exc:
+                raise RuntimeError(
+                    "holidays library is required to compute holidays for country "
+                    f"{self._country}. Install via pip install holidays or provide explicit dates."
+                ) from exc
+            start_year = timestamps[0].year
+            end_year = timestamps[-1].year
+            holiday_dates = []
+            for year in range(start_year, end_year + 1):
+                holiday_obj = holidays.CountryHoliday(self._country, years=[year])  # type: ignore
+                holiday_dates.extend(holiday_obj.keys())
+
+        timestamps_norm = timestamps.normalize()
+        for h_ts in holiday_dates:
+            h_mid = h_ts.normalize()
+            diff_days = (timestamps_norm - h_mid).days
+            coeff = np.zeros_like(diff_days, dtype=float)
+            if self._pre_window > 0:
+                up_mask = (diff_days >= -self._pre_window) & (diff_days <= 0)
+                coeff[up_mask] = (diff_days[up_mask] + self._pre_window) / self._pre_window
+            else:
+                coeff[diff_days == 0] = 1.0
+            if self._post_window > 0:
+                down_mask = (diff_days >= 0) & (diff_days <= self._post_window)
+                coeff[down_mask] = 1 - diff_days[down_mask] / self._post_window
+            else:
+                coeff[diff_days == 0] = 1.0
+            trend += self._effect_sign * coeff
+
+        if rng is not None:
+            noise = rng.normal(0, self._noise_level, len(timestamps))
+        else:
+            noise = np.random.normal(0, self._noise_level, len(timestamps))
+        return trend + noise
