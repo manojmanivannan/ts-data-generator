@@ -4,12 +4,17 @@ Each trend class inherits from the abstract ``Trends`` base and implements
 ``generate(timestamps)`` to produce a numpy array of values.
 """
 
+from __future__ import annotations
+
 import logging
 from abc import ABC, abstractmethod
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 import pandas as pd
+
+if TYPE_CHECKING:
+    from ts_data_generator.random import SeedableRNG
 
 logger = logging.getLogger(__name__)
 
@@ -46,11 +51,15 @@ class Trends(ABC):
         return self._name
 
     @abstractmethod
-    def generate(self, timestamps: pd.DatetimeIndex) -> np.ndarray:
+    def generate(
+        self, timestamps: pd.DatetimeIndex, rng: SeedableRNG | None = None
+    ) -> np.ndarray:
         """Generate trend values for the given timestamps.
 
         Args:
             timestamps: DatetimeIndex of time points.
+            rng: Optional SeedableRNG for deterministic randomness.
+                Falls back to global ``np.random`` when not provided.
 
         Returns:
             Numpy array of trend values with length matching timestamps.
@@ -104,13 +113,18 @@ class SinusoidalTrend(Trends):
     def noise_level(self) -> float:
         return self._noise_level
 
-    def generate(self, timestamps: pd.DatetimeIndex) -> np.ndarray:
+    def generate(
+        self, timestamps: pd.DatetimeIndex, rng: SeedableRNG | None = None
+    ) -> np.ndarray:
         time_in_days = (timestamps - timestamps[0]).total_seconds() / (24 * 3600)
         phase_in_days = self._phase / 24.0
         base_wave = self._amplitude * np.sin(
             2 * np.pi * (1 / self._freq) * (time_in_days + phase_in_days)
         )
-        noise = np.random.normal(0, self._noise_level, len(timestamps))
+        if rng is not None:
+            noise = rng.normal(0, self._noise_level, len(timestamps))
+        else:
+            noise = np.random.normal(0, self._noise_level, len(timestamps))
         return base_wave + noise
 
 
@@ -161,7 +175,9 @@ class LinearTrend(Trends):
     def noise_level(self) -> float:
         return self._noise_level
 
-    def generate(self, timestamps: pd.DatetimeIndex) -> np.ndarray:
+    def generate(
+        self, timestamps: pd.DatetimeIndex, rng: SeedableRNG | None = None
+    ) -> np.ndarray:
         time_deltas = timestamps - timestamps[0]
 
         freq_str = timestamps.freqstr if timestamps.freq else "D"
@@ -177,7 +193,10 @@ class LinearTrend(Trends):
 
         self._coefficient = np.radians(np.sin(self._limit / len(time_numeric)))
         base_trend = self._coefficient * time_numeric + self._offset
-        noise = np.random.normal(0, self._noise_level, len(timestamps))
+        if rng is not None:
+            noise = rng.normal(0, self._noise_level, len(timestamps))
+        else:
+            noise = np.random.normal(0, self._noise_level, len(timestamps))
         return base_trend + noise
 
 
@@ -227,7 +246,9 @@ class WeekendTrend(Trends):
     def limit(self) -> float:
         return self._limit
 
-    def generate(self, timestamps: pd.DatetimeIndex) -> np.ndarray:
+    def generate(
+        self, timestamps: pd.DatetimeIndex, rng: SeedableRNG | None = None
+    ) -> np.ndarray:
         trend = np.zeros(len(timestamps))
         is_weekend = timestamps.weekday >= 5
         adjustment = (
@@ -235,7 +256,10 @@ class WeekendTrend(Trends):
         )
         trend[is_weekend] = adjustment
         trend = np.clip(trend, -self._limit, self._limit)
-        noise = np.random.normal(0, self._noise_level, len(timestamps))
+        if rng is not None:
+            noise = rng.normal(0, self._noise_level, len(timestamps))
+        else:
+            noise = np.random.normal(0, self._noise_level, len(timestamps))
         return trend + noise
 
 
@@ -278,14 +302,20 @@ class StockTrend(Trends):
     def noise_level(self) -> float:
         return self._noise_level
 
-    def generate(self, timestamps: pd.DatetimeIndex) -> np.ndarray:
+    def generate(
+        self, timestamps: pd.DatetimeIndex, rng: SeedableRNG | None = None
+    ) -> np.ndarray:
         num_steps = len(timestamps)
         trend = np.zeros(num_steps)
         drift_per_step = self._amplitude / num_steps if num_steps > 0 else 0
 
+        if rng is not None:
+            volatilities = rng.normal(0, self._noise_level, num_steps)
+        else:
+            volatilities = np.random.normal(0, self._noise_level, num_steps)
+
         for i in range(1, num_steps):
-            volatility = np.random.normal(0, self._noise_level)
-            trend[i] = trend[i - 1] + drift_per_step + volatility
+            trend[i] = trend[i - 1] + drift_per_step + volatilities[i]
 
         time_in_days = (timestamps - timestamps[0]).total_seconds() / (24 * 3600)
         base_wave = (

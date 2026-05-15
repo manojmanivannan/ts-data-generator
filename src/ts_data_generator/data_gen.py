@@ -20,6 +20,7 @@ from ts_data_generator.exceptions import (
     MultiItemError,
     ValidationError,
 )
+from ts_data_generator.random import SeedableRNG
 from ts_data_generator.schema.models import (
     AggregationType,
     Dimensions,
@@ -59,12 +60,15 @@ class DataGen:
         start_datetime: Start date/time string (ISO format: ``YYYY-MM-DD``).
         end_datetime: End date/time string (ISO format: ``YYYY-MM-DD``).
         granularity: Time granularity for the generated data.
+        seed: Optional integer seed for deterministic generation.
+            When set, all randomness flows through a PCG64-backed RNG.
 
     Example:
         >>> dg = DataGen(
         ...     start_datetime="2024-01-01",
         ...     end_datetime="2024-01-02",
         ...     granularity=Granularity.HOURLY,
+        ...     seed=42,
         ... )
     """
 
@@ -76,6 +80,7 @@ class DataGen:
         start_datetime: str | None = None,
         end_datetime: str | None = None,
         granularity: Granularity = Granularity.FIVE_MIN,
+        seed: int | None = None,
     ) -> None:
         self._dimensions: list[Dimensions] = dimensions or []
         self._metrics: list[Metrics] = metrics or []
@@ -86,6 +91,7 @@ class DataGen:
         self._normalizer: Normalizer | None = None
         self._timestamps: pd.DatetimeIndex | None = None
         self._pending_regeneration = False
+        self._rng: SeedableRNG | None = SeedableRNG(seed) if seed is not None else None
 
         self.data: pd.DataFrame = pd.DataFrame()
 
@@ -484,6 +490,7 @@ class DataGen:
             dimensions=self.dimensions,
             metrics=self.metrics,
             multi_items=self.multi_items,
+            rng=self._rng,
         )
         self.data = builder.build(new_timestamps, existing_data=self.data)
         return self.data

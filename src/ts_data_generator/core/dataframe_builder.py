@@ -1,11 +1,17 @@
 """Builds DataFrames from dimension, metric, and multi-item models."""
 
+from __future__ import annotations
+
 import logging
 from itertools import chain
+from typing import TYPE_CHECKING
 
 import pandas as pd
 
 from ts_data_generator.schema.models import Dimensions, Metrics, MultiItems
+
+if TYPE_CHECKING:
+    from ts_data_generator.random import SeedableRNG
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +28,7 @@ class DataFrameBuilder:
         dimensions: dict[str, Dimensions],
         metrics: dict[str, Metrics],
         multi_items: dict[str, MultiItems],
+        rng: SeedableRNG | None = None,
     ) -> None:
         """Initialize the builder with model collections.
 
@@ -29,10 +36,12 @@ class DataFrameBuilder:
             dimensions: Mapping of dimension name to Dimensions instance.
             metrics: Mapping of metric name to Metrics instance.
             multi_items: Mapping of comma-joined names to MultiItems instance.
+            rng: Optional SeedableRNG for deterministic generation.
         """
         self._dimensions = dimensions
         self._metrics = metrics
         self._multi_items = multi_items
+        self._rng = rng
 
     def build(
         self,
@@ -81,7 +90,7 @@ class DataFrameBuilder:
         df = pd.DataFrame(index=timestamps)
         for metric in self._metrics.values():
             if metric.name not in existing_columns:
-                generated = metric.generate(timestamps)
+                generated = metric.generate(timestamps, rng=self._rng)
                 df = pd.concat([df, generated], axis=1)
         return df
 
