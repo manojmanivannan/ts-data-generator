@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import logging
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -87,6 +88,15 @@ class ConceptDrift(Anomaly):
     @staticmethod
     def _resolve_start(seg: DriftSegment, timestamps: pd.DatetimeIndex, n: int) -> int:
         ts = pd.Timestamp(seg.start_timestamp)
+
+        if ts < timestamps[0] or ts > timestamps[-1]:
+            logging.warning(
+                f"start_timestamp {seg.start_timestamp} is out of bounds for timestamps range "
+                f"{timestamps[0]} to {timestamps[-1]}. Skipping this segment."
+            )
+            return (
+                n  # Return n to indicate no valid start index, segment will be skipped
+            )
         try:
             idx = timestamps.get_loc(ts)
         except KeyError:
