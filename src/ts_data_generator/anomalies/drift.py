@@ -21,6 +21,10 @@ class DriftSegment:
 
     Args:
         start_timestamp: Timestamp where drift begins (e.g. ``"2024-01-15T06:00:00"``).
+            Mutually exclusive with ``start_index``.
+        start_index: Index position (relative to previous segment's end) where drift
+            begins. The first segment uses this as an absolute index.
+            Mutually exclusive with ``start_timestamp``.
         transition_window: Duration in seconds for gradual onset (default 1800 = 30 min).
         target_mean: Mean of the target Gaussian distribution.
         target_std: Standard deviation of the target Gaussian distribution.
@@ -28,7 +32,8 @@ class DriftSegment:
         restore: If True, transition back to baseline after hold.
     """
 
-    start_timestamp: pd.Timestamp | str
+    start_timestamp: pd.Timestamp | str | None = None
+    start_index: int | None = None
     transition_window: float = 1800
     target_mean: float = 0.0
     target_std: float = 1.0
@@ -36,8 +41,21 @@ class DriftSegment:
     restore: bool = False
 
     def __post_init__(self) -> None:
-        if isinstance(self.start_timestamp, str) and not self.start_timestamp.strip():
-            raise ValueError("start_timestamp must not be empty")
+        has_ts = self.start_timestamp is not None
+        has_idx = self.start_index is not None
+        if has_ts and has_idx:
+            raise ValueError(
+                "Provide exactly one of start_timestamp or start_index, not both"
+            )
+        if not has_ts and not has_idx:
+            raise ValueError(
+                "Provide exactly one of start_timestamp or start_index"
+            )
+        if has_idx and self.start_index < 0:  # type: ignore[operator]
+            raise ValueError("start_index must be non-negative")
+        if has_ts:
+            if isinstance(self.start_timestamp, str) and not self.start_timestamp.strip():
+                raise ValueError("start_timestamp must not be empty")
         if self.transition_window <= 0:
             raise ValueError("transition_window must be positive")
         if self.hold_duration <= 0:
@@ -77,16 +95,36 @@ class ConceptDrift(Anomaly):
         n = len(base_array)
         interval_seconds = (timestamps[1] - timestamps[0]).total_seconds()
 
+        cursor = 0
         for seg in self._segments:
-            start = self._resolve_start(seg, timestamps, n)
+            if seg.start_index is not None:
+                start = cursor + seg.start_index
+            else:
+                start = self._resolve_start(seg, timestamps, n)
+            if start >= n:
+                continue
             self._apply_segment(
                 result, base_array, start, seg, n, rng, interval_seconds
             )
+            cursor = self._segment_end(start, seg, interval_seconds, n)
 
         return result
 
     @staticmethod
+    def _segment_end(
+        start: int, seg: DriftSegment, interval_seconds: float, n: int
+    ) -> int:
+        tw = max(1, int(round(seg.transition_window / interval_seconds)))
+        hd = max(1, int(round(seg.hold_duration / interval_seconds)))
+        end = start + tw + hd
+        if seg.restore:
+            end += tw
+        return min(end, n)
+
+    @staticmethod
     def _resolve_start(seg: DriftSegment, timestamps: pd.DatetimeIndex, n: int) -> int:
+        if seg.start_timestamp is None:
+            return n  # should not happen — caller checks start_index first
         ts = pd.Timestamp(seg.start_timestamp)
 
         if ts < timestamps[0] or ts > timestamps[-1]:

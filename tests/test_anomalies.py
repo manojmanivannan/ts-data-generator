@@ -469,6 +469,86 @@ class TestMissingDataSeedDeterminism:
         assert not np.array_equal(result1, result2, equal_nan=True)
 
 
+class TestMissingDataPatterned:
+    def test_schedule_sets_nan_when_true(self):
+        n = 100
+        base = np.ones(n)
+        timestamps = pd.date_range("2024-01-01", periods=n, freq="h")
+
+        def schedule(ts):
+            return ts.hour % 2 == 0  # even hours
+
+        md = MissingData(mode="patterned", schedule=schedule)
+        result = md.intervene(base, timestamps, rng=None)
+
+        nan_mask = np.isnan(result)
+        expected_nan = np.array([ts.hour % 2 == 0 for ts in timestamps])
+        assert np.array_equal(nan_mask, expected_nan)
+
+    def test_patterned_mode_requires_schedule(self):
+        with pytest.raises(ValueError, match="schedule"):
+            MissingData(mode="patterned")
+
+    def test_patterned_composes_with_random_via_two_instances(self):
+        n = 2000
+        base = np.ones(n)
+        timestamps = pd.date_range("2024-01-01", periods=n, freq="min")
+
+        def schedule(ts):
+            return ts.minute < 10  # first 10 min of each hour
+
+        md_patterned = MissingData(mode="patterned", schedule=schedule)
+        md_random = MissingData(mode="random", probability=0.05)
+
+        # Apply random first, then patterned
+        rng = SeedableRNG(42)
+        intermediate = md_random.intervene(base, timestamps, rng=rng)
+        # Reset rng so patterned sees the same state regardless
+        result = md_patterned.intervene(intermediate, timestamps, rng=rng)
+
+        nan_mask = np.isnan(result)
+        assert np.any(nan_mask)
+
+        # Patterned NaN positions should all be set
+        for i, ts in enumerate(timestamps):
+            if schedule(ts):
+                assert np.isnan(result[i])
+
+        # Total NaN count >= patterned NaN count (union)
+        patterned_count = sum(1 for ts in timestamps if schedule(ts))
+        assert np.sum(nan_mask) >= patterned_count
+
+    def test_patterned_seed_determinism(self):
+        n = 100
+        base = np.arange(n, dtype=float)
+        timestamps = pd.date_range("2024-01-01", periods=n, freq="h")
+
+        def schedule(ts):
+            return ts.hour % 3 == 0
+
+        md = MissingData(mode="patterned", schedule=schedule)
+        rng1 = SeedableRNG(42)
+        rng2 = SeedableRNG(42)
+        result1 = md.intervene(base, timestamps, rng=rng1)
+        result2 = md.intervene(base, timestamps, rng=rng2)
+
+        assert np.array_equal(result1, result2, equal_nan=True)
+
+    def test_patterned_non_nan_values_unchanged(self):
+        n = 100
+        base = np.arange(n, dtype=float)
+        timestamps = pd.date_range("2024-01-01", periods=n, freq="h")
+
+        def schedule(ts):
+            return ts.hour == 0  # only midnight
+
+        md = MissingData(mode="patterned", schedule=schedule)
+        result = md.intervene(base, timestamps, rng=None)
+
+        non_nan_mask = ~np.isnan(result)
+        assert np.all(result[non_nan_mask] == base[non_nan_mask])
+
+
 class TestMissingDataPipelineWithPointAnomaly:
     def test_nan_preserved_when_point_anomaly_then_missing_data(self):
         """NaNs from MissingData (last) are never overwritten by PointAnomaly (first)."""
@@ -517,8 +597,8 @@ class TestDriftSegmentConstruction:
     def test_requires_start_timestamp(self):
         from ts_data_generator.anomalies.drift import DriftSegment
 
-        with pytest.raises(TypeError):
-            DriftSegment()  # type: ignore[call-arg]
+        with pytest.raises(ValueError, match="start_timestamp or start_index"):
+            DriftSegment()
 
     def test_rejects_empty_start_timestamp(self):
         from ts_data_generator.anomalies.drift import DriftSegment
@@ -809,3 +889,123 @@ class TestConceptDriftTimestampResolution:
 
         with pytest.raises(ValueError, match="not found"):
             cd.intervene(base, timestamps, rng=None)
+
+
+class TestDriftSegmentStartIndex:
+    def test_constructs_with_start_index(self):
+        from ts_data_generator.anomalies.drift import DriftSegment
+
+        seg = DriftSegment(start_index=50, transition_window=1200,
+                           target_mean=5.0, target_std=1.0, hold_duration=6000)
+        assert seg.start_index == 50
+        assert seg.start_timestamp is None
+
+    def test_rejects_neither_start_timestamp_nor_index(self):
+        from ts_data_generator.anomalies.drift import DriftSegment
+
+        with pytest.raises(ValueError, match="start_timestamp or start_index"):
+            DriftSegment(target_mean=5.0, target_std=1.0)  # type: ignore[call-arg]
+
+    def test_rejects_both_start_timestamp_and_index(self):
+        from ts_data_generator.anomalies.drift import DriftSegment
+
+        with pytest.raises(ValueError, match="start_timestamp or start_index"):
+            DriftSegment(start_timestamp="2024-01-01", start_index=50)
+
+    def test_rejects_negative_start_index(self):
+        from ts_data_generator.anomalies.drift import DriftSegment
+
+        with pytest.raises(ValueError, match="start_index"):
+            DriftSegment(start_index=-5)
+
+
+class TestConceptDriftMultiSegment:
+    def test_three_segments_transition_through_all_regimes(self):
+        from ts_data_generator.anomalies.drift import ConceptDrift, DriftSegment
+
+        n = 500
+        base = np.full(n, 10.0)
+        timestamps = pd.date_range("2024-01-01", periods=n, freq="min")
+
+        # Segment 1: start at 50, ramp to mean=50, hold 100, no restore
+        seg1 = DriftSegment(start_index=50, transition_window=600,
+                            target_mean=50.0, target_std=0.0, hold_duration=6000,
+                            restore=False)
+        # Segment 2: start after seg1 ends, ramp to mean=100, hold 100, restore
+        seg2 = DriftSegment(start_index=0, transition_window=600,
+                            target_mean=100.0, target_std=0.0, hold_duration=6000,
+                            restore=True)
+        # Segment 3: start after seg2 ends (restored), ramp to mean=200, hold, no restore
+        seg3 = DriftSegment(start_index=0, transition_window=600,
+                            target_mean=200.0, target_std=0.0, hold_duration=6000,
+                            restore=False)
+
+        cd = ConceptDrift(segments=[seg1, seg2, seg3])
+        rng = SeedableRNG(42)
+        result = cd.intervene(base, timestamps, rng=rng)
+
+        # Before any drift: baseline=10
+        assert np.all(result[:50] == 10.0)
+
+        # Seg1 hold period should be at target_mean=50
+        hold1_start = 50 + 10  # start + tw=10
+        hold1_end = hold1_start + 100  # hold_duration=6000/60=100
+        assert np.all(result[hold1_start:hold1_end] == 50.0)
+
+        # After seg3, values should be at 200 (no restore)
+        # seg1: start=50, end=50+10+100=160
+        # seg2: start=160, end=(160+10+100+10=280)
+        # seg3: start=280, end=280+10+100=390
+        hold3_start = 280 + 10  # start=280, tw=10
+        hold3_end = hold3_start + 100
+        assert np.all(result[hold3_start:hold3_end] == 200.0)
+
+    def test_sequential_segments_no_gaps(self):
+        from ts_data_generator.anomalies.drift import ConceptDrift, DriftSegment
+
+        n = 500
+        base = np.full(n, 0.0)
+        timestamps = pd.date_range("2024-01-01", periods=n, freq="min")
+
+        # Two sequential segments, zero_std so we know exact values
+        seg1 = DriftSegment(start_index=50, transition_window=600,
+                            target_mean=100.0, target_std=0.0, hold_duration=6000,
+                            restore=False)
+        seg2 = DriftSegment(start_index=0, transition_window=600,
+                            target_mean=200.0, target_std=0.0, hold_duration=6000,
+                            restore=True)
+
+        cd = ConceptDrift(segments=[seg1, seg2])
+        result = cd.intervene(base, timestamps, rng=None)
+
+        # seg1: start=50, tw=10, hold=100 → covers [50, 160)
+        # seg2 starts at 160: tw=10, hold=100, restore_tw=10 → covers [160, 280)
+        # No gap at boundary: result[159] is seg1 hold, result[160] is seg2 transition
+        assert result[159] == 100.0  # last seg1 hold value
+        assert result[160] == 0.0  # seg2 first transition alpha=0 → base_array (baseline)
+
+        # After seg2 restore (280+), values back to baseline
+        assert np.all(result[280:] == 0.0)
+
+    def test_multi_segment_seed_determinism(self):
+        from ts_data_generator.anomalies.drift import ConceptDrift, DriftSegment
+
+        n = 500
+        base = np.ones(n)
+        timestamps = pd.date_range("2024-01-01", periods=n, freq="min")
+
+        seg1 = DriftSegment(start_index=50, transition_window=600,
+                            target_mean=50.0, target_std=5.0, hold_duration=6000,
+                            restore=True)
+        seg2 = DriftSegment(start_index=0, transition_window=600,
+                            target_mean=100.0, target_std=5.0, hold_duration=6000,
+                            restore=False)
+
+        cd = ConceptDrift(segments=[seg1, seg2])
+
+        rng1 = SeedableRNG(42)
+        rng2 = SeedableRNG(42)
+        result1 = cd.intervene(base, timestamps, rng=rng1)
+        result2 = cd.intervene(base, timestamps, rng=rng2)
+
+        assert np.array_equal(result1, result2)
