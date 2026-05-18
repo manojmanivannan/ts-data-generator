@@ -10,16 +10,16 @@ url: "" # the base hostname & protocol for your site, e.g. http://example.com
 
 navbar:
   - text: Home
-    url: /
+    url: /ts-data-generator
   - text: CLI Reference
-    url: /cli
+    url: /ts-data-generator/cli
   - text: Python API
-    url: /api
+    url: /ts-data-generator/api
   - text: Trends
-    url: /trends
+    url: /ts-data-generator/trends
   - text: Anomalies
-    url: /anomalies
+    url: /ts-data-generator/anomalies
   - text: Dimensions
-    url: /dimensions
+    url: /ts-data-generator/dimensions
   - text: Schema Imputing
-    url: /imputer
+    url: /ts-data-generator/imputer
