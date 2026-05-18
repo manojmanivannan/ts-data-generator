@@ -2,7 +2,7 @@
 layout: default
 title: Python API
 permalink: /api
-nav_order: 3
+nav_order: 5
 ---
 
 # Python API Reference
@@ -38,16 +38,21 @@ Adds a numeric metric column built from trends.
     - `anomalies`: (Optional) A list of `Anomaly` objects.
     - `aggregation_type`: (Optional) How to aggregate this metric when using `.aggregate()`.
 
-#### `add_multi_items(names, function)`
+#### `add_multi_item(multi_item: MultiItems)`
 Adds multiple columns that are generated together (linked).
 - **Parameters**:
-    - `names`: List of column names.
-    - `function`: An infinite iterator yielding tuples of the same length as `names`.
+    - `multi_item`: A `MultiItems` instance.
 
-### Data Retrieval
+### Data Retrieval & Visualization
 
 #### `dg.data` (Property)
 Triggers the generation process (if not already cached) and returns a `pandas.DataFrame`.
+
+#### `dg.plot(include=None, exclude=None)`
+Renders the generated metrics using matplotlib.
+- **Parameters**:
+    - `include`: List of columns to show.
+    - `exclude`: List of columns to hide.
 
 #### `dg.aggregate(granularity: str)`
 Returns a *new* DataFrame aggregated to a coarser granularity.
@@ -57,14 +62,11 @@ Returns a *new* DataFrame aggregated to a coarser granularity.
 
 ## Utility Components
 
-### Trends
-Located in `ts_data_generator.utils.trends`.
+### Trends (`ts_data_generator.utils.trends`)
 - `SinusoidalTrend`, `LinearTrend`, `WeekendTrend`, `HolidayTrend`, `ARNoiseTrend`, `MarkovTrend`, `StockTrend`.
 
-### Anomalies
-Located in `ts_data_generator.anomalies`.
+### Anomalies (`ts_data_generator.anomalies`)
 - `PointAnomaly`, `MissingData`, `ConceptDrift`.
 
-### Dimension Helpers
-Located in `ts_data_generator.utils.functions`.
+### Dimension Helpers (`ts_data_generator.utils.functions`)
 - `random_choice`, `random_int`, `random_float`, `constant`, `ordered_choice`, `auto_generate_name`.

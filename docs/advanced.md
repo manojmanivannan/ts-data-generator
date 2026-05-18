@@ -2,7 +2,7 @@
 layout: default
 title: Advanced Features
 permalink: /advanced
-nav_order: 5
+nav_order: 4
 has_children: true
 ---
 
@@ -19,3 +19,8 @@ Learn parameters from existing data to replicate real-world distributions.
 Deep dive into how the seeding mechanism ensures reproducibility across different platforms.
 
 [Deterministic Seeds]({{ site.baseurl }}/deterministic){: .btn .btn-outline }
+
+## Visualization
+Quickly verify your signals with built-in plotting utilities.
+
+[Visualization Guide]({{ site.baseurl }}/visualize){: .btn .btn-outline }
