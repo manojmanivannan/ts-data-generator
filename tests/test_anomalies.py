@@ -779,7 +779,7 @@ class TestConceptDriftTimestampResolution:
         assert np.all(result[:48] == base[:48])
         assert result[48] == base[48]  # alpha=0
 
-    def test_start_timestamp_not_found_raises(self):
+    def test_start_timestamp_out_of_bounds_skips(self):
         from ts_data_generator.anomalies.drift import ConceptDrift, DriftSegment
 
         n = 50
@@ -787,6 +787,23 @@ class TestConceptDriftTimestampResolution:
         timestamps = pd.date_range("2024-01-01", periods=n, freq="D")
 
         seg = DriftSegment(start_timestamp="2025-06-15", transition_window=432000,
+                           target_mean=10.0, target_std=0.0, hold_duration=864000)
+        cd = ConceptDrift(segments=[seg])
+
+        result = cd.intervene(base, timestamps, rng=None)
+        # Segment is skipped because start_timestamp is out of bounds;
+        # result should be unchanged from base array.
+        np.testing.assert_array_equal(result, base)
+
+    def test_start_timestamp_not_found_raises(self):
+        from ts_data_generator.anomalies.drift import ConceptDrift, DriftSegment
+
+        n = 50
+        base = np.arange(n, dtype=float)
+        timestamps = pd.date_range("2024-01-01", periods=n, freq="D")
+
+        # In range but with a time component that won't match daily timestamps exactly
+        seg = DriftSegment(start_timestamp="2024-01-15T06:00:00", transition_window=432000,
                            target_mean=10.0, target_std=0.0, hold_duration=864000)
         cd = ConceptDrift(segments=[seg])
 
