@@ -55,6 +55,8 @@ class GeneratorConfig(BaseModel):
     granularity: str = Field(..., description="Data granularity")
     dimensions: list[str] = Field(default_factory=list, description="Dimension specs")
     metrics: list[str] = Field(default_factory=list, description="Metric specs")
+    anomalies: list[str] = Field(default_factory=list, description="Anomaly specs")
+    seed: int | None = Field(default=None, description="Random seed")
     output: str = Field(..., description="Output CSV file path")
 
     @field_validator("granularity")
@@ -122,9 +124,14 @@ PRESETS: dict[str, dict] = {
 # ---------------------------------------------------------------------------
 
 
-def _parse_value(value: str) -> int | float | str:
-    """Parse a string value into int, float, or str."""
-    if value.isdigit():
+def _parse_value(value: str) -> int | float | str | bool | list:
+    """Parse a string value into int, float, bool, list, or str."""
+    if value.lower() in ("true", "false"):
+        return value.lower() == "true"
+    if value.startswith("[") and value.endswith("]"):
+        inner = value[1:-1]
+        return [_parse_value(v) for v in _split_bracket_aware(inner)]
+    if value.lstrip("-").isdigit():
         return int(value)
     if "." in value:
         try:
@@ -164,7 +171,29 @@ def _parse_dimension_spec(spec: str) -> tuple[str, str, tuple | list]:
     return name, function_name, parsed
 
 
-def _parse_trend_spec(trend_spec: str) -> tuple[str, dict[str, int | float | str]]:
+def _split_bracket_aware(text: str, sep: str = VALUE_SEPARATOR) -> list[str]:
+    """Split by *sep* but ignore separators inside ``[...]``."""
+    parts: list[str] = []
+    depth = 0
+    current: list[str] = []
+    for ch in text:
+        if ch == "[":
+            depth += 1
+            current.append(ch)
+        elif ch == "]":
+            depth = max(0, depth - 1)
+            current.append(ch)
+        elif ch == sep and depth == 0:
+            parts.append("".join(current))
+            current = []
+        else:
+            current.append(ch)
+    if current:
+        parts.append("".join(current))
+    return parts
+
+
+def _parse_trend_spec(trend_spec: str) -> tuple[str, dict[str, int | float | str | bool | list]]:
     """Parse a trend specification string.
 
     Format: ``TrendName(param1=value1,param2=value2)``
@@ -175,7 +204,7 @@ def _parse_trend_spec(trend_spec: str) -> tuple[str, dict[str, int | float | str
     Raises:
         click.BadParameter: If the format is invalid.
     """
-    match = re.match(r"(\w+)\((.*?)\)", trend_spec)
+    match = re.match(r"(\w+)\((.*)\)", trend_spec)
     if not match:
         raise click.BadParameter(
             f"Invalid trend format {trend_spec!r}. Expected: TrendName(param=value)"
@@ -186,8 +215,14 @@ def _parse_trend_spec(trend_spec: str) -> tuple[str, dict[str, int | float | str
 
     param_dict: dict[str, int | float | str] = {}
     if params_str:
-        for param in params_str.split(VALUE_SEPARATOR):
-            key, value = param.split("=")
+        for param in _split_bracket_aware(params_str):
+            try:
+                key, value = param.split("=", 1)
+            except ValueError:
+                raise click.BadParameter(
+                    f"Invalid parameter {param!r} in {trend_spec!r}. "
+                    f"Expected key=value format."
+                ) from None
             param_dict[key] = _parse_value(value)
 
     return trend_name, param_dict
@@ -271,6 +306,40 @@ def _apply_config_overrides(
     return result
 
 
+def _parse_anomaly_spec(spec: str) -> tuple[str, dict[str, int | float | str | bool | list]]:
+    """Parse an anomaly specification string.
+
+    Format: ``AnomalyType(param1=value1,param2=value2)``
+
+    Returns:
+        Tuple of (anomaly_name, param_dict).
+
+    Raises:
+        click.BadParameter: If the format is invalid.
+    """
+    return _parse_trend_spec(spec)
+
+
+def _get_anomaly_class(class_name: str):
+    """Look up an anomaly class by name.
+
+    Raises:
+        click.BadParameter: If the class is not found.
+    """
+    from ts_data_generator import anomalies as anomaly_module
+
+    try:
+        return getattr(anomaly_module, class_name)
+    except AttributeError:
+        available = [
+            a for a in dir(anomaly_module)
+            if not a.startswith("_") and a not in ("Anomaly", "DriftSegment")
+        ]
+        raise click.BadParameter(
+            f"Unknown anomaly type {class_name!r}. Available: {', '.join(available)}"
+        ) from None
+
+
 def _normalize_to_string(value: tuple | list | str) -> str:
     """Convert a tuple/list/str to a semicolon-joined string for parsing."""
     if isinstance(value, (tuple, list)):
@@ -310,7 +379,20 @@ def main():
     help=f"Metric specs (sep by {DIM_SEPARATOR}). "
          "Format: 'name:Trend(param=value)+Trend2'",
 )
+@click.option(
+    "--anomalies",
+    type=str,
+    multiple=True,
+    help="Anomaly specs keyed by metric name. Repeatable. "
+         "Format: 'metric:AnomalyType(param=value)+Anomaly2'",
+)
 @click.option("--output", type=str, help="Output CSV file path")
+@click.option(
+    "--seed",
+    type=int,
+    default=None,
+    help="Random seed for deterministic generation",
+)
 @click.option(
     "--config",
     type=click.Path(exists=True, path_type=Path),
@@ -327,7 +409,9 @@ def generate(
     granularity: str | None,
     dims: tuple[str, ...],
     mets: tuple[str, ...],
+    anomalies: tuple[str, ...],
     output: str | None,
+    seed: int | None,
     config: Path | None,
     preset: str | None,
 ) -> None:
@@ -352,10 +436,62 @@ def generate(
         tsdata generate --mets "sales:LinearTrend(limit=500)+WeekendTrend(weekend_effect=50)" ...
 
     \b
-        # Full example
+        # Deterministic generation with seed
+        tsdata generate --seed 42 --dims "product:A,B" ...
+
+    \b
+        # Point anomalies on a metric
+        tsdata generate --anomalies \\
+            "sales:PointAnomaly(probability=0.01,magnitude=5)" ...
+
+    \b
+        # Missing data (random mode)
+        tsdata generate --anomalies \\
+            "sales:MissingData(probability=0.05)" ...
+
+    \b
+        # Missing data (burst mode)
+        tsdata generate --anomalies \\
+            "sales:MissingData(mode=burst,burst_probability=0.02,"
+            "min_length=3,max_length=10)" ...
+
+    \b
+        # Concept drift (single segment)
+        tsdata generate --anomalies \\
+            "sales:ConceptDrift(start_timestamp=2019-01-01T06:00:00,"
+            "transition_window=1800,target_mean=50,target_std=5,"
+            "hold_duration=7200)" ...
+
+    \b
+        # Multiple anomaly types on one metric
+        tsdata generate --anomalies \\
+            "sales:PointAnomaly(probability=0.01,magnitude=5)"
+            "+MissingData(probability=0.05)" ...
+
+    \b
+        # Multi-segment concept drift (repeat --anomalies)
+        tsdata generate \\
+            --anomalies "sales:ConceptDrift(start_timestamp=2019-01-01T00:00:00,"
+            "transition_window=1800,target_mean=50,hold_duration=7200)" \\
+            --anomalies "sales:ConceptDrift(start_timestamp=2019-01-02T00:00:00,"
+            "transition_window=3600,target_mean=100,hold_duration=7200,restore=true)" ...
+
+    \b
+        # Full example with seed and anomalies
+        tsdata generate --dims "product:A,B" \\
+            --mets "sales:LinearTrend(limit=500)" \\
+            --anomalies "sales:PointAnomaly(probability=0.01,magnitude=5)" \\
+            --seed 42 \\
+            --start 2024-01-01 --end 2024-01-02 \\
+            --granularity 5min --output output.csv
+
+    \b
+        # Full example with seed and anomalies
         tsdata generate --dims product:auto_generate_name:prod \\
             --mets "sales:LinearTrend(limit=500)" \\
             --mets "sales2:WeekendTrend(weekend_effect=50)" \\
+            --anomalies "sales:PointAnomaly(probability=0.01,magnitude=5)" \\
+            --seed 42 \\
             --start 2026-04-17 --end 2026-04-18 --granularity 5min --output output.csv
 
     \b
@@ -377,6 +513,10 @@ def generate(
             "sales:LinearTrend(limit=500)+WeekendTrend(weekend_effect=50)",
             "sales1:LinearTrend(limit=200)"
           ],
+          "anomalies": [
+            "sales:PointAnomaly(probability=0.01,magnitude=5)+MissingData(probability=0.05)"
+          ],
+          "seed": 42,
           "output": "data.csv"
         }
     """
@@ -411,6 +551,11 @@ def generate(
         dims = tuple(config_data.get("dimensions", []))
         mets = tuple(config_data.get("metrics", []))
         output = config_data.get("output")
+        if not seed:
+            seed = config_data.get("seed")
+        if not anomalies:
+            config_anomalies = config_data.get("anomalies", [])
+            anomalies = tuple(config_anomalies)
 
     dims_str = _normalize_to_string(dims)
     mets_str = _normalize_to_string(mets)
@@ -421,7 +566,7 @@ def generate(
         )
         return
 
-    data_gen = DataGen()
+    data_gen = DataGen(seed=seed)
     data_gen.start_datetime = start
     data_gen.end_datetime = end
     data_gen.to_granularity(granularity)
@@ -440,6 +585,9 @@ def generate(
                     f"Invalid parameters for dimension {dim_name!r} "
                     f"with function {func_name!r}: {values}"
                 ) from exc
+
+    # Collect metrics: {name: {"trends": [...], "anomalies": [...]}}
+    metrics_data: dict[str, dict[str, list] | None] = {}
 
     for metric in mets_str.split(DIM_SEPARATOR):
         parts = metric.split(":")
@@ -460,7 +608,46 @@ def generate(
                     f"Invalid parameter {bad_param!r} for trend {trend_name!r}"
                 ) from exc
 
-        data_gen.add_metric(name=metric_name, trends=trends)
+        if metric_name not in metrics_data:
+            metrics_data[metric_name] = {"trends": [], "anomalies": []}
+        metrics_data[metric_name]["trends"].extend(trends)
+
+    for anomaly_entry in anomalies:
+        parts = anomaly_entry.split(":", 1)
+        metric_name = parts[0]
+        spec_strings = parts[1].split(TREND_SEPARATOR) if len(parts) > 1 else []
+
+        if metric_name not in metrics_data:
+            metrics_data[metric_name] = {"trends": [], "anomalies": []}
+
+        for spec in spec_strings:
+            anom_name, params = _parse_anomaly_spec(spec)
+            anom_cls = _get_anomaly_class(anom_name)
+            if anom_name == "ConceptDrift":
+                from ts_data_generator.anomalies import DriftSegment
+                segment = DriftSegment(**params)
+                # Check if we already have a ConceptDrift waiting to collect segments
+                existing = metrics_data[metric_name]["anomalies"]
+                found_cd = None
+                for a in existing:
+                    if isinstance(a, anom_cls):
+                        found_cd = a
+                        break
+                if found_cd is not None:
+                    found_cd.segments.append(segment)
+                else:
+                    metrics_data[metric_name]["anomalies"].append(anom_cls(segments=[segment]))
+            else:
+                metrics_data[metric_name]["anomalies"].append(anom_cls(**params))
+
+    for metric_name, data in metrics_data.items():
+        if data is None:
+            continue
+        data_gen.add_metric(
+            name=metric_name,
+            trends=data["trends"],
+            anomalies=data["anomalies"] if data["anomalies"] else None,
+        )
 
     output_path = Path(output)
     if output_path.suffix.lower() != ".csv":

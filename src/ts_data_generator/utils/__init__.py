@@ -16,7 +16,10 @@ from ts_data_generator.utils.functions import (
     random_int,
 )
 from ts_data_generator.utils.trends import (
+    ARNoiseTrend,
+    HolidayTrend,
     LinearTrend,
+    MarkovTrend,
     SinusoidalTrend,
     StockTrend,
     Trends,
@@ -24,9 +27,12 @@ from ts_data_generator.utils.trends import (
 )
 
 __all__ = [
+    "ARNoiseTrend",
     "auto_generate_name",
     "constant",
+    "HolidayTrend",
     "LinearTrend",
+    "MarkovTrend",
     "ordered_choice",
     "random_choice",
     "random_float",

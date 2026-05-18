@@ -4,11 +4,14 @@ Orchestrates dimension, metric, and multi-item models to produce a
 timestamp-indexed DataFrame.
 """
 
+from __future__ import annotations
+
 import json
 import logging
 from collections.abc import Generator
 from datetime import datetime
 from itertools import cycle
+from typing import TYPE_CHECKING
 
 import pandas as pd
 
@@ -20,6 +23,7 @@ from ts_data_generator.exceptions import (
     MultiItemError,
     ValidationError,
 )
+from ts_data_generator.random import SeedableRNG
 from ts_data_generator.schema.models import (
     AggregationType,
     Dimensions,
@@ -27,6 +31,9 @@ from ts_data_generator.schema.models import (
     Metrics,
     MultiItems,
 )
+
+if TYPE_CHECKING:
+    from ts_data_generator.anomalies.base import Anomaly
 from ts_data_generator.transforms.normalizer import Normalizer, create_normalizer
 from ts_data_generator.utils.functions import constant
 
@@ -59,12 +66,15 @@ class DataGen:
         start_datetime: Start date/time string (ISO format: ``YYYY-MM-DD``).
         end_datetime: End date/time string (ISO format: ``YYYY-MM-DD``).
         granularity: Time granularity for the generated data.
+        seed: Optional integer seed for deterministic generation.
+            When set, all randomness flows through a PCG64-backed RNG.
 
     Example:
         >>> dg = DataGen(
         ...     start_datetime="2024-01-01",
         ...     end_datetime="2024-01-02",
         ...     granularity=Granularity.HOURLY,
+        ...     seed=42,
         ... )
     """
 
@@ -76,6 +86,7 @@ class DataGen:
         start_datetime: str | None = None,
         end_datetime: str | None = None,
         granularity: Granularity = Granularity.FIVE_MIN,
+        seed: int | None = None,
     ) -> None:
         self._dimensions: list[Dimensions] = dimensions or []
         self._metrics: list[Metrics] = metrics or []
@@ -86,6 +97,7 @@ class DataGen:
         self._normalizer: Normalizer | None = None
         self._timestamps: pd.DatetimeIndex | None = None
         self._pending_regeneration = False
+        self._rng: SeedableRNG | None = SeedableRNG(seed) if seed is not None else None
 
         self.data: pd.DataFrame = pd.DataFrame()
 
@@ -319,6 +331,7 @@ class DataGen:
         name: str,
         trends: list[object] | set[object],
         aggregation_type: AggregationType = AggregationType.AVG,
+        anomalies: list[Anomaly] | None = None,
     ) -> None:
         """Add a new metric column composed of one or more trends.
 
@@ -326,6 +339,8 @@ class DataGen:
             name: Unique column name for the metric.
             trends: Collection of Trend instances. Their values are summed.
             aggregation_type: Aggregation method for resampling.
+            anomalies: Optional list of Anomaly instances applied in order
+                after trend composition.
 
         Raises:
             MetricError: If a metric with this name already exists, or if
@@ -335,7 +350,10 @@ class DataGen:
             raise MetricError("Duplicate trends are present.")
 
         metric = Metrics(
-            name=name, trends=set(trends), aggregation_type=aggregation_type
+            name=name,
+            trends=set(trends),
+            aggregation_type=aggregation_type,
+            anomalies=anomalies,
         )
 
         if name in self.metrics:
@@ -484,6 +502,7 @@ class DataGen:
             dimensions=self.dimensions,
             metrics=self.metrics,
             multi_items=self.multi_items,
+            rng=self._rng,
         )
         self.data = builder.build(new_timestamps, existing_data=self.data)
         return self.data
