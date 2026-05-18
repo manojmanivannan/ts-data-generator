@@ -1,0 +1,25 @@
+title: Synthetic Time Series Data Generator
+description: Generate realistic synthetic time series datasets with configurable dimensions, metrics, trends, and anomalies.
+theme: jekyll-theme-cayman
+show_downloads: true
+google_analytics:
+logo: /assets/images/logo.svg
+
+baseurl: "" # the subpath of your site, e.g. /blog
+url: "" # the base hostname & protocol for your site, e.g. http://example.com
+
+navbar:
+  - text: Home
+    url: /
+  - text: CLI Reference
+    url: /cli
+  - text: Python API
+    url: /api
+  - text: Trends
+    url: /trends
+  - text: Anomalies
+    url: /anomalies
+  - text: Dimensions
+    url: /dimensions
+  - text: Schema Imputing
+    url: /imputer
