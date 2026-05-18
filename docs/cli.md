@@ -1,68 +1,75 @@
 ---
 layout: default
 title: CLI Reference
+permalink: /cli
+nav_order: 2
 ---
 
 # CLI Reference
 
-The `tsdata` CLI provides a powerful way to generate datasets from the command line or via configuration files.
+The `tsdata` command-line interface is the fastest way to generate datasets without writing Python code. It supports environment variables, JSON configurations, and powerful shorthand for complex generation.
+
+## Basic Usage
+
+```bash
+tsdata generate --start 2024-01-01 --end 2024-01-31 --granularity D --output data.csv
+```
+
+---
 
 ## Commands
 
 ### `generate`
 
-The main command to create datasets.
+The primary command for data creation.
 
-| Option | Description |
-|---|---|
-| `--start` | Start datetime (e.g., `2024-01-01`) |
-| `--end` | End datetime (e.g., `2024-01-31`) |
-| `--granularity` | Time step (`s`, `min`, `5min`, `h`, `D`, `W`, `ME`, `Y`) |
-| `--dims` | Dimension specifications. Format: `name:function:args` or `name:args` |
-| `--mets` | Metric specifications. Format: `name:Trend1(args)+Trend2(args)` |
-| `--anomalies` | Anomaly specifications. Format: `metric:Anomaly1(args)+Anomaly2(args)` |
-| `--seed` | Integer seed for reproducibility |
-| `--output` | CSV file path to save the data |
-| `--config` | Path to a JSON configuration file |
-| `--preset` | Use a built-in configuration preset |
+| Option | Shorthand | Description | Default |
+|:---|:---|:---|:---|
+| `--start` | | Start datetime (ISO 8601) | Required |
+| `--end` | | End datetime (ISO 8601) | Required |
+| `--granularity`| `-g` | Time step (e.g., `s`, `min`, `h`, `D`, `W`) | `5min` |
+| `--dims` | `-d` | Dimension specification (Repeatable) | None |
+| `--mets` | `-m` | Metric specification (Repeatable) | None |
+| `--anomalies` | `-a` | Anomaly specification (Repeatable) | None |
+| `--seed` | `-s` | Integer seed for reproducibility | None |
+| `--output` | `-o` | Output CSV path | `stdout` |
+| `--config` | `-c` | Path to JSON config file | None |
+| `--preset` | `-p` | Use a built-in configuration preset | None |
+
+#### Dimension Specification Syntax
+`name:function:arg1,arg2,...` or `name:arg1,arg2,...` (defaults to `random_choice`).
+
+Example: `--dims "region:US,EU,AP"`
+
+#### Metric Specification Syntax
+`name:Trend1(arg=val)+Trend2(arg=val)`
+
+Example: `--mets "temp:SinusoidalTrend(amplitude=10,freq=24)+LinearTrend(limit=5)"`
 
 ### `dimensions`
-
-List all available dimension functions and their usage.
+Lists all available dimension functions and their expected arguments.
 
 ### `metrics`
-
-List all available trend functions (metrics) and their parameters.
+Lists all available trend functions, their parameters, and documentation.
 
 ### `presets`
-
-List available preset configurations or show details for a specific preset.
+Lists available built-in presets (e.g., `daily-sales`, `minute-stock`). Use `tsdata presets <name>` for details.
 
 ---
 
-## Configuration File
+## Configuration Files
 
-You can use a JSON file to define your data generation schema.
+For complex setups, use a JSON configuration file.
 
 ```json
 {
   "start": "2024-01-01",
-  "end": "2024-01-12",
-  "granularity": "5min",
-  "dimensions": ["product:A,B,C", "region:X,Y,Z"],
-  "metrics": [
-    "sales:LinearTrend(limit=500)+WeekendTrend(weekend_effect=50)",
-    "orders:LinearTrend(limit=200)"
-  ],
-  "anomalies": [
-    "sales:PointAnomaly(probability=0.01,magnitude=5)+MissingData(probability=0.05)"
-  ],
-  "seed": 42,
-  "output": "data.csv"
+  "end": "2024-01-07",
+  "granularity": "h",
+  "dimensions": ["device:A,B,C"],
+  "metrics": ["load:LinearTrend(limit=100)"],
+  "seed": 123
 }
 ```
 
-Run with:
-```bash
-tsdata generate --config schema.json
-```
+Run with: `tsdata generate --config my_config.json`

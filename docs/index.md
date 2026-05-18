@@ -1,22 +1,48 @@
 ---
 layout: default
 title: Home
+nav_order: 1
+description: "Professional-grade synthetic time series data generation."
+permalink: /
+has_children: true
 ---
 
 # Synthetic Time Series Data Generator
 
-Generate realistic synthetic time series datasets with configurable dimensions, metrics, composable trend functions, and injectable anomalies — via a Python API or the `tsdata` CLI.
+**Synthetic Time Series Data Generator** is a robust Python library and CLI designed for data scientists and engineers who need realistic, deterministic, and highly configurable time series data.
+
+Whether you're benchmarking anomaly detection models, testing forecasting algorithms, or building dashboards without real data, this tool provides the primitives you need to simulate complex real-world behaviors.
+
+---
+
+{: .new }
+> **Deterministic by Design**: Every dataset generated can be perfectly reproduced using a seed, ensuring your experiments are consistent across environments.
+
+## Key Features
+
+- **Realistic Trends**: Compose complex signals using Sinusoidal, Linear, AR(p) Noise, Markov Chains, and more.
+- **Anomaly Injection**: Inject point anomalies, missing data gaps (random, burst, or patterned), and gradual concept drifts.
+- **CLI & API**: Seamlessly transition from rapid CLI prototyping to production-grade Python pipelines.
+- **Schema Imputing**: Bootstrap your generation configuration by analyzing existing CSV datasets.
+- **Extensible**: Easily plug in your own trend functions or dimension generators.
+
+---
 
 ## Quickstart
 
-### CLI
+### Installation
 
 ```bash
-uvx --python 3.11 --from ts-data-generator tsdata generate \
-    --preset daily-sales --output sales.csv
+pip install ts-data-generator
 ```
 
-### Python API
+### Generate Data in One Line (CLI)
+
+```bash
+uvx tsdata generate --preset daily-sales --output sales.csv
+```
+
+### Powerful Python API
 
 ```python
 from ts_data_generator import DataGen
@@ -29,17 +55,18 @@ dg.to_granularity("h")
 
 dg.add_metric(
     "temperature",
-    {SinusoidalTrend(amplitude=10, freq=24)},
+    {SinusoidalTrend(amplitude=10, freq=24, noise_level=0.5)},
 )
 
-print(dg.data.head())
+df = dg.data
+print(df.head())
 ```
 
-## Documentation
+---
 
-- [CLI Reference]({{ site.baseurl }}/ts-data-generator/cli)
-- [Python API Reference]({{ site.baseurl }}/ts-data-generator/api)
-- [Trend Functions]({{ site.baseurl }}/ts-data-generator/trends)
-- [Anomaly Injection]({{ site.baseurl }}/ts-data-generator/anomalies)
-- [Dimension Generators]({{ site.baseurl }}/ts-data-generator/dimensions)
-- [Schema Imputing]({{ site.baseurl }}/ts-data-generator/imputer)
+## Why use this?
+
+Most synthetic data generators are either too simple (random noise) or too complex (black-box GANs). This library sits in the middle: **Composable Primitives**. You define the *components* of your data (trends, noise, anomalies), and the engine handles the temporal alignment and generation.
+
+[Get Started with the CLI Reference]({{ site.baseurl }}/cli){: .btn .btn-primary .fs-5 .mb-4 .mb-md-0 .mr-2 }
+[View the Python API]({{ site.baseurl }}/api){: .btn .fs-5 .mb-4 .mb-md-0 }

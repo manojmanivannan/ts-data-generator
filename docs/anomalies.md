@@ -1,36 +1,49 @@
 ---
+permalink: /anomalies
 layout: default
 title: Anomaly Injection
+parent: Core Concepts
+nav_order: 3
 ---
 
 # Anomaly Injection
 
-Anomalies allow you to test the robustness of your models by injecting realistic irregularities.
+Anomalies are applied to metrics *after* the trends have been calculated. They can be stacked and are processed in a deterministic order.
 
-## Anomaly Types
+## Point Anomalies
 
-### `PointAnomaly`
-Isolated spikes or drops in metric values.
-- `probability`: Chance of an anomaly at any given step.
-- `magnitude`: Value to add or replace with. Can be a scalar or a `(min, max)` tuple.
-- `mode`: `"additive"` (adds to baseline) or `"replacement"` (overwrites baseline).
+Isolated spikes or drops.
 
-### `MissingData`
-Simulates gaps in your data (NaN values).
-- `mode`: `"random"`, `"burst"`, or `"patterned"`.
-- `probability`: Chance of a gap starting.
-- `min_length`: Minimum gap length (for burst mode).
-- `max_length`: Maximum gap length (for burst mode).
-- `schedule`: A callable or string expression for patterned mode (e.g., `weekday == 6` for Sundays).
+- **Modes**:
+    - `additive`: Adds the magnitude to the current value.
+    - `replacement`: Overwrites the current value with the magnitude.
+- **Magnitude**: Can be a fixed number or a tuple `(min, max)` for random range.
 
-### `ConceptDrift`
-Gradual shifts in the underlying distribution.
-- `segments`: A list of `DriftSegment` objects.
+## Missing Data (Gaps)
 
-#### `DriftSegment`
-- `start_timestamp`: When the drift starts.
-- `transition_window`: Duration (in seconds) to transition from baseline to target.
-- `target_mean`: Mean of the new distribution.
-- `target_std`: Standard deviation of the new distribution.
-- `hold_duration`: How long to stay at the target distribution.
-- `restore`: Whether to transition back to baseline after the hold duration.
+Simulates sensor failure, network outages, or scheduled maintenance.
+
+- **Modes**:
+    - `random`: Every point has an independent probability of being NaN.
+    - `burst`: Gaps occur in chunks. When a gap starts, it lasts for a random duration between `min_length` and `max_length`.
+    - `patterned`: Gaps occur based on a schedule (e.g., "every Sunday" or "between 2 AM and 4 AM").
+
+## Concept Drift
+
+Simulates a fundamental change in the data distribution (e.g., a new baseline after a system upgrade).
+
+- **DriftSegment**:
+    - `transition_window`: How many seconds it takes to move from the old mean/std to the new one (linear interpolation).
+    - `restore`: If true, the signal will transition back to the original baseline after `hold_duration`.
+
+---
+
+## Stacking Anomalies
+
+You can apply multiple anomaly types to the same metric.
+
+```bash
+--anomalies "temp:PointAnomaly(prob=0.01,mag=50)+MissingData(mode=burst,prob=0.005)"
+```
+
+> **Note**: Anomalies are applied in order. If `MissingData` makes a point NaN, a subsequent `PointAnomaly` will *not* overwrite it (it respects the "missingness").

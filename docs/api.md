@@ -1,49 +1,70 @@
 ---
 layout: default
 title: Python API
+permalink: /api
+nav_order: 3
 ---
 
 # Python API Reference
 
-The Python API allows for programmatic data generation and integration into your data science workflows.
+The Python API provides the most flexibility, allowing you to integrate the generator into your ML training pipelines, simulation environments, or testing suites.
 
-## `DataGen` Class
+## The `DataGen` Class
 
 The central orchestrator for data generation.
-
-### Initialization
 
 ```python
 from ts_data_generator import DataGen
 dg = DataGen(seed=42)
 ```
 
-### Methods
+### Configuration Methods
 
-#### `add_dimension(name, function)`
+#### `to_granularity(granularity: str)`
+Sets the generation time step using Pandas frequency strings.
+- **Example**: `dg.to_granularity("15min")`
+
+#### `add_dimension(name: str, function: Iterable)`
 Adds a categorical or continuous column.
-- `name`: Column name.
-- `function`: An infinite generator function or a helper from `utils.functions`.
+- **Parameters**:
+    - `name`: The resulting column name in the DataFrame.
+    - `function`: An infinite iterator (generator) that yields values.
 
 #### `add_metric(name, trends, anomalies=None, aggregation_type=None)`
-Adds a numeric metric column.
-- `name`: Column name.
-- `trends`: A set or list of `Trend` objects.
-- `anomalies`: Optional list of `Anomaly` objects.
-- `aggregation_type`: Optional `AggregationType` (SUM, MEAN, MIN, MAX).
+Adds a numeric metric column built from trends.
+- **Parameters**:
+    - `name`: Column name.
+    - `trends`: A list or set of `Trend` objects.
+    - `anomalies`: (Optional) A list of `Anomaly` objects.
+    - `aggregation_type`: (Optional) How to aggregate this metric when using `.aggregate()`.
 
 #### `add_multi_items(names, function)`
-Adds multiple linked columns from a single generator.
-- `names`: List of column names.
-- `function`: A generator yielding tuples of values.
+Adds multiple columns that are generated together (linked).
+- **Parameters**:
+    - `names`: List of column names.
+    - `function`: An infinite iterator yielding tuples of the same length as `names`.
 
-#### `to_granularity(granularity)`
-Sets the target time step.
+### Data Retrieval
 
-#### `aggregate(granularity)`
-Resamples the generated data to a coarser granularity.
+#### `dg.data` (Property)
+Triggers the generation process (if not already cached) and returns a `pandas.DataFrame`.
 
-### Properties
+#### `dg.aggregate(granularity: str)`
+Returns a *new* DataFrame aggregated to a coarser granularity.
+- **Example**: `hourly_df = dg.aggregate("h")`
 
-#### `data`
-Returns the generated data as a `pandas.DataFrame`.
+---
+
+## Utility Components
+
+### Trends
+Located in `ts_data_generator.utils.trends`.
+- `SinusoidalTrend`, `LinearTrend`, `WeekendTrend`, `HolidayTrend`, `ARNoiseTrend`, `MarkovTrend`, `StockTrend`.
+
+### Anomalies
+Located in `ts_data_generator.anomalies`.
+- `PointAnomaly`, `MissingData`, `ConceptDrift`.
+
+### Dimension Helpers
+Located in `ts_data_generator.utils.functions`.
+- `random_choice`, `random_int`, `random_float`, `constant`, `ordered_choice`, `auto_generate_name`.

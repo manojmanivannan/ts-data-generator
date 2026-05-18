@@ -1,25 +1,26 @@
-title: Synthetic Time Series Data Generator
-description: Generate realistic synthetic time series datasets with configurable dimensions, metrics, trends, and anomalies.
-theme: jekyll-theme-cayman
-show_downloads: true
-google_analytics:
-logo: /assets/images/logo.svg
+title: "Synthetic Time Series Data Generator"
+description: "A professional-grade Python library and CLI for generating realistic, deterministic, and anomaly-injected time series datasets."
+theme: jekyll-theme-cayman # Fallback
+remote_theme: just-the-docs/just-the-docs
 
-baseurl: "" # the subpath of your site, e.g. /blog
-url: "" # the base hostname & protocol for your site, e.g. http://example.com
+# Site Settings
+baseurl: "/ts-data-generator" # Standard for project pages
+url: "https://manojmanivannan.github.io"
 
-navbar:
-  - text: Home
-    url: /ts-data-generator
-  - text: CLI Reference
-    url: /ts-data-generator/cli
-  - text: Python API
-    url: /ts-data-generator/api
-  - text: Trends
-    url: /ts-data-generator/trends
-  - text: Anomalies
-    url: /ts-data-generator/anomalies
-  - text: Dimensions
-    url: /ts-data-generator/dimensions
-  - text: Schema Imputing
-    url: /ts-data-generator/imputer
+# Metadata
+repository: manojmanivannan/ts-data-generator
+author: Manoj Manivannan
+
+# Just the Docs Settings
+search_enabled: true
+aux_links:
+  "GitHub Repository": "https://github.com/manojmanivannan/ts-data-generator"
+
+# Markdown Engine
+markdown: kramdown
+kramdown:
+  input: GFM
+  syntax_highlighter: rouge
+
+# Navigation
+nav_sort: ord
