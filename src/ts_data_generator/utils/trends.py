@@ -263,6 +263,151 @@ class WeekendTrend(Trends):
         return trend + noise
 
 
+class HolidayTrend(Trends):
+    """Generate a trend that ramps up/down around holidays.
+
+    Resolves holidays automatically via the ``holidays`` library when
+    installed, or from a user-provided list of date strings via the
+    ``dates`` parameter.
+
+    The effect ramps linearly: 0 at ``holiday - pre_window`` days,
+    peaking at ``effect`` on the holiday, returning to 0 at
+    ``holiday + post_window`` days.  Overlapping holiday windows
+    sum their effects.
+
+    Args:
+        name: Human-readable name.
+        country: ISO 3166-1 alpha-2 country code for holiday resolution.
+        effect: Peak magnitude of the holiday adjustment.
+        pre_window: Days before the holiday to start the ramp.
+        post_window: Days after the holiday to end the ramp.
+        direction: ``'up'`` increases values, ``'down'`` decreases.
+        dates: Explicit list of date strings (``YYYY-MM-DD``) as a
+            fallback when the ``holidays`` library is not installed.
+
+    Example:
+        CLI shorthand:
+        ``HolidayTrend(country='US',effect=50,pre_window=3,post_window=2,direction='up')``
+
+    Raises:
+        ImportError: If ``holidays`` is not installed and no ``dates`` are provided.
+    """
+
+    _example = (
+        "sales:HolidayTrend(country='US',effect=50,pre_window=3,post_window=2,direction='up')"
+    )
+
+    def __init__(
+        self,
+        name: str = "default",
+        country: str = "US",
+        effect: float = 50.0,
+        pre_window: int = 3,
+        post_window: int = 2,
+        direction: Literal["up", "down"] = "up",
+        dates: list[str] | None = None,
+    ) -> None:
+        super().__init__(name)
+        self._country = country
+        self._effect = effect
+        self._pre_window = pre_window
+        self._post_window = post_window
+        self._direction = direction
+        self._dates = dates
+
+    @property
+    def country(self) -> str:
+        return self._country
+
+    @property
+    def effect(self) -> float:
+        return self._effect
+
+    @property
+    def pre_window(self) -> int:
+        return self._pre_window
+
+    @property
+    def post_window(self) -> int:
+        return self._post_window
+
+    @property
+    def direction(self) -> str:
+        return self._direction
+
+    @property
+    def dates(self) -> list[str] | None:
+        return self._dates
+
+    def _resolve_holidays(self, timestamps: pd.DatetimeIndex) -> list[pd.Timestamp]:
+        """Return the list of holiday :class:`pd.Timestamp` values.
+
+        Uses the ``holidays`` library when available, otherwise falls back
+        to the user-provided ``dates`` list.
+        """
+        if self._dates is not None:
+            return [pd.Timestamp(d) for d in self._dates]
+
+        try:
+            import holidays
+        except ImportError:
+            raise ImportError(
+                "The 'holidays' library is required for automatic holiday resolution. "
+                "Install it with: pip install holidays\n"
+                "Or provide explicit dates via the 'dates' parameter."
+            ) from None
+
+        start_year = timestamps[0].year
+        end_year = timestamps[-1].year
+        country_holidays = holidays.country_holidays(
+            self._country, years=list(range(start_year, end_year + 1))
+        )
+
+        start_date = timestamps[0].date()
+        end_date = timestamps[-1].date()
+        return [
+            pd.Timestamp(d)
+            for d in country_holidays
+            if start_date <= d <= end_date
+        ]
+
+    def generate(
+        self, timestamps: pd.DatetimeIndex, rng: SeedableRNG | None = None
+    ) -> np.ndarray:
+        holiday_dates = self._resolve_holidays(timestamps)
+        result = np.zeros(len(timestamps))
+        sign = 1 if self._direction == "up" else -1
+
+        ts_dates = timestamps.normalize()
+
+        for holiday_date in holiday_dates:
+            holiday_ts = pd.Timestamp(holiday_date).normalize()
+            day_offsets = (ts_dates - holiday_ts).days.values
+
+            if self._pre_window > 0:
+                pre_mask = (-self._pre_window <= day_offsets) & (day_offsets <= -1)
+                result[pre_mask] += (
+                    sign
+                    * self._effect
+                    * (self._pre_window + day_offsets[pre_mask])
+                    / self._pre_window
+                )
+
+            holiday_mask = day_offsets == 0
+            result[holiday_mask] += sign * self._effect
+
+            if self._post_window > 0:
+                post_mask = (1 <= day_offsets) & (day_offsets <= self._post_window)
+                result[post_mask] += (
+                    sign
+                    * self._effect
+                    * (self._post_window - day_offsets[post_mask])
+                    / self._post_window
+                )
+
+        return result
+
+
 class StockTrend(Trends):
     """Generate a stock-like trend with random walk and multi-scale sine components.
 

@@ -603,6 +603,18 @@ wheels = [
 ]
 
 [[package]]
+name = "holidays"
+version = "0.96"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "python-dateutil" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/3e/dd/068cb4636a3cb433251e7d018d145f1a8c3c57c6fb0452d022561a35c46a/holidays-0.96.tar.gz", hash = "sha256:9d4d15bc28fa690969b82f07a1d6571aa14d4073cc98802510c08dfe3b1f2d25", size = 906699, upload-time = "2026-05-04T17:37:21.258Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/00/a2/05cbe4e2309a08a09bbfab04d3d37d687b5852abf7d037fea19313d2eb60/holidays-0.96-py3-none-any.whl", hash = "sha256:9d4f06603090304584f685b2f3d9f4289eb5c52b83fca472f922cb83cc3fb93f", size = 1473213, upload-time = "2026-05-04T17:37:18.933Z" },
+]
+
+[[package]]
 name = "httpcore"
 version = "1.0.9"
 source = { registry = "https://pypi.org/simple" }
@@ -2542,6 +2554,9 @@ dev = [
     { name = "pytest" },
     { name = "ruff" },
 ]
+holidays = [
+    { name = "holidays" },
+]
 imputer = [
     { name = "scipy", version = "1.15.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "scipy", version = "1.17.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
@@ -2560,6 +2575,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "click", specifier = ">=8.0" },
+    { name = "holidays", marker = "extra == 'holidays'", specifier = ">=0.96" },
     { name = "matplotlib", specifier = ">=3.5" },
     { name = "pandas", specifier = ">=1.5" },
     { name = "pydantic", specifier = ">=2.0" },
@@ -2570,7 +2586,7 @@ requires-dist = [
     { name = "ruff", marker = "extra == 'test'", specifier = ">=0.3" },
     { name = "scipy", marker = "extra == 'imputer'", specifier = ">=1.7" },
 ]
-provides-extras = ["dev", "imputer", "test"]
+provides-extras = ["dev", "holidays", "imputer", "test"]
 
 [package.metadata.requires-dev]
 dev = [

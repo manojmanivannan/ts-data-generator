@@ -19,8 +19,9 @@ from ts_data_generator.utils.functions import (
 from enum import Enum
 from typing import Generator
 from ts_data_generator.utils.trends import (
-    SinusoidalTrend,
+    HolidayTrend,
     LinearTrend,
+    SinusoidalTrend,
     StockTrend,
     WeekendTrend,
 )
@@ -304,3 +305,183 @@ class TestToGranularity:
     def test_to_granularity_invalid_string(self, data_gen_instance):
         with pytest.raises(ValueError):
             data_gen_instance.to_granularity("invalid")
+
+
+class TestHolidayTrend:
+    """Tests for the HolidayTrend class."""
+
+    @staticmethod
+    def _make_timestamps(start: str, end: str) -> pd.DatetimeIndex:
+        return pd.date_range(start=start, end=end, freq="D")
+
+    def test_ramp_shape_upward(self):
+        """Linear ramp: 0 at pre_window, peak at holiday, 0 at post_window."""
+        holiday = HolidayTrend(
+            name="xmas", dates=["2024-01-05"], effect=60, pre_window=3, post_window=2,
+            direction="up",
+        )
+        timestamps = self._make_timestamps("2024-01-01", "2024-01-08")
+        values = holiday.generate(timestamps)
+
+        # 2024-01-02: holiday - 3 = 0
+        assert values[1] == pytest.approx(0.0)
+        # 2024-01-03: holiday - 2 = 60 * 1/3 = 20
+        assert values[2] == pytest.approx(20.0)
+        # 2024-01-04: holiday - 1 = 60 * 2/3 = 40
+        assert values[3] == pytest.approx(40.0)
+        # 2024-01-05: holiday = 60
+        assert values[4] == pytest.approx(60.0)
+        # 2024-01-06: holiday + 1 = 60 * 1/2 = 30
+        assert values[5] == pytest.approx(30.0)
+        # 2024-01-07: holiday + 2 = 0
+        assert values[6] == pytest.approx(0.0)
+        # 2024-01-01: before window
+        assert values[0] == pytest.approx(0.0)
+        # 2024-01-08: after window
+        assert values[7] == pytest.approx(0.0)
+
+    def test_ramp_shape_downward(self):
+        """direction='down' produces negative ramps."""
+        holiday = HolidayTrend(
+            dates=["2024-06-15"], effect=30, pre_window=2, post_window=1,
+            direction="down",
+        )
+        timestamps = self._make_timestamps("2024-06-13", "2024-06-16")
+        values = holiday.generate(timestamps)
+
+        # 2024-06-13: holiday - 2 = 0
+        assert values[0] == pytest.approx(0.0)
+        # 2024-06-14: holiday - 1 = -30 * 1/2 = -15
+        assert values[1] == pytest.approx(-15.0)
+        # 2024-06-15: holiday = -30
+        assert values[2] == pytest.approx(-30.0)
+        # 2024-06-16: holiday + 1 = 0
+        assert values[3] == pytest.approx(0.0)
+
+    def test_fallback_dates(self):
+        """User-provided dates work without the holidays library."""
+        holiday = HolidayTrend(
+            dates=["2024-01-10"], effect=100, pre_window=1, post_window=1,
+        )
+        timestamps = self._make_timestamps("2024-01-09", "2024-01-11")
+        values = holiday.generate(timestamps)
+
+        assert values[0] == pytest.approx(0.0)    # holiday - 1
+        assert values[1] == pytest.approx(100.0)   # holiday
+        assert values[2] == pytest.approx(0.0)    # holiday + 1
+
+    def test_window_overlap_sums_effects(self):
+        """Overlapping holiday windows sum their contributions."""
+        holiday = HolidayTrend(
+            dates=["2024-03-15", "2024-03-16"],
+            effect=50, pre_window=2, post_window=2, direction="up",
+        )
+        timestamps = self._make_timestamps("2024-03-13", "2024-03-18")
+        values = holiday.generate(timestamps)
+
+        # 2024-03-14: pre-window for holiday 1 only
+        # holiday 1 (3/15): day -1 = 50 * 1/2 = 25
+        assert values[1] == pytest.approx(25.0)
+        # 2024-03-15: holiday 1 peak (50) + holiday 2 pre (-1) = 50 + 25 = 75
+        assert values[2] == pytest.approx(75.0)
+        # 2024-03-16: holiday 1 post (+1=25) + holiday 2 peak (50) = 75
+        assert values[3] == pytest.approx(75.0)
+        # 2024-03-17: holiday 2 post (+1) = 25
+        assert values[4] == pytest.approx(25.0)
+
+    def test_country_auto_resolve(self):
+        """country='US' resolves holidays via the holidays library."""
+        holiday = HolidayTrend(
+            country="US", effect=100, pre_window=0, post_window=0, direction="up",
+        )
+        # Use 2024 where Christmas (12/25) is a federal holiday
+        timestamps = self._make_timestamps("2024-12-24", "2024-12-26")
+        values = holiday.generate(timestamps)
+
+        # 2024-12-24: not a holiday
+        assert values[0] == pytest.approx(0.0)
+        # 2024-12-25: Christmas
+        assert values[1] == pytest.approx(100.0)
+        # 2024-12-26: not a holiday
+        assert values[2] == pytest.approx(0.0)
+
+    def test_graceful_error_no_holidays_no_dates(self):
+        """ImportError when holidays library unavailable and no dates provided."""
+        import builtins
+        import sys
+        from unittest import mock
+
+        holiday = HolidayTrend(effect=50)
+        timestamps = self._make_timestamps("2024-01-01", "2024-01-05")
+
+        real_import = builtins.__import__
+
+        def mock_import(name, *args, **kwargs):
+            if name == "holidays":
+                raise ImportError("No module named 'holidays'")
+            return real_import(name, *args, **kwargs)
+
+        stale = [k for k in sys.modules if k == "holidays" or k.startswith("holidays.")]
+        saved = {k: sys.modules.pop(k) for k in stale}
+        try:
+            with mock.patch("builtins.__import__", side_effect=mock_import):
+                with pytest.raises(ImportError, match="holidays"):
+                    holiday.generate(timestamps)
+        finally:
+            sys.modules.update(saved)
+
+    def test_accepts_rng_parameter(self):
+        """RNG parameter is accepted (no-op for now, but API-compatible)."""
+        from ts_data_generator.random import SeedableRNG
+
+        rng = SeedableRNG(42)
+        holiday = HolidayTrend(dates=["2024-07-04"], effect=50)
+        timestamps = self._make_timestamps("2024-07-03", "2024-07-05")
+        values = holiday.generate(timestamps, rng=rng)
+        assert len(values) == len(timestamps)
+
+    def test_pre_window_zero(self):
+        """pre_window=0 means the effect jumps immediately at the holiday."""
+        holiday = HolidayTrend(dates=["2024-05-01"], effect=40, pre_window=0, post_window=1)
+        timestamps = self._make_timestamps("2024-04-30", "2024-05-02")
+        values = holiday.generate(timestamps)
+
+        assert values[0] == pytest.approx(0.0)    # day before
+        assert values[1] == pytest.approx(40.0)    # holiday
+        assert values[2] == pytest.approx(0.0)    # day after
+
+    def test_post_window_zero(self):
+        """post_window=0 means the effect drops immediately after the holiday."""
+        holiday = HolidayTrend(dates=["2024-05-01"], effect=40, pre_window=1, post_window=0)
+        timestamps = self._make_timestamps("2024-04-30", "2024-05-02")
+        values = holiday.generate(timestamps)
+
+        assert values[0] == pytest.approx(0.0)    # pre-window start
+        assert values[1] == pytest.approx(40.0)    # holiday
+        assert values[2] == pytest.approx(0.0)    # day after
+
+    def test_dates_across_years(self):
+        """Fallback dates spanning multiple years."""
+        holiday = HolidayTrend(
+            dates=["2023-12-31", "2024-01-01"], effect=30,
+            pre_window=0, post_window=0, direction="up",
+        )
+        timestamps = self._make_timestamps("2023-12-30", "2024-01-02")
+        values = holiday.generate(timestamps)
+
+        assert values[0] == pytest.approx(0.0)
+        assert values[1] == pytest.approx(30.0)   # 2023-12-31
+        assert values[2] == pytest.approx(30.0)   # 2024-01-01
+        assert values[3] == pytest.approx(0.0)
+
+    def test_sub_daily_timestamps(self):
+        """Holiday effect applies to all sub-daily timestamps on affected days."""
+        holiday = HolidayTrend(
+            dates=["2024-06-01"], effect=60, pre_window=1, post_window=1, direction="up",
+        )
+        timestamps = pd.date_range(start="2024-05-31", end="2024-06-02", freq="h")
+        values = holiday.generate(timestamps)
+
+        # All 24 hourly timestamps on 2024-06-01 should have full effect
+        june1_values = values[24:48]  # indices for June 1
+        np.testing.assert_allclose(june1_values, 60.0)
