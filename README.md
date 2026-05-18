@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="./tsdata-logo.svg" alt="ts-data-generator logo" width="200"/>
+
 # Synthetic Time Series Data Generator
 
 [![CI](https://github.com/manojmanivannan/ts-data-generator/actions/workflows/ci.yaml/badge.svg)](https://github.com/manojmanivannan/ts-data-generator/actions/workflows/ci.yaml)
@@ -13,6 +15,47 @@ or the `tsdata` CLI.
 <img src="https://github.com/manojmanivannan/ts-data-generator/raw/main/notebooks/image.png" alt="sample plot" width="800"/>
 
 </div>
+
+---
+
+## Table of Contents
+
+- [Synthetic Time Series Data Generator](#synthetic-time-series-data-generator)
+  - [Table of Contents](#table-of-contents)
+  - [Features](#features)
+  - [Quickstart](#quickstart)
+    - [CLI (no install)](#cli-no-install)
+    - [Python API](#python-api)
+  - [Installation](#installation)
+  - [Core Concepts](#core-concepts)
+    - [Dimensions](#dimensions)
+    - [Metrics](#metrics)
+    - [Anomalies](#anomalies)
+    - [Deterministic generation](#deterministic-generation)
+    - [Multi-Items](#multi-items)
+    - [Aggregation](#aggregation)
+  - [CLI Reference](#cli-reference)
+    - [`generate` — create a CSV dataset](#generate--create-a-csv-dataset)
+    - [Anomaly examples](#anomaly-examples)
+    - [Other commands](#other-commands)
+    - [Environment variables](#environment-variables)
+    - [JSON config file](#json-config-file)
+  - [Schema Imputing](#schema-imputing)
+  - [Example Notebooks](#example-notebooks)
+  - [Package Structure](#package-structure)
+  - [License](#license)
+
+---
+
+## Features
+
+- **Realistic Data:** Generate data that mimics real-world time series data with trends, seasonality, and noise.
+- **Configurable:** Control the data generation process with a rich set of parameters.
+- **Composable:** Combine multiple trend functions to create complex patterns.
+- **Injectable Anomalies:** Inject point anomalies, missing data, and concept drift to test your models.
+- **Python API and CLI:** Use the Python API for programmatic control or the CLI for quick and easy data generation.
+- **Deterministic:** Generate reproducible datasets for consistent experiments.
+- **Extensible:** Easily add your own trend functions and anomaly types.
 
 ---
 
