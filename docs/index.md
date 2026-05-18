@@ -37,9 +37,9 @@ print(dg.data.head())
 
 ## Documentation
 
-- [CLI Reference]({{ site.baseurl }}/cli)
-- [Python API Reference]({{ site.baseurl }}/api)
-- [Trend Functions]({{ site.baseurl }}/trends)
-- [Anomaly Injection]({{ site.baseurl }}/anomalies)
-- [Dimension Generators]({{ site.baseurl }}/dimensions)
-- [Schema Imputing]({{ site.baseurl }}/imputer)
+- [CLI Reference]({{ site.baseurl }}/ts-data-generator/cli)
+- [Python API Reference]({{ site.baseurl }}/ts-data-generator/api)
+- [Trend Functions]({{ site.baseurl }}/ts-data-generator/trends)
+- [Anomaly Injection]({{ site.baseurl }}/ts-data-generator/anomalies)
+- [Dimension Generators]({{ site.baseurl }}/ts-data-generator/dimensions)
+- [Schema Imputing]({{ site.baseurl }}/ts-data-generator/imputer)
