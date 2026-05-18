@@ -1,5 +1,6 @@
 title: "ts-data-generator"
 description: "A professional-grade Python library and CLI for generating realistic, deterministic, and anomaly-injected time series datasets."
+logo: "/assets/images/logo.svg"
 theme: jekyll-theme-cayman # Fallback
 remote_theme: just-the-docs/just-the-docs
 

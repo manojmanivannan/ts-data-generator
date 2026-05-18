@@ -1,0 +1,15 @@
+<style>
+  /* 
+     Fix for small code blocks in headers. 
+     Headers that are entirely wrapped in backticks often appear 
+     disproportionately small because code elements usually have 
+     a relative font-size (e.g., 85%) or a fixed smaller font.
+  */
+  h1 code, h2 code, h3 code, h4 code, h5 code, h6 code {
+    font-size: inherit;
+    font-weight: inherit;
+    color: inherit;
+    background-color: transparent;
+    padding: 0;
+  }
+</style>
