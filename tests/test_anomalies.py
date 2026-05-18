@@ -597,8 +597,8 @@ class TestDriftSegmentConstruction:
     def test_requires_start_timestamp(self):
         from ts_data_generator.anomalies.drift import DriftSegment
 
-        with pytest.raises(ValueError, match="start_timestamp or start_index"):
-            DriftSegment()
+        with pytest.raises(TypeError):
+            DriftSegment()  # type: ignore[call-arg]
 
     def test_rejects_empty_start_timestamp(self):
         from ts_data_generator.anomalies.drift import DriftSegment
@@ -891,34 +891,6 @@ class TestConceptDriftTimestampResolution:
             cd.intervene(base, timestamps, rng=None)
 
 
-class TestDriftSegmentStartIndex:
-    def test_constructs_with_start_index(self):
-        from ts_data_generator.anomalies.drift import DriftSegment
-
-        seg = DriftSegment(start_index=50, transition_window=1200,
-                           target_mean=5.0, target_std=1.0, hold_duration=6000)
-        assert seg.start_index == 50
-        assert seg.start_timestamp is None
-
-    def test_rejects_neither_start_timestamp_nor_index(self):
-        from ts_data_generator.anomalies.drift import DriftSegment
-
-        with pytest.raises(ValueError, match="start_timestamp or start_index"):
-            DriftSegment(target_mean=5.0, target_std=1.0)  # type: ignore[call-arg]
-
-    def test_rejects_both_start_timestamp_and_index(self):
-        from ts_data_generator.anomalies.drift import DriftSegment
-
-        with pytest.raises(ValueError, match="start_timestamp or start_index"):
-            DriftSegment(start_timestamp="2024-01-01", start_index=50)
-
-    def test_rejects_negative_start_index(self):
-        from ts_data_generator.anomalies.drift import DriftSegment
-
-        with pytest.raises(ValueError, match="start_index"):
-            DriftSegment(start_index=-5)
-
-
 class TestConceptDriftMultiSegment:
     def test_three_segments_transition_through_all_regimes(self):
         from ts_data_generator.anomalies.drift import ConceptDrift, DriftSegment
@@ -927,16 +899,16 @@ class TestConceptDriftMultiSegment:
         base = np.full(n, 10.0)
         timestamps = pd.date_range("2024-01-01", periods=n, freq="min")
 
-        # Segment 1: start at 50, ramp to mean=50, hold 100, no restore
-        seg1 = DriftSegment(start_index=50, transition_window=600,
+        # Segment 1: start at 00:50, ramp to mean=50, hold 100, no restore
+        seg1 = DriftSegment(start_timestamp="2024-01-01 00:50:00", transition_window=600,
                             target_mean=50.0, target_std=0.0, hold_duration=6000,
                             restore=False)
         # Segment 2: start after seg1 ends, ramp to mean=100, hold 100, restore
-        seg2 = DriftSegment(start_index=0, transition_window=600,
+        seg2 = DriftSegment(start_timestamp="2024-01-01 02:40:00", transition_window=600,
                             target_mean=100.0, target_std=0.0, hold_duration=6000,
                             restore=True)
         # Segment 3: start after seg2 ends (restored), ramp to mean=200, hold, no restore
-        seg3 = DriftSegment(start_index=0, transition_window=600,
+        seg3 = DriftSegment(start_timestamp="2024-01-01 04:40:00", transition_window=600,
                             target_mean=200.0, target_std=0.0, hold_duration=6000,
                             restore=False)
 
@@ -968,10 +940,10 @@ class TestConceptDriftMultiSegment:
         timestamps = pd.date_range("2024-01-01", periods=n, freq="min")
 
         # Two sequential segments, zero_std so we know exact values
-        seg1 = DriftSegment(start_index=50, transition_window=600,
+        seg1 = DriftSegment(start_timestamp="2024-01-01 00:50:00", transition_window=600,
                             target_mean=100.0, target_std=0.0, hold_duration=6000,
                             restore=False)
-        seg2 = DriftSegment(start_index=0, transition_window=600,
+        seg2 = DriftSegment(start_timestamp="2024-01-01 02:40:00", transition_window=600,
                             target_mean=200.0, target_std=0.0, hold_duration=6000,
                             restore=True)
 
@@ -994,10 +966,10 @@ class TestConceptDriftMultiSegment:
         base = np.ones(n)
         timestamps = pd.date_range("2024-01-01", periods=n, freq="min")
 
-        seg1 = DriftSegment(start_index=50, transition_window=600,
+        seg1 = DriftSegment(start_timestamp="2024-01-01 00:50:00", transition_window=600,
                             target_mean=50.0, target_std=5.0, hold_duration=6000,
                             restore=True)
-        seg2 = DriftSegment(start_index=0, transition_window=600,
+        seg2 = DriftSegment(start_timestamp="2024-01-01 02:50:00", transition_window=600,
                             target_mean=100.0, target_std=5.0, hold_duration=6000,
                             restore=False)
 

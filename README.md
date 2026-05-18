@@ -115,6 +115,9 @@ Numeric columns built by additively composing one or more **trends**.
 | `SinusoidalTrend` | Sine wave with optional noise | `amplitude`, `freq`, `phase`, `noise_level` |
 | `LinearTrend` | Linear ramp with optional noise | `limit`, `offset`, `noise_level` |
 | `WeekendTrend` | Spikes on Saturday/Sunday | `weekend_effect`, `direction`, `limit` |
+| `HolidayTrend` | Ramp around holidays | `country`, `effect`, `pre_window`, `post_window` |
+| `ARNoiseTrend` | Autoregressive AR(p) noise | `coefficients` or `decay`+`order`, `noise_std` |
+| `MarkovTrend` | Discrete-state Markov chain | `states`, `values`, `stickiness` or `transition_matrix` |
 | `StockTrend` | Random walk + multi-scale sine | `amplitude`, `direction`, `noise_level` |
 
 Trends combine with `+`: `metric_name:Trend1(...)+Trend2(...)`.
@@ -133,9 +136,10 @@ Inject realistic irregularities into metric values. Anomalies are applied per-me
 - `replacement` — replaces the trend value with the magnitude.
 Magnitude can be a fixed scalar or a `(min, max)` tuple for uniform sampling.
 
-**MissingData** supports two modes:
+**MissingData** supports three modes:
 - `random` — each timestamp independently becomes NaN with the given probability.
 - `burst` — consecutive blocks of NaN of configurable length, non-overlapping.
+- `patterned` — NaN wherever a schedule callable `(pd.Timestamp) -> bool` returns True (e.g. every Sunday). Patterned mode composes with random/burst via separate MissingData instances in the anomalies list.
 
 **ConceptDrift** applies gradual distribution-level shifts using `DriftSegment`:
 ```python
@@ -147,7 +151,9 @@ ConceptDrift(segments=[
                  hold_duration=7200, restore=True),
 ])
 ```
-Each segment alpha-blends from baseline into `N(target_mean, target_std)` over `transition_window` seconds, holds for `hold_duration` seconds, and optionally transitions back. Multi-segment sequences are built by repeating `--anomalies` for the same metric in the CLI, or by passing a list of segments in the API.
+Each segment alpha-blends from baseline into `N(target_mean, target_std)` over `transition_window` seconds, holds for `hold_duration` seconds, and optionally transitions back.
+
+Drift positions are specified by absolute `start_timestamp`. Multi-segment sequences are built by repeating `--anomalies` for the same metric in the CLI, or by passing a list of segments in the API.
 
 Anomalies combine with `+` and are scoped to a metric:
 ```
@@ -229,6 +235,9 @@ tsdata generate ... --anomalies "sales:MissingData(probability=0.05)"
 
 # Missing data (burst mode)
 tsdata generate ... --anomalies "sales:MissingData(mode=burst,burst_probability=0.02,min_length=3,max_length=10)"
+
+# Missing data (patterned mode — NaN every Sunday)
+tsdata generate ... --anomalies "sales:MissingData(mode=patterned,schedule=weekday==6)"
 
 # Concept drift
 tsdata generate ... --anomalies "sales:ConceptDrift(start_timestamp=2024-01-15T06:00:00,target_mean=50,target_std=5,hold_duration=7200)"
@@ -329,7 +338,7 @@ ts_data_generator/
 │   ├── __init__.py        # Anomaly, PointAnomaly, MissingData, ConceptDrift, DriftSegment
 │   ├── base.py            # Abstract Anomaly base class
 │   ├── point.py           # PointAnomaly (isolated spikes)
-│   ├── missing.py         # MissingData (NaN gaps, random & burst)
+│   ├── missing.py         # MissingData (NaN gaps: random, burst, patterned)
 │   └── drift.py           # ConceptDrift + DriftSegment (regime shifts)
 ├── core/
 │   └── dataframe_builder.py  # DataFrame generation logic
@@ -338,7 +347,7 @@ ts_data_generator/
 │   └── converter.py       # CSV schema analysis & trend imputing
 ├── utils/
 │   ├── functions.py       # Dimension generator functions
-│   └── trends.py          # Trend generators (Sine, Linear, Weekend, Stock)
+│   └── trends.py          # Trend generators (Sine, Linear, Weekend, Holiday, ARNoise, Markov, Stock)
 └── transforms/
     └── normalizer.py      # Min-max & standard normalization strategies
 ```

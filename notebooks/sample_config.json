@@ -15,14 +15,15 @@
     "metrics": [
         "sales:LinearTrend(limit=500,offset=10,noise_level=2)+WeekendTrend(weekend_effect=100,direction=up,noise_level=5,limit=200)+SinusoidalTrend(amplitude=50,freq=12,phase=6,noise_level=3)",
         "temperature:SinusoidalTrend(amplitude=15,freq=12,phase=0,noise_level=1)+LinearTrend(limit=50,offset=20,noise_level=0.5)",
-        "price:StockTrend(amplitude=20,direction=up,noise_level=0.5)+SinusoidalTrend(amplitude=5,freq=48,phase=12,noise_level=0.2)",
-        "traffic:LinearTrend(limit=10,offset=30,noise_level=10)+WeekendTrend(weekend_effect=30,direction=down,noise_level=15,limit=30)+SinusoidalTrend(amplitude=10,freq=24,phase=0,noise_level=5)"
+        "price:StockTrend(amplitude=20,direction=up,noise_level=0.5)+SinusoidalTrend(amplitude=5,freq=48,phase=12,noise_level=0.2)+ARNoiseTrend(coefficients=[0.5,-0.2],noise_std=0.5)",
+        "traffic:LinearTrend(limit=10,offset=30,noise_level=10)+WeekendTrend(weekend_effect=30,direction=down,noise_level=15,limit=30)+SinusoidalTrend(amplitude=10,freq=24,phase=0,noise_level=5)",
+        "load_states:MarkovTrend(states=[low,medium,high],values=[10,50,100],stickiness=0.9,noise_std=5)"
     ],
     "anomalies": [
         "sales:PointAnomaly(probability=0.01,magnitude=-100,mode=replacement)+PointAnomaly(probability=0.005,magnitude=200)+MissingData(probability=0.01)+MissingData(mode=burst,burst_probability=0.005,min_length=3,max_length=10)",
         "temperature:PointAnomaly(probability=0.02,magnitude=15)+MissingData(mode=burst,burst_probability=0.01,min_length=5,max_length=20)",
         "price:ConceptDrift(start_timestamp=2024-01-04T12:00:00,target_mean=100,target_std=8,transition_window=216000,hold_duration=1080000,restore=true)",
-        "price:ConceptDrift(start_timestamp=2024-01-15T06:00:00,target_mean=200,target_std=15,transition_window=288000,hold_duration=900000,restore=false)",
+        "price:ConceptDrift(start_timestamp=2024-01-08T12:00:00,target_mean=200,target_std=15,transition_window=288000,hold_duration=900000,restore=false)",
         "traffic:MissingData(probability=0.02)+PointAnomaly(probability=0.01,magnitude=-40)+ConceptDrift(start_timestamp=2024-01-09T08:00:00,target_mean=500,target_std=50,transition_window=360000,hold_duration=1440000,restore=true)"
     ]
 }

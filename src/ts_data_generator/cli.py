@@ -124,10 +124,13 @@ PRESETS: dict[str, dict] = {
 # ---------------------------------------------------------------------------
 
 
-def _parse_value(value: str) -> int | float | str | bool:
-    """Parse a string value into int, float, bool, or str."""
+def _parse_value(value: str) -> int | float | str | bool | list:
+    """Parse a string value into int, float, bool, list, or str."""
     if value.lower() in ("true", "false"):
         return value.lower() == "true"
+    if value.startswith("[") and value.endswith("]"):
+        inner = value[1:-1]
+        return [_parse_value(v) for v in _split_bracket_aware(inner)]
     if value.lstrip("-").isdigit():
         return int(value)
     if "." in value:
@@ -168,7 +171,29 @@ def _parse_dimension_spec(spec: str) -> tuple[str, str, tuple | list]:
     return name, function_name, parsed
 
 
-def _parse_trend_spec(trend_spec: str) -> tuple[str, dict[str, int | float | str]]:
+def _split_bracket_aware(text: str, sep: str = VALUE_SEPARATOR) -> list[str]:
+    """Split by *sep* but ignore separators inside ``[...]``."""
+    parts: list[str] = []
+    depth = 0
+    current: list[str] = []
+    for ch in text:
+        if ch == "[":
+            depth += 1
+            current.append(ch)
+        elif ch == "]":
+            depth = max(0, depth - 1)
+            current.append(ch)
+        elif ch == sep and depth == 0:
+            parts.append("".join(current))
+            current = []
+        else:
+            current.append(ch)
+    if current:
+        parts.append("".join(current))
+    return parts
+
+
+def _parse_trend_spec(trend_spec: str) -> tuple[str, dict[str, int | float | str | bool | list]]:
     """Parse a trend specification string.
 
     Format: ``TrendName(param1=value1,param2=value2)``
@@ -179,7 +204,7 @@ def _parse_trend_spec(trend_spec: str) -> tuple[str, dict[str, int | float | str
     Raises:
         click.BadParameter: If the format is invalid.
     """
-    match = re.match(r"(\w+)\((.*?)\)", trend_spec)
+    match = re.match(r"(\w+)\((.*)\)", trend_spec)
     if not match:
         raise click.BadParameter(
             f"Invalid trend format {trend_spec!r}. Expected: TrendName(param=value)"
@@ -190,8 +215,14 @@ def _parse_trend_spec(trend_spec: str) -> tuple[str, dict[str, int | float | str
 
     param_dict: dict[str, int | float | str] = {}
     if params_str:
-        for param in params_str.split(VALUE_SEPARATOR):
-            key, value = param.split("=")
+        for param in _split_bracket_aware(params_str):
+            try:
+                key, value = param.split("=", 1)
+            except ValueError:
+                raise click.BadParameter(
+                    f"Invalid parameter {param!r} in {trend_spec!r}. "
+                    f"Expected key=value format."
+                ) from None
             param_dict[key] = _parse_value(value)
 
     return trend_name, param_dict
@@ -275,7 +306,7 @@ def _apply_config_overrides(
     return result
 
 
-def _parse_anomaly_spec(spec: str) -> tuple[str, dict[str, int | float | str | bool]]:
+def _parse_anomaly_spec(spec: str) -> tuple[str, dict[str, int | float | str | bool | list]]:
     """Parse an anomaly specification string.
 
     Format: ``AnomalyType(param1=value1,param2=value2)``
