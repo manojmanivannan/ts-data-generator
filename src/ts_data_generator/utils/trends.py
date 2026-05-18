@@ -408,6 +408,117 @@ class HolidayTrend(Trends):
         return result
 
 
+class ARNoiseTrend(Trends):
+    """Generate autoregressive AR(p) noise.
+
+    ``value[t] = sum(coefficients[i] * value[t-i-1]) + N(0, noise_std)``.
+
+    Users provide explicit ``coefficients`` (list of floats, whose length
+    determines the order *p*) **or** a ``decay`` parameter that auto-generates
+    stable coefficients guaranteed to have roots inside the unit circle.
+
+    A warm-up period of *p* steps initialises the lag buffer so that the
+    returned array has exactly ``len(timestamps)`` values.
+
+    Args:
+        name: Human-readable name.
+        coefficients: Explicit AR coefficients. Length determines order *p*.
+        noise_std: Standard deviation of the white-noise innovation.
+        decay: If given (instead of ``coefficients``), auto-generate stable
+            coefficients. Must be in ``(0, 1)``.
+        order: Order *p* when using ``decay``.  Ignored when ``coefficients``
+            is provided.
+
+    Raises:
+        ValueError: If neither (or both) ``coefficients`` and ``decay`` are given,
+            or if ``decay`` is outside ``(0, 1)``.
+
+    Example:
+        CLI shorthand:
+        ``ARNoiseTrend(coefficients=[0.5,-0.2],noise_std=0.5)``
+    """
+
+    _example = "sales:ARNoiseTrend(coefficients=[0.5,-0.2],noise_std=0.5)"
+
+    def __init__(
+        self,
+        name: str = "default",
+        coefficients: list[float] | None = None,
+        noise_std: float = 1.0,
+        decay: float | None = None,
+        order: int = 1,
+    ) -> None:
+        super().__init__(name)
+        if coefficients is not None and decay is not None:
+            raise ValueError("Provide either 'coefficients' or 'decay', not both.")
+        if coefficients is None and decay is None:
+            raise ValueError("Either 'coefficients' or 'decay' must be provided.")
+
+        if coefficients is not None:
+            self._order = len(coefficients)
+            self._coefficients = np.array(coefficients, dtype=np.float64)
+        else:
+            if not 0 < decay < 1:
+                raise ValueError("decay must be in (0, 1)")
+            if order < 1:
+                raise ValueError("order must be >= 1")
+            self._order = order
+            self._coefficients = self._generate_coefficients(decay, order)
+
+        self._noise_std = noise_std
+
+    @staticmethod
+    def _generate_coefficients(decay: float, order: int) -> np.ndarray:
+        """Auto-generate stable AR coefficients via inverse Levinson-Durbin.
+
+        Uses reflection coefficients all set to ``decay``, which guarantees
+        stationarity (roots of the characteristic polynomial lie inside the
+        unit circle) since every reflection coefficient is in (-1, 1).
+        """
+        reflection = np.full(order, decay)
+        phi = np.array([reflection[0]])
+        for k in range(2, order + 1):
+            new_phi = np.zeros(k)
+            new_phi[k - 1] = reflection[k - 1]
+            for j in range(k - 1):
+                new_phi[j] = phi[j] - reflection[k - 1] * phi[k - 2 - j]
+            phi = new_phi
+        return phi
+
+    @property
+    def order(self) -> int:
+        return self._order
+
+    @property
+    def coefficients(self) -> np.ndarray:
+        return self._coefficients
+
+    @property
+    def noise_std(self) -> float:
+        return self._noise_std
+
+    def generate(
+        self, timestamps: pd.DatetimeIndex, rng: SeedableRNG | None = None
+    ) -> np.ndarray:
+        n = len(timestamps)
+        p = self._order
+        total = n + p
+
+        if rng is not None:
+            noise = rng.normal(0, self._noise_std, total)
+        else:
+            noise = np.random.normal(0, self._noise_std, total)
+
+        result = np.zeros(total)
+        result[:p] = noise[:p]
+
+        coeffs = self._coefficients
+        for t in range(p, total):
+            result[t] = float(np.dot(coeffs, result[t - p : t][::-1])) + noise[t]
+
+        return result[p:]
+
+
 class StockTrend(Trends):
     """Generate a stock-like trend with random walk and multi-scale sine components.
 

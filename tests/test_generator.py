@@ -485,3 +485,158 @@ class TestHolidayTrend:
         # All 24 hourly timestamps on 2024-06-01 should have full effect
         june1_values = values[24:48]  # indices for June 1
         np.testing.assert_allclose(june1_values, 60.0)
+
+
+class TestARNoiseTrend:
+    """Tests for the ARNoiseTrend class."""
+
+    @staticmethod
+    def _make_timestamps(n: int) -> pd.DatetimeIndex:
+        return pd.date_range(start="2024-01-01", periods=n, freq="D")
+
+    def test_explicit_coefficients_order_2(self):
+        """ARNoiseTrend with explicit coefficients produces AR(2) noise."""
+        from ts_data_generator.utils.trends import ARNoiseTrend
+
+        trend = ARNoiseTrend(coefficients=[0.5, -0.2], noise_std=0.5)
+        timestamps = self._make_timestamps(500)
+        values = trend.generate(timestamps)
+
+        assert len(values) == 500
+        assert np.all(np.isfinite(values))
+        # AR(2) with these coefficients should not explode
+        assert np.std(values) < 10.0
+
+    def test_decay_auto_generates_coefficients(self):
+        """decay + order auto-generates stable coefficients."""
+        from ts_data_generator.utils.trends import ARNoiseTrend
+
+        trend = ARNoiseTrend(decay=0.8, order=3, noise_std=0.5)
+        timestamps = self._make_timestamps(1000)
+        values = trend.generate(timestamps)
+
+        assert len(values) == 1000
+        assert trend.order == 3
+        assert len(trend.coefficients) == 3
+        assert np.all(np.isfinite(values))
+
+    def test_auto_coefficients_stationarity(self):
+        """Auto-generated coefficients have roots inside the unit circle."""
+        from ts_data_generator.utils.trends import ARNoiseTrend
+
+        for decay in [0.3, 0.5, 0.8]:
+            for order in [1, 2, 3, 5]:
+                trend = ARNoiseTrend(decay=decay, order=order)
+                coeffs = trend.coefficients
+
+                # Build companion matrix and check eigenvalues
+                if order == 1:
+                    roots = np.abs(coeffs)
+                else:
+                    companion = np.zeros((order, order))
+                    companion[0, :] = coeffs
+                    for i in range(1, order):
+                        companion[i, i - 1] = 1.0
+                    roots = np.abs(np.linalg.eigvals(companion))
+
+                assert np.all(roots < 1.0), (
+                    f"Non-stationary for decay={decay}, order={order}: max|root|={roots.max()}"
+                )
+
+    def test_explicit_coefficients_acceptance(self):
+        """Explicit coefficients are stored and used as-is."""
+        from ts_data_generator.utils.trends import ARNoiseTrend
+
+        coeffs = [0.7, -0.3, 0.1]
+        trend = ARNoiseTrend(coefficients=coeffs)
+        np.testing.assert_array_almost_equal(trend.coefficients, coeffs)
+        assert trend.order == 3
+
+    def test_seed_determinism(self):
+        """With a fixed rng seed, output is deterministic."""
+        from ts_data_generator.random import SeedableRNG
+        from ts_data_generator.utils.trends import ARNoiseTrend
+
+        coeffs = [0.5, -0.2]
+        timestamps = self._make_timestamps(100)
+
+        rng1 = SeedableRNG(42)
+        values1 = ARNoiseTrend(coefficients=coeffs).generate(timestamps, rng=rng1)
+
+        rng2 = SeedableRNG(42)
+        values2 = ARNoiseTrend(coefficients=coeffs).generate(timestamps, rng=rng2)
+
+        np.testing.assert_array_equal(values1, values2)
+
+    def test_warmup_correct_output_count(self):
+        """Warm-up produces exactly len(timestamps) output values."""
+        from ts_data_generator.utils.trends import ARNoiseTrend
+
+        for n in [10, 50, 100, 1000]:
+            for order in [1, 3, 5]:
+                trend = ARNoiseTrend(coefficients=[0.5] * order)
+                timestamps = self._make_timestamps(n)
+                values = trend.generate(timestamps)
+                assert len(values) == n
+
+    def test_autocorrelation_matches_coefficients(self):
+        """Output exhibits autocorrelation consistent with AR(1) coefficient."""
+        from ts_data_generator.utils.trends import ARNoiseTrend
+
+        # AR(1): value[t] = phi * value[t-1] + noise
+        # Theoretical lag-1 autocorrelation ≈ phi
+        phi = 0.7
+        trend = ARNoiseTrend(coefficients=[phi], noise_std=0.5)
+        timestamps = self._make_timestamps(5000)
+        values = trend.generate(timestamps)
+
+        # Compute sample lag-1 autocorrelation
+        centered = values - values.mean()
+        lag1_corr = np.corrcoef(centered[1:], centered[:-1])[0, 1]
+
+        # Should be close to phi for a long series
+        assert abs(lag1_corr - phi) < 0.05, f"Expected ~{phi}, got {lag1_corr}"
+
+    def test_noise_std_controls_variance(self):
+        """Higher noise_std produces proportionally larger variance."""
+        from ts_data_generator.utils.trends import ARNoiseTrend
+
+        timestamps = self._make_timestamps(2000)
+
+        std_low = np.std(
+            ARNoiseTrend(coefficients=[0.5], noise_std=0.1).generate(timestamps)
+        )
+        std_high = np.std(
+            ARNoiseTrend(coefficients=[0.5], noise_std=1.0).generate(timestamps)
+        )
+
+        # Higher noise_std should yield higher output std (roughly proportional)
+        assert std_high > std_low * 5
+
+    def test_decay_deterministic_coefficients(self):
+        """Same decay+order always produces same coefficients."""
+        from ts_data_generator.utils.trends import ARNoiseTrend
+
+        coeffs1 = ARNoiseTrend(decay=0.8, order=4).coefficients
+        coeffs2 = ARNoiseTrend(decay=0.8, order=4).coefficients
+
+        np.testing.assert_array_equal(coeffs1, coeffs2)
+
+    def test_invalid_args_raise(self):
+        """Invalid argument combinations raise ValueError."""
+        from ts_data_generator.utils.trends import ARNoiseTrend
+
+        # Missing both
+        with pytest.raises(ValueError, match="Either"):
+            ARNoiseTrend()
+
+        # Both provided
+        with pytest.raises(ValueError, match="Provide either"):
+            ARNoiseTrend(coefficients=[0.5], decay=0.8)
+
+        # decay out of range
+        with pytest.raises(ValueError, match="decay must be in"):
+            ARNoiseTrend(decay=1.5, order=3)
+
+        with pytest.raises(ValueError, match="decay must be in"):
+            ARNoiseTrend(decay=-0.5, order=3)
