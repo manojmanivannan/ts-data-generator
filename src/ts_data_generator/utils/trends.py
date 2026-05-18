@@ -519,6 +519,145 @@ class ARNoiseTrend(Trends):
         return result[p:]
 
 
+class MarkovTrend(Trends):
+    """Generate discrete-state Markov chain noise.
+
+    At each timestamp the model samples the next state from a transition
+    probability matrix, then outputs ``state_value + N(0, noise_std)``.
+    Users specify either ``stickiness`` (probability of staying in the
+    current state, with all other transitions equally likely) or a full
+    N×N ``transition_matrix``.
+
+    The initial state is chosen uniformly at random (controlled by
+    ``rng`` when provided).
+
+    Args:
+        name: Human-readable name.
+        states: List of state names (e.g. ``["low", "high"]``).
+        values: Float values corresponding to each state.
+        stickiness: Probability of remaining in the current state.
+            Mutually exclusive with ``transition_matrix``.
+        transition_matrix: N×N row-stochastic transition probability
+            matrix.  Mutually exclusive with ``stickiness``.
+        noise_std: Standard deviation of Gaussian noise added to the
+            state value at each step.
+
+    Raises:
+        ValueError: If neither (or both) ``stickiness`` and
+            ``transition_matrix`` are given, or if the transition matrix
+            rows don't sum to 1.
+
+    Example:
+        CLI shorthand:
+        ``MarkovTrend(states=['low','high'],values=[10,100],stickiness=0.9,noise_std=5)``
+    """
+
+    _example = (
+        "sales:MarkovTrend(states=['low','high'],values=[10,100],stickiness=0.9,noise_std=5)"
+    )
+
+    def __init__(
+        self,
+        name: str = "default",
+        states: list[str] | None = None,
+        values: list[float] | None = None,
+        stickiness: float | None = None,
+        transition_matrix: list[list[float]] | None = None,
+        noise_std: float = 0.0,
+    ) -> None:
+        super().__init__(name)
+        if states is None or values is None:
+            raise ValueError("Both 'states' and 'values' must be provided.")
+        if len(states) != len(values):
+            raise ValueError("'states' and 'values' must have the same length.")
+        if len(states) < 2:
+            raise ValueError("At least 2 states are required.")
+
+        if stickiness is not None and transition_matrix is not None:
+            raise ValueError("Provide either 'stickiness' or 'transition_matrix', not both.")
+        if stickiness is None and transition_matrix is None:
+            raise ValueError("Either 'stickiness' or 'transition_matrix' must be provided.")
+
+        self._states = list(states)
+        self._values = np.array(values, dtype=np.float64)
+        self._noise_std = noise_std
+        self._n_states = len(states)
+
+        if transition_matrix is not None:
+            mat = np.array(transition_matrix, dtype=np.float64)
+            if mat.shape != (self._n_states, self._n_states):
+                raise ValueError(
+                    f"transition_matrix must be {self._n_states}x{self._n_states}, "
+                    f"got {mat.shape[0]}x{mat.shape[1]}"
+                )
+            row_sums = mat.sum(axis=1)
+            if not np.allclose(row_sums, 1.0):
+                raise ValueError(
+                    f"Each row of transition_matrix must sum to 1.0, got {row_sums}"
+                )
+            self._transition_matrix = mat
+        else:
+            if not 0 <= stickiness <= 1:
+                raise ValueError("stickiness must be in [0, 1]")
+            self._transition_matrix = self._build_stickiness_matrix(stickiness, self._n_states)
+
+    @staticmethod
+    def _build_stickiness_matrix(stickiness: float, n_states: int) -> np.ndarray:
+        """Build a transition matrix from a stickiness parameter.
+
+        All off-diagonal entries are equal: (1 - stickiness) / (n - 1).
+        """
+        off_diag = (1.0 - stickiness) / (n_states - 1)
+        mat = np.full((n_states, n_states), off_diag, dtype=np.float64)
+        np.fill_diagonal(mat, stickiness)
+        return mat
+
+    @property
+    def states(self) -> list[str]:
+        return self._states
+
+    @property
+    def values(self) -> np.ndarray:
+        return self._values
+
+    @property
+    def transition_matrix(self) -> np.ndarray:
+        return self._transition_matrix
+
+    @property
+    def noise_std(self) -> float:
+        return self._noise_std
+
+    def generate(
+        self, timestamps: pd.DatetimeIndex, rng: SeedableRNG | None = None
+    ) -> np.ndarray:
+        n = len(timestamps)
+        n_states = self._n_states
+        mat = self._transition_matrix
+
+        if rng is not None:
+            noise = rng.normal(0, self._noise_std, n)
+            # Initial state: uniformly random
+            init_state = rng.choice(n_states)
+        else:
+            noise = np.random.normal(0, self._noise_std, n)
+            init_state = np.random.choice(n_states)
+
+        # Generate state sequence
+        states = np.zeros(n, dtype=np.int64)
+        states[0] = init_state
+
+        for t in range(1, n):
+            prev = states[t - 1]
+            probs = mat[prev]
+            if rng is not None:
+                states[t] = rng.choice(n_states, p=probs)
+            else:
+                states[t] = np.random.choice(n_states, p=probs)
+
+        return self._values[states] + noise
+
+
 class StockTrend(Trends):
     """Generate a stock-like trend with random walk and multi-scale sine components.
 

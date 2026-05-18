@@ -2,9 +2,11 @@
 Tests for the DataGen class
 """
 
-import pytest
-import pandas as pd
+
 import numpy as np
+import pandas as pd
+import pytest
+
 from ts_data_generator import DataGen
 from ts_data_generator.exceptions import (
     MetricError,
@@ -16,8 +18,6 @@ from ts_data_generator.utils.functions import (
     random_choice,
     random_int,
 )
-from enum import Enum
-from typing import Generator
 from ts_data_generator.utils.trends import (
     HolidayTrend,
     LinearTrend,
@@ -77,8 +77,7 @@ class TestDataGen5minGenerator:
         dimension_to_remove = "port"
         data_gen_instance.remove_dimension(name=dimension_to_remove)
         assert (
-            not (dimension_to_remove in list(data_gen_instance.dimensions.keys()))
-            is True
+            (dimension_to_remove in list(data_gen_instance.dimensions.keys())) is not True
         )
 
     def test_remove_metric(self, data_gen_instance):
@@ -640,3 +639,198 @@ class TestARNoiseTrend:
 
         with pytest.raises(ValueError, match="decay must be in"):
             ARNoiseTrend(decay=-0.5, order=3)
+
+
+class TestMarkovTrend:
+    """Tests for the MarkovTrend class."""
+
+    @staticmethod
+    def _make_timestamps(n: int) -> pd.DatetimeIndex:
+        return pd.date_range(start="2024-01-01", periods=n, freq="D")
+
+    def test_stickiness_produces_valid_output(self):
+        """MarkovTrend with stickiness produces output of the correct length."""
+        from ts_data_generator.utils.trends import MarkovTrend
+
+        trend = MarkovTrend(
+            states=["low", "high"], values=[10, 100], stickiness=0.9, noise_std=5,
+        )
+        timestamps = self._make_timestamps(500)
+        values = trend.generate(timestamps)
+
+        assert len(values) == 500
+        assert np.all(np.isfinite(values))
+
+    def test_high_stickiness_mostly_stays(self):
+        """stickiness=0.95 produces long runs in the same state."""
+        from ts_data_generator.random import SeedableRNG
+        from ts_data_generator.utils.trends import MarkovTrend
+
+        trend = MarkovTrend(
+            states=["a", "b"], values=[0, 1], stickiness=0.95, noise_std=0,
+        )
+        timestamps = self._make_timestamps(1000)
+        rng = SeedableRNG(42)
+        values = trend.generate(timestamps, rng=rng)
+
+        transitions = np.sum(np.diff(values) != 0)
+        # With 1000 points and stickiness 0.95, expected transitions ~ 50
+        assert transitions < 150  # generous upper bound
+
+    def test_low_stickiness_frequent_switching(self):
+        """stickiness=0.5 produces frequent state switching."""
+        from ts_data_generator.random import SeedableRNG
+        from ts_data_generator.utils.trends import MarkovTrend
+
+        trend = MarkovTrend(
+            states=["a", "b"], values=[0, 1], stickiness=0.5, noise_std=0,
+        )
+        timestamps = self._make_timestamps(1000)
+        rng = SeedableRNG(42)
+        values = trend.generate(timestamps, rng=rng)
+
+        transitions = np.sum(np.diff(values) != 0)
+        # With 1000 points and stickiness 0.5, expected transitions ~ 500
+        assert transitions > 300  # should have many transitions
+
+    def test_explicit_transition_matrix(self):
+        """MarkovTrend accepts an explicit transition matrix."""
+        from ts_data_generator.utils.trends import MarkovTrend
+
+        trend = MarkovTrend(
+            states=["low", "high"],
+            values=[10, 100],
+            transition_matrix=[[0.7, 0.3], [0.2, 0.8]],
+            noise_std=5,
+        )
+        timestamps = self._make_timestamps(500)
+        values = trend.generate(timestamps)
+
+        assert len(values) == 500
+        np.testing.assert_array_almost_equal(
+            trend.transition_matrix, [[0.7, 0.3], [0.2, 0.8]]
+        )
+
+    def test_seed_determinism(self):
+        """With a fixed rng seed, state sequence and output are deterministic."""
+        from ts_data_generator.random import SeedableRNG
+        from ts_data_generator.utils.trends import MarkovTrend
+
+        trend = MarkovTrend(
+            states=["low", "high"], values=[10, 100], stickiness=0.9, noise_std=5,
+        )
+        timestamps = self._make_timestamps(100)
+
+        rng1 = SeedableRNG(42)
+        values1 = trend.generate(timestamps, rng=rng1)
+
+        rng2 = SeedableRNG(42)
+        values2 = trend.generate(timestamps, rng=rng2)
+
+        np.testing.assert_array_equal(values1, values2)
+
+    def test_state_values_match(self):
+        """Output values match state_value + noise for the current state."""
+        from ts_data_generator.random import SeedableRNG
+        from ts_data_generator.utils.trends import MarkovTrend
+
+        trend = MarkovTrend(
+            states=["a", "b"], values=[50, 200], stickiness=0.5, noise_std=0,
+        )
+        timestamps = self._make_timestamps(100)
+        rng = SeedableRNG(42)
+        values = trend.generate(timestamps, rng=rng)
+
+        # With noise_std=0, values should be exactly 50 or 200
+        unique_vals = set(np.unique(values).tolist())
+        assert unique_vals == {50.0, 200.0} or unique_vals == {50.0} or unique_vals == {200.0}
+
+    def test_transition_frequency_matches_probability(self):
+        """Transition frequencies are consistent with the specified matrix."""
+        from ts_data_generator.random import SeedableRNG
+        from ts_data_generator.utils.trends import MarkovTrend
+
+        # Define a matrix where state 0 -> 1 has probability 0.3
+        trend = MarkovTrend(
+            states=["a", "b"],
+            values=[0, 1],
+            transition_matrix=[[0.7, 0.3], [0.5, 0.5]],
+            noise_std=0,
+        )
+        timestamps = self._make_timestamps(5000)
+        rng = SeedableRNG(42)
+        values = trend.generate(timestamps, rng=rng)
+
+        # Count: when in state 0, how often do we go to state 1?
+        transitions_from_0 = 0
+        goes_to_1 = 0
+        for i in range(len(values) - 1):
+            if values[i] == 0:
+                transitions_from_0 += 1
+                if values[i + 1] == 1:
+                    goes_to_1 += 1
+
+        if transitions_from_0 > 0:
+            rate = goes_to_1 / transitions_from_0
+            assert 0.25 < rate < 0.35, f"Expected ~0.3, got {rate}"
+
+    def test_invalid_args_raise(self):
+        """Invalid argument combinations raise ValueError."""
+        from ts_data_generator.utils.trends import MarkovTrend
+
+        # Missing both stickiness and transition_matrix
+        with pytest.raises(ValueError, match="Either"):
+            MarkovTrend(states=["a", "b"], values=[1, 2])
+
+        # Both provided
+        with pytest.raises(ValueError, match="Provide either"):
+            MarkovTrend(
+                states=["a", "b"], values=[1, 2],
+                stickiness=0.9, transition_matrix=[[0.7, 0.3], [0.2, 0.8]],
+            )
+
+        # Non-stochastic matrix rows
+        with pytest.raises(ValueError, match="sum to 1"):
+            MarkovTrend(
+                states=["a", "b"], values=[1, 2],
+                transition_matrix=[[0.5, 0.3], [0.2, 0.8]],
+            )
+
+        # Wrong matrix shape
+        with pytest.raises(ValueError, match="transition_matrix must be"):
+            MarkovTrend(
+                states=["a", "b"], values=[1, 2],
+                transition_matrix=[[0.7, 0.3]],
+            )
+
+        # Fewer than 2 states
+        with pytest.raises(ValueError, match="At least 2"):
+            MarkovTrend(states=["only"], values=[1], stickiness=0.9)
+
+        # Mismatched states/values length
+        with pytest.raises(ValueError, match="same length"):
+            MarkovTrend(states=["a", "b"], values=[1], stickiness=0.9)
+
+        # Missing states
+        with pytest.raises(ValueError, match="Both 'states' and 'values'"):
+            MarkovTrend(values=[1, 2], stickiness=0.9)
+
+    def test_three_states(self):
+        """MarkovTrend works with more than 2 states."""
+        from ts_data_generator.random import SeedableRNG
+        from ts_data_generator.utils.trends import MarkovTrend
+
+        trend = MarkovTrend(
+            states=["low", "mid", "high"],
+            values=[10, 50, 100],
+            stickiness=0.85,
+            noise_std=2,
+        )
+        timestamps = self._make_timestamps(500)
+        rng = SeedableRNG(42)
+        values = trend.generate(timestamps, rng=rng)
+
+        assert len(values) == 500
+        # Values should cluster around 10, 50, 100 (with some noise)
+        unique = set(np.round(v / 10) * 10 for v in values)
+        assert unique & {10.0, 50.0, 100.0}
