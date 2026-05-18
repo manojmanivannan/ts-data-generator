@@ -2550,6 +2550,11 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+all = [
+    { name = "holidays" },
+    { name = "scipy", version = "1.15.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "scipy", version = "1.17.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+]
 dev = [
     { name = "pytest" },
     { name = "ruff" },
@@ -2585,8 +2590,9 @@ requires-dist = [
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.3" },
     { name = "ruff", marker = "extra == 'test'", specifier = ">=0.3" },
     { name = "scipy", marker = "extra == 'imputer'", specifier = ">=1.7" },
+    { name = "ts-data-generator", extras = ["holidays", "imputer"], marker = "extra == 'all'" },
 ]
-provides-extras = ["dev", "holidays", "imputer", "test"]
+provides-extras = ["dev", "all", "holidays", "imputer", "test"]
 
 [package.metadata.requires-dev]
 dev = [

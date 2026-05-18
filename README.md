@@ -68,10 +68,17 @@ dg.data.to_csv("weather.csv", index_label="datetime")
 pip install ts-data-generator
 ```
 
-With the optional schema-imputing module (requires `scipy`):
+With optional extras:
 
 ```bash
+# Schema imputing (requires scipy)
 pip install "ts-data-generator[imputer]"
+
+# Holiday trend support (requires holidays)
+pip install "ts-data-generator[holidays]"
+
+# All optional features
+pip install "ts-data-generator[all]"
 ```
 
 For local development:
