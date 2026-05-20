@@ -19,6 +19,18 @@
   }
 </style>
 
-<!-- MathJax for LaTeX math rendering -->
-<script type="text/javascript" async src="https://cloudflare.com">
+<!-- MathJax Configuration and Script -->
+<script>
+  MathJax = {
+    tex: {
+      inlineMath: [['$', '$'], ['\\(', '\\)']],
+      displayMath: [['$$', '$$'], ['\\[', '\\]']],
+      processEscapes: true
+    },
+    svg: {
+      fontCache: 'global'
+    }
+  };
+</script>
+<script type="text/javascript" id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js">
 </script>
