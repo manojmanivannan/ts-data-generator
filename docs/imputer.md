@@ -30,7 +30,7 @@ To identify cyclic seasonality (like daily, weekly, or seasonal oscillations), i
 
 ### 3. Non-Linear Least Squares Curve Fitting
 Using the top FFT frequencies as starting bounds, it uses `scipy.optimize.curve_fit` to perform a non-linear least squares fit on the data using a sum-of-sines function plus a linear slope component:
-$$\hat{y}(t) = (\text{slope} \cdot t + \text{intercept}) + \sum_{i=1}^{N} A_i \sin(\omega_i t + \phi_i)$$
+\(\hat{y}(t) = (\text{slope} \cdot t + \text{intercept}) + \sum_{i=1}^{N} A_i \sin(\omega_i t + \phi_i)\)
 It solves for:
 *   Linear slope and intercept coefficients.
 *   Sinusoidal amplitudes ($A_i$), angular frequencies ($\omega_i$), and phase offsets ($\phi_i$).
