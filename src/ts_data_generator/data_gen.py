@@ -198,7 +198,9 @@ class DataGen:
             try:
                 datetime.fromisoformat(value)
             except ValueError as exc:
-                raise ValidationError("Dates must be in ISO format (YYYY-MM-DD).") from exc
+                raise ValidationError(
+                    "Dates must be in ISO format (YYYY-MM-DD)."
+                ) from exc
         self._start_datetime = value
         self._request_regeneration()
 
@@ -212,7 +214,9 @@ class DataGen:
             try:
                 datetime.fromisoformat(value)
             except ValueError as exc:
-                raise ValidationError("Dates must be in ISO format (YYYY-MM-DD).") from exc
+                raise ValidationError(
+                    "Dates must be in ISO format (YYYY-MM-DD)."
+                ) from exc
         self._end_datetime = value
         self._request_regeneration()
 
@@ -283,12 +287,16 @@ class DataGen:
         dimension = Dimensions(name=name, function=function)
 
         if dimension in self._dimensions:
-            raise DimensionError(f"Dimension with name {dimension.name!r} already exists.")
+            raise DimensionError(
+                f"Dimension with name {dimension.name!r} already exists."
+            )
 
         self._dimensions.append(dimension)
         self._request_regeneration()
 
-    def update_dimension(self, name: str, function: int | str | float | Generator | None) -> None:
+    def update_dimension(
+        self, name: str, function: int | str | float | Generator | None
+    ) -> None:
         """Update an existing dimension's generator function.
 
         Args:
@@ -307,9 +315,7 @@ class DataGen:
 
         dimension = self.dimensions[name]
         if not isinstance(function, (int, str, float, Generator)):
-            raise ValidationError(
-                "Function must be a generator, int, float, or str."
-            )
+            raise ValidationError("Function must be a generator, int, float, or str.")
         dimension.function = function
 
     def remove_dimension(self, name: str) -> None:
@@ -445,7 +451,9 @@ class DataGen:
 
         for item in overlapping:
             self.data.drop(item.names, axis=1, errors="ignore", inplace=True)
-            self._multi_items = [mt for mt in self._multi_items if mt.names != item.names]
+            self._multi_items = [
+                mt for mt in self._multi_items if mt.names != item.names
+            ]
 
     # ------------------------------------------------------------------
     # Data generation
@@ -489,8 +497,8 @@ class DataGen:
             freq=self.granularity,
         )
 
-        reset_needed = (
-            self._timestamps is not None and len(self._timestamps) != len(new_timestamps)
+        reset_needed = self._timestamps is not None and len(self._timestamps) != len(
+            new_timestamps
         )
 
         if reset_needed or self.data.empty:
@@ -531,8 +539,7 @@ class DataGen:
             )
 
         agg_dict: dict[str, str] = {
-            name: metric.aggregation_type.value
-            for name, metric in self.metrics.items()
+            name: metric.aggregation_type.value for name, metric in self.metrics.items()
         }
 
         group_keys = list(self.dimensions.keys())
@@ -586,7 +593,9 @@ class DataGen:
     def denormalize(self) -> None:
         """Reverse the last normalization in place."""
         if self._normalizer is None:
-            logger.warning("denormalize() called but no normalization has been applied.")
+            logger.warning(
+                "denormalize() called but no normalization has been applied."
+            )
             return
         self._normalizer.denormalize(self.data)
         logger.info("Data denormalized.")
@@ -595,7 +604,9 @@ class DataGen:
     # Plotting
     # ------------------------------------------------------------------
 
-    def plot(self, exclude: list[str] | None = None, include: list[str] | None = None) -> None:
+    def plot(
+        self, exclude: list[str] | None = None, include: list[str] | None = None
+    ) -> None:
         """Plot numeric columns using matplotlib.
 
         Args:
