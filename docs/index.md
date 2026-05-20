@@ -9,66 +9,95 @@ has_children: true
 
 # Synthetic Time Series Data Generator
 
-**Synthetic Time Series Data Generator** is a robust Python library and CLI designed for data scientists and engineers who need realistic, deterministic, and highly configurable time series data.
+**Synthetic Time Series Data Generator** (`ts-data-generator`) is a professional-grade Python library and command-line interface (CLI) engineered for data scientists, ML engineers, and software developers who require realistic, deterministic, and highly configurable synthetic time series datasets.
 
-Whether you're benchmarking anomaly detection models, testing forecasting algorithms, or building dashboards without real data, this tool provides the primitives you need to simulate complex real-world behaviors.
+Whether you are benchmarking anomaly detection models, testing forecasting algorithms, or populating frontend dashboards before live data becomes available, `ts-data-generator` provides clean, composable building blocks to simulate complex, real-world temporal patterns.
 
 ---
 
 {: .new }
-> **Deterministic by Design**: Every dataset generated can be perfectly reproduced using a seed, ensuring your experiments are consistent across environments.
-
-## Key Features
-
-- **Realistic Trends**: Compose complex signals using Sinusoidal, Linear, AR(p) Noise, Markov Chains, and more. [Learn More]({{ site.baseurl }}/trends)
-- **Anomaly Injection**: Inject point anomalies, missing data gaps (random, burst, or patterned), and gradual concept drifts. [Learn More]({{ site.baseurl }}/anomalies)
-- **Dimension Context**: Add categorical context like regions, device IDs, or user types. [Learn More]({{ site.baseurl }}/dimensions)
-- **CLI & API**: Seamlessly transition from rapid CLI prototyping to production-grade Python pipelines. [Learn More]({{ site.baseurl }}/cli)
-- **Schema Imputing**: Bootstrap your generation configuration by analyzing existing CSV datasets. [Learn More]({{ site.baseurl }}/imputer)
-- **Visualization**: Built-in plotting for quick data verification. [Learn More]({{ site.baseurl }}/visualize)
+> **Deterministic by Design**: Every dataset generated is perfectly reproducible using a PCG64-backed pseudo-random number generator (PRNG) seed. This guarantees consistent generation across different machines, environments, and Python versions.
 
 ---
 
-## Quickstart
+## 🚀 Getting Started in 5 Minutes
 
-### Installation
+### 1. Installation
+
+Install the package via `pip` or using `uv` (recommended):
 
 ```bash
 pip install ts-data-generator
+# Or with uv:
+uv pip install ts-data-generator
 ```
 
-### Generate Data in One Line (CLI)
-
+*Optional but recommended (to enable automatic country-specific holiday detection):*
 ```bash
-tsdata generate --start 2024-01-01 --end 2024-01-07 --granularity D --dims "product:A,B" --mets "sales:LinearTrend(limit=100)" --output sales.csv
+pip install holidays scipy matplotlib
 ```
 
-### Powerful Python API
+### 2. Choose Your Workflow
 
-```python
-from ts_data_generator import DataGen
-from ts_data_generator.utils.trends import SinusoidalTrend
+`ts-data-generator` adapts to your workspace. Choose between rapid terminal prototyping or robust pipeline scripting.
+
+<div class="row" style="display: flex; gap: 20px; flex-wrap: wrap;">
+  <div class="col" style="flex: 1; min-width: 300px; background: #fafafa; border: 1px solid #eee; border-radius: 6px; padding: 15px;">
+    <h3>💻 Rapid Terminal Prototyping (CLI)</h3>
+    <p>Generate a production-ready dataset in a single terminal line with dimensions and composed metrics:</p>
+<pre><code class="language-bash">tsdata generate \
+  --start 2024-01-01 \
+  --end 2024-01-07 \
+  --granularity h \
+  --dims "region:US,EU,AP" \
+  --mets "sales:LinearTrend(limit=100)+SinusoidalTrend(amplitude=10,freq=24)" \
+  --output sales_data.csv</code></pre>
+  </div>
+  <div class="col" style="flex: 1; min-width: 300px; background: #fafafa; border: 1px solid #eee; border-radius: 6px; padding: 15px;">
+    <h3>🐍 Pipeline Integration (Python API)</h3>
+    <p>Compose your generators directly inside your training/validation pipelines or notebooks:</p>
+<pre><code class="language-python">from ts_data_generator import DataGen
+from ts_data_generator.utils.trends import LinearTrend, SinusoidalTrend
 
 dg = DataGen(seed=42)
 dg.start_datetime = "2024-01-01"
 dg.end_datetime = "2024-01-07"
 dg.to_granularity("h")
 
+# Composing a metric from multiple trends
 dg.add_metric(
-    "temperature",
-    {SinusoidalTrend(amplitude=10, freq=24, noise_level=0.5)},
+    "sales",
+    {
+        LinearTrend(offset=10.0, limit=10),
+        SinusoidalTrend(amplitude=10.0, freq=24.0)
+    }
 )
 
-df = dg.data
-dg.plot() # Built-in visualization
-```
+df = dg.data # Retrieves the Pandas DataFrame
+dg.plot() # Instant interactive visualization</code></pre>
+  </div>
+</div>
 
 ---
 
-## Why use this?
+## 🧩 Architectural Highlights
 
-Most synthetic data generators are either too simple (random noise) or too complex (black-box GANs). This library sits in the middle: **Composable Primitives**. You define the *components* of your data (trends, noise, anomalies), and the engine handles the temporal alignment and generation.
+The generator is designed from the ground up around **Modular Compositions**:
 
-[Get Started with the CLI Reference]({{ site.baseurl }}/cli){: .btn .btn-primary .fs-5 .mb-4 .mb-md-0 .mr-2 }
+*   **Realistic Trends & Seasonality**: Compose complex signals by layering multiple trends (Sinusoidal, Linear, AR Noise, Markov Chains, stock-like random walks) onto a single metric. [Explore Trend Functions]({{ site.baseurl }}/trends){: .btn .btn-outline .btn-xs }
+*   **Contextual Dimensions**: Enrich your metrics with dimensions (such as `region`, `device_id`, or `user_type`) using built-in or custom infinite iterables. [Explore Dimensions]({{ site.baseurl }}/dimensions){: .btn .btn-outline .btn-xs }
+*   **Stochastic Anomaly Injection**: Inject realistic anomalies (isolated spikes, bursty data drops, or gradual concept drifts) *after* your trends are calculated to benchmark your detection pipelines. [Explore Anomalies]({{ site.baseurl }}/anomalies){: .btn .btn-outline .btn-xs }
+*   **Schema Imputing**: Bootstrap a generation config instantly by analyzing an existing historical CSV file. [Explore Imputer]({{ site.baseurl }}/imputer){: .btn .btn-outline .btn-xs }
+
+---
+
+## ⚖️ Why Composable Primitives?
+
+Most synthetic data generators lie at two extremes: they are either too simple (generating basic white noise) or too complex (requiring expensive black-box GAN models that lack direct interpretability). 
+
+`ts-data-generator` sits perfectly in the middle. By utilizing **Composable Primitives**, you retain total control over the mathematical laws governing your data. You explicitly specify the *rules* (the base growth, seasonal variations, noise patterns, and failure events) and the generator handles the complex temporal alignment, index building, dimension broadcasting, and execution.
+
+---
+
+[Quickstart CLI Reference]({{ site.baseurl }}/cli){: .btn .btn-primary .fs-5 .mb-4 .mb-md-0 .mr-2 }
 [View the Python API]({{ site.baseurl }}/api){: .btn .fs-5 .mb-4 .mb-md-0 }
----
