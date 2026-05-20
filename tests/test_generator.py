@@ -54,7 +54,7 @@ class TestDataGen5minGenerator:
         metric5_trend = StockTrend(
             name="stock", amplitude=10, direction="up", noise_level=0.5
         )
-        metric5_linear = LinearTrend(name="Linear", offset=0, noise_level=1, limit=10)
+        metric5_linear = LinearTrend(name="Linear", offset=0, noise_level=1, slope=20)
         data_gen.add_metric(
             name="stock_like_trend1", trends={metric5_trend, metric5_linear}
         )

@@ -42,17 +42,17 @@ SinusoidalTrend(amplitude=15,freq=1,phase=6,noise_level=0.5)
 ### 2. `LinearTrend`
 Generates a steady upward or downward slope with optional white noise.
 *   `offset` (float): The starting value at $t=0$ (default `0.0`).
-*   `limit` (float): Determines the slope; must be in `[1.0, 1000.0]` (default `2.0`). It scales the step increment dynamically.
+*   `slope` (float): Angle of the trend in degrees; must be in `(-90, 90)` (default `10.0`).
 *   `noise_level` (float): Standard deviation of Gaussian noise (default `0.0`).
 
 ```python
 # API:
 from ts_data_generator.utils.trends import LinearTrend
-trend = LinearTrend(offset=100.0, limit=15.0, noise_level=1.0)
+trend = LinearTrend(offset=100.0, slope=15.0, noise_level=1.0)
 ```
 ```bash
 # CLI Shorthand:
-LinearTrend(offset=100,limit=15,noise_level=1)
+LinearTrend(offset=100,slope=15,noise_level=1)
 ```
 
 ---
@@ -196,7 +196,7 @@ dg.end_datetime = "2024-01-14"
 dg.to_granularity("h")
 
 # 2. Define our composed layers
-base_growth = LinearTrend(offset=50.0, limit=2.0)             # Upward linear crawl
+base_growth = LinearTrend(offset=50.0, slope=2.0)             # Upward linear crawl
 daily_cycle = SinusoidalTrend(amplitude=10.0, freq=1.0)      # Daily sine oscillation (period = 1 day)
 network_noise = ARNoiseTrend(decay=0.85, noise_std=2.0)      # Volatility with lag stickiness
 
@@ -214,12 +214,15 @@ print(df.head(10))
 dg.plot()
 ```
 
+Output:
+![trend_composition](./assets/trend_composition.png)
+
 ### Composing via the CLI
 In the command line, use the `+` operator to stack shorthand trend definitions:
 
 ```bash
 tsdata generate \
   --start 2024-01-01 --end 2024-01-14 --granularity h \
-  --mets "active_sessions:LinearTrend(offset=50,limit=2)+SinusoidalTrend(amplitude=10,freq=1)+ARNoiseTrend(decay=0.85,noise_std=2)" \
+  --mets "active_sessions:LinearTrend(offset=50,slope=2)+SinusoidalTrend(amplitude=10,freq=1)+ARNoiseTrend(decay=0.85,noise_std=2)" \
   --output active_sessions.csv
 ```

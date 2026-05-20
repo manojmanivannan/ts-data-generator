@@ -94,7 +94,7 @@ class TestTrendsWithRNG:
         assert len(result) == len(timestamps)
 
     def test_linear_with_rng_is_deterministic(self, timestamps):
-        trend = LinearTrend(offset=10, noise_level=2, limit=50)
+        trend = LinearTrend(offset=10, noise_level=2, slope=30)
         rng1 = SeedableRNG(42)
         rng2 = SeedableRNG(42)
         a = trend.generate(timestamps, rng=rng1)
@@ -102,7 +102,7 @@ class TestTrendsWithRNG:
         np.testing.assert_array_equal(a, b)
 
     def test_linear_without_rng_still_works(self, timestamps):
-        trend = LinearTrend(offset=10, noise_level=2, limit=50)
+        trend = LinearTrend(offset=10, noise_level=2, slope=30)
         result = trend.generate(timestamps)
         assert len(result) == len(timestamps)
 
@@ -144,7 +144,7 @@ class TestDataGenSeed:
             seed=42,
         )
         dg1.add_metric("m1", {SinusoidalTrend(amplitude=5, freq=24, noise_level=0.5)})
-        dg1.add_metric("m2", {LinearTrend(offset=10, noise_level=1, limit=20)})
+        dg1.add_metric("m2", {LinearTrend(offset=10, noise_level=1, slope=20)})
 
         dg2 = DataGen(
             start_datetime="2024-01-01",
@@ -153,7 +153,7 @@ class TestDataGenSeed:
             seed=42,
         )
         dg2.add_metric("m1", {SinusoidalTrend(amplitude=5, freq=24, noise_level=0.5)})
-        dg2.add_metric("m2", {LinearTrend(offset=10, noise_level=1, limit=20)})
+        dg2.add_metric("m2", {LinearTrend(offset=10, noise_level=1, slope=20)})
 
         pd.testing.assert_frame_equal(dg1.data, dg2.data)
 

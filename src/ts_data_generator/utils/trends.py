@@ -42,8 +42,8 @@ class Trends(ABC):
         name: Human-readable name for this trend.
     """
 
-    def __init__(self, name: str = "default") -> None:
-        self._name = name
+    def __init__(self, name: str | None = None) -> None:
+        self._name = name or self.__class__.__name__
 
     @property
     def name(self) -> str:
@@ -85,7 +85,7 @@ class SinusoidalTrend(Trends):
 
     def __init__(
         self,
-        name: str = "default",
+        name: str | None = None,
         amplitude: float = 1.0,
         freq: float = 1.0,
         phase: float = 0.0,
@@ -131,41 +131,43 @@ class SinusoidalTrend(Trends):
 class LinearTrend(Trends):
     """Generate a linear trend with optional noise.
 
-    The slope is derived from the limit and the number of timestamps.
-    Time units vary by granularity (minutes, hours, days, etc.).
+    The ``slope`` parameter directly sets the angle of the trend in degrees.
+    A slope of 0 produces a flat line, 45 rises at 45°, and negative values
+    produce a downward trend.  Time units vary by granularity (minutes,
+    hours, days, etc.).
 
     Args:
         name: Human-readable name.
         offset: Intercept (value at t=0).
         noise_level: Standard deviation of Gaussian noise.
-        limit: Controls the slope; must be in [1, 1000].
+        slope: Angle of the trend in degrees. Must be between (-90, 90).
 
     Raises:
-        ValueError: If limit is outside [1, 1000].
+        ValueError: If slope is outside (-90, 90).
 
     Example:
-        CLI shorthand: ``LinearTrend(offset=0,noise_level=1,limit=10)``
+        CLI shorthand: ``LinearTrend(offset=0,noise_level=1,slope=30)``
     """
 
-    _example = "sales:LinearTrend(offset=0,noise_level=1,limit=10)"
+    _example = "sales:LinearTrend(offset=0,noise_level=1,slope=30)"
 
     def __init__(
         self,
-        name: str = "default",
+        name: str | None = None,
         offset: float = 0.0,
         noise_level: float = 0.0,
-        limit: float = 2.0,
+        slope: float = 10.0,
     ) -> None:
         super().__init__(name)
         self._offset = offset
         self._noise_level = noise_level
-        if limit < 1 or limit > 1000:
-            raise ValueError("Limit must be within the range of 1 and 1000")
-        self._limit = limit * 10
+        if slope < -89 or slope > 89:
+            raise ValueError("slope must be between (-90, 90)")
+        self._slope = slope
 
     @property
-    def limit(self) -> float:
-        return self._limit
+    def slope(self) -> float:
+        return self._slope
 
     @property
     def offset(self) -> float:
@@ -191,8 +193,8 @@ class LinearTrend(Trends):
 
         time_numeric = converter(time_deltas, timestamps)
 
-        self._coefficient = np.radians(np.sin(self._limit / len(time_numeric)))
-        base_trend = self._coefficient * time_numeric + self._offset
+        coefficient = np.tan(np.radians(self._slope))
+        base_trend = coefficient * time_numeric + self._offset
         if rng is not None:
             noise = rng.normal(0, self._noise_level, len(timestamps))
         else:
@@ -214,11 +216,13 @@ class WeekendTrend(Trends):
         CLI shorthand: ``WeekendTrend(weekend_effect=10,direction='up',noise_level=0.5,limit=10)``
     """
 
-    _example = "sales:WeekendTrend(weekend_effect=10,direction='up',noise_level=0.5,limit=10)"
+    _example = (
+        "sales:WeekendTrend(weekend_effect=10,direction='up',noise_level=0.5,limit=10)"
+    )
 
     def __init__(
         self,
-        name: str = "default",
+        name: str | None = None,
         weekend_effect: float = 1.0,
         direction: Literal["up", "down"] = "up",
         noise_level: float = 0.0,
@@ -293,13 +297,11 @@ class HolidayTrend(Trends):
         ImportError: If ``holidays`` is not installed and no ``dates`` are provided.
     """
 
-    _example = (
-        "sales:HolidayTrend(country='US',effect=50,pre_window=3,post_window=2,direction='up')"
-    )
+    _example = "sales:HolidayTrend(country='US',effect=50,pre_window=3,post_window=2,direction='up')"
 
     def __init__(
         self,
-        name: str = "default",
+        name: str | None = None,
         country: str = "US",
         effect: float = 50.0,
         pre_window: int = 3,
@@ -366,9 +368,7 @@ class HolidayTrend(Trends):
         start_date = timestamps[0].date()
         end_date = timestamps[-1].date()
         return [
-            pd.Timestamp(d)
-            for d in country_holidays
-            if start_date <= d <= end_date
+            pd.Timestamp(d) for d in country_holidays if start_date <= d <= end_date
         ]
 
     def generate(
@@ -442,7 +442,7 @@ class ARNoiseTrend(Trends):
 
     def __init__(
         self,
-        name: str = "default",
+        name: str | None = None,
         coefficients: list[float] | None = None,
         noise_std: float = 1.0,
         decay: float | None = None,
@@ -552,13 +552,11 @@ class MarkovTrend(Trends):
         ``MarkovTrend(states=['low','high'],values=[10,100],stickiness=0.9,noise_std=5)``
     """
 
-    _example = (
-        "sales:MarkovTrend(states=['low','high'],values=[10,100],stickiness=0.9,noise_std=5)"
-    )
+    _example = "sales:MarkovTrend(states=['low','high'],values=[10,100],stickiness=0.9,noise_std=5)"
 
     def __init__(
         self,
-        name: str = "default",
+        name: str | None = None,
         states: list[str] | None = None,
         values: list[float] | None = None,
         stickiness: float | None = None,
@@ -574,9 +572,13 @@ class MarkovTrend(Trends):
             raise ValueError("At least 2 states are required.")
 
         if stickiness is not None and transition_matrix is not None:
-            raise ValueError("Provide either 'stickiness' or 'transition_matrix', not both.")
+            raise ValueError(
+                "Provide either 'stickiness' or 'transition_matrix', not both."
+            )
         if stickiness is None and transition_matrix is None:
-            raise ValueError("Either 'stickiness' or 'transition_matrix' must be provided.")
+            raise ValueError(
+                "Either 'stickiness' or 'transition_matrix' must be provided."
+            )
 
         self._states = list(states)
         self._values = np.array(values, dtype=np.float64)
@@ -599,7 +601,9 @@ class MarkovTrend(Trends):
         else:
             if not 0 <= stickiness <= 1:
                 raise ValueError("stickiness must be in [0, 1]")
-            self._transition_matrix = self._build_stickiness_matrix(stickiness, self._n_states)
+            self._transition_matrix = self._build_stickiness_matrix(
+                stickiness, self._n_states
+            )
 
     @staticmethod
     def _build_stickiness_matrix(stickiness: float, n_states: int) -> np.ndarray:
@@ -675,7 +679,7 @@ class StockTrend(Trends):
 
     def __init__(
         self,
-        name: str = "default",
+        name: str | None = None,
         amplitude: float = 15.0,
         direction: Literal["up", "down"] = "up",
         noise_level: float = 0.0,

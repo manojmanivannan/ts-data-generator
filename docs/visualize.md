@@ -25,7 +25,7 @@ dg.end_datetime = "2024-01-04"
 dg.to_granularity("h")
 
 # Composing a metric
-dg.add_metric("temperature", {LinearTrend(offset=15.0, limit=2), SinusoidalTrend(amplitude=5, freq=1)})
+dg.add_metric("temperature", {LinearTrend(offset=15.0, slope=2), SinusoidalTrend(amplitude=5, freq=1)})
 dg.add_metric("humidity", {SinusoidalTrend(amplitude=15, freq=1)})
 
 df = dg.data

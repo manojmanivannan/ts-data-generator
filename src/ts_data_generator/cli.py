@@ -78,7 +78,7 @@ PRESETS: dict[str, dict] = {
         "end": "2024-01-31",
         "granularity": "D",
         "dimensions": ["product:A,B,C,D", "region:X,Y,Z"],
-        "metrics": ["sales:LinearTrend(limit=1000)+WeekendTrend(weekend_effect=100)"],
+        "metrics": ["sales:LinearTrend(slope=30)+WeekendTrend(weekend_effect=100)"],
         "output": "daily_sales.csv",
     },
     "hourly-metrics": {
@@ -87,7 +87,7 @@ PRESETS: dict[str, dict] = {
         "granularity": "h",
         "dimensions": ["sensor:random_choice:S1,S2,S3"],
         "metrics": [
-            "temperature:LinearTrend(limit=50)",
+            "temperature:LinearTrend(slope=30)",
             "humidity:SinusoidalTrend(amplitude=20,freq=24)",
         ],
         "output": "hourly_metrics.csv",
@@ -105,7 +105,7 @@ PRESETS: dict[str, dict] = {
         "end": "2024-12-31",
         "granularity": "D",
         "dimensions": ["quarter:Q1,Q2,Q3,Q4", "region:North,South,East,West"],
-        "metrics": ["revenue:LinearTrend(limit=100)+WeekendTrend(weekend_effect=50)"],
+        "metrics": ["revenue:LinearTrend(slope=30)+WeekendTrend(weekend_effect=50)"],
         "output": "weekly_revenue.csv",
     },
     "monthly-recurring": {
@@ -113,7 +113,7 @@ PRESETS: dict[str, dict] = {
         "end": "2024-12-31",
         "granularity": "D",
         "dimensions": ["plan:Basic,Pro,Enterprise"],
-        "metrics": ["mrr:LinearTrend(limit=100)"],
+        "metrics": ["mrr:LinearTrend(slope=30)"],
         "output": "monthly_mrr.csv",
     },
 }
@@ -421,7 +421,7 @@ def generate(
 
     \b
         # Simple dimension (defaults to random_choice)
-        tsdata generate --dims "product:A,B,C" --mets "sales:LinearTrend(limit=100)" ...
+        tsdata generate --dims "product:A,B,C" --mets "sales:LinearTrend(slope=30)" ...
 
     \b
         # Full syntax with function
@@ -433,7 +433,7 @@ def generate(
 
     \b
         # Multiple trends (additive)
-        tsdata generate --mets "sales:LinearTrend(limit=500)+WeekendTrend(weekend_effect=50)" ...
+        tsdata generate --mets "sales:LinearTrend(slope=30)+WeekendTrend(weekend_effect=50)" ...
 
     \b
         # Deterministic generation with seed
@@ -479,7 +479,7 @@ def generate(
     \b
         # Full example with seed and anomalies
         tsdata generate --dims "product:A,B" \\
-            --mets "sales:LinearTrend(limit=500)" \\
+            --mets "sales:LinearTrend(slope=30)" \\
             --anomalies "sales:PointAnomaly(probability=0.01,magnitude=5)" \\
             --seed 42 \\
             --start 2024-01-01 --end 2024-01-02 \\
@@ -488,7 +488,7 @@ def generate(
     \b
         # Full example with seed and anomalies
         tsdata generate --dims product:auto_generate_name:prod \\
-            --mets "sales:LinearTrend(limit=500)" \\
+            --mets "sales:LinearTrend(slope=30)" \\
             --mets "sales2:WeekendTrend(weekend_effect=50)" \\
             --anomalies "sales:PointAnomaly(probability=0.01,magnitude=5)" \\
             --seed 42 \\
@@ -510,8 +510,8 @@ def generate(
           "granularity": "5min",
           "dimensions": ["product:A,B,C", "region:X,Y,Z"],
           "metrics": [
-            "sales:LinearTrend(limit=500)+WeekendTrend(weekend_effect=50)",
-            "sales1:LinearTrend(limit=200)"
+            "sales:LinearTrend(slope=30)+WeekendTrend(weekend_effect=50)",
+            "sales1:LinearTrend(slope=30)"
           ],
           "anomalies": [
             "sales:PointAnomaly(probability=0.01,magnitude=5)+MissingData(probability=0.05)"

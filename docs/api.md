@@ -117,7 +117,7 @@ dg.add_multi_items(
 
 # 4. Compose Metric 1: CPU load (summing growth + cycle + AR noise, adding spikes)
 cpu_trends = {
-    LinearTrend(offset=40.0, limit=2.0),
+    LinearTrend(offset=40.0, slope=2.0),
     SinusoidalTrend(amplitude=12.0, freq=1.0)
 }
 cpu_anomalies = [
@@ -132,7 +132,7 @@ dg.add_metric(
 
 # 5. Compose Metric 2: Completed Transactions (using SUM aggregation and bursty dropouts)
 trans_trends = {
-    LinearTrend(offset=500.0, limit=10.0),
+    LinearTrend(offset=500.0, slope=10.0),
     SinusoidalTrend(amplitude=150.0, freq=1.0, phase=4.0)
 }
 trans_anomalies = [
