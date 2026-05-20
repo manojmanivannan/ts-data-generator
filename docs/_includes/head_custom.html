@@ -5,7 +5,12 @@
      disproportionately small because code elements usually have
      a relative font-size (e.g., 85%) or a fixed smaller font.
   */
-  h1 code, h2 code, h3 code, h4 code, h5 code, h6 code {
+  h1 code,
+  h2 code,
+  h3 code,
+  h4 code,
+  h5 code,
+  h6 code {
     font-size: inherit;
     font-weight: inherit;
     color: inherit;
@@ -15,17 +20,5 @@
 </style>
 
 <!-- MathJax for LaTeX math rendering -->
-<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js" async></script>
-<script>
-  window.MathJax = {
-    tex: {
-      inlineMath: [['$', '$'], ['\\(', '\\)']],
-      displayMath: [['$$', '$$'], ['\\[', '\\]']],
-      processEscapes: true
-    },
-    options: {
-      ignoreHtmlClass: 'no-mathjax',
-      processHtmlClass: 'mathjax'
-    }
-  };
+<script type="text/javascript" async src="https://cloudflare.com">
 </script>
