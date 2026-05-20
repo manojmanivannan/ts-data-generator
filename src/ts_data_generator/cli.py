@@ -63,9 +63,9 @@ class GeneratorConfig(BaseModel):
     @classmethod
     def validate_granularity(cls, v: str) -> str:
         valid = [g.value for g in Granularity]
-        if v.lower() not in valid:
+        if v not in valid:
             raise ValueError(f"Invalid granularity {v!r}. Valid: {', '.join(valid)}")
-        return v.lower()
+        return v
 
 
 # ---------------------------------------------------------------------------

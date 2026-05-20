@@ -24,9 +24,9 @@ We want to simulate a retail chain with the following dimensions and behavior pa
 
 ### 2. Numeric Sales Revenue Metrics
 Our metric column `revenue` should model these real-world market behaviors:
-*   **Creeping Growth (Base Trend)**: Sales should experience linear growth over the year, starting around $\$1,000$ and ending around $\$1,500$ daily.
-*   **Weekly Seasonality (Sinusoidal Cycle)**: Retail traffic peaks heavily on weekends. We need a periodic cycle that peaks every $7$ days with an amplitude of $\$200$.
-*   **Holiday Sales Surges (Holiday Adjustments)**: Major US public holidays (like Black Friday, Christmas, and Independence Day) should trigger sharp sales spikes up to $\$500$ that ramp up in the days leading to the holiday and cool down quickly after.
+*   **Creeping Growth (Base Trend)**: Sales should experience linear growth over the year, starting around  \\$1,000 and ending around \\$1,500 daily.
+*   **Weekly Seasonality (Sinusoidal Cycle)**: Retail traffic peaks heavily on weekends. We need a periodic cycle that peaks every $7$ days with an amplitude of \\$200.
+*   **Holiday Sales Surges (Holiday Adjustments)**: Major US public holidays (like Black Friday, Christmas, and Independence Day) should trigger sharp sales spikes up to \\$500 that ramp up in the days leading to the holiday and cool down quickly after.
 *   **Inventory Stockouts (Bursty Gaps)**: Occasional logistics failures or store closures should trigger consecutive days of zero/NaN revenue.
 
 ---
@@ -52,21 +52,21 @@ Creating a JSON config is recommended for reproducibility.
 
 ```json
 {
-  "start": "2023-01-01",
-  "end": "2023-12-31",
-  "granularity": "D",
-  "seed": 42,
-  "dimensions": [
-    "store_id:auto_generate_name:STORE_",
-    "product_category:random_choice:Electronics,Apparel,Home"
-  ],
-  "metrics": [
-    "revenue:LinearTrend(offset=1000,slope=50)+SinusoidalTrend(amplitude=200,freq=7)+HolidayTrend(country=US,effect=500,pre_window=3,post_window=1)"
-  ],
-  "anomalies": [
-    "revenue:MissingData(mode=burst,burst_probability=0.01,min_length=1,max_length=3)"
-  ],
-  "output": "retail_dataset.csv"
+    "start": "2023-01-01",
+    "end": "2023-12-31",
+    "granularity": "D",
+    "seed": 42,
+    "dimensions": [
+        "store_id:auto_generate_name:STORE_",
+        "product_category:random_choice:Electronics,Apparel,Home"
+    ],
+    "metrics": [
+        "revenue:LinearTrend(offset=1000,slope=5,noise_level=5)+SinusoidalTrend(amplitude=10,freq=7,noise_level=5)+HolidayTrend(country=US,effect=50,pre_window=3,post_window=1)"
+    ],
+    "anomalies": [
+        "revenue:MissingData(mode=burst,burst_probability=0.01,min_length=1,max_length=3)"
+    ],
+    "output": "retail_dataset.csv"
 }
 ```
 
@@ -99,9 +99,9 @@ dg.add_dimension("store_id", auto_generate_name("STORE_"))
 dg.add_dimension("product_category", random_choice(["Electronics", "Apparel", "Home"]))
 
 # 3. Define and Layer our Revenue Trends
-growth_trend = LinearTrend(offset=1000.0, slope=50.0)
-weekly_seasonality = SinusoidalTrend(amplitude=200.0, freq=7.0) # Period = 7 days for weekly cycle
-holiday_spikes = HolidayTrend(country="US", effect=500.0, pre_window=3, post_window=1)
+growth_trend = LinearTrend(offset=1000.0, slope=5.0, noise_level=5.0) # Steady growth with some noise
+weekly_seasonality = SinusoidalTrend(amplitude=10.0, freq=7.0, noise_level=5.0) # Period = 7 days for weekly cycle
+holiday_spikes = HolidayTrend(country="US", effect=50.0, pre_window=3, post_window=1)
 
 revenue_trends = {growth_trend, weekly_seasonality, holiday_spikes}
 
@@ -134,12 +134,15 @@ print(df.head(10))
 dg.plot(include=["revenue"])
 ```
 
+Output:
+![simulated_revenue](../assets/simulated_revenue.png)
+
 ---
 
 ## 🔍 Breaking Down the Business Logic
 
 Let's dissect exactly why this model maps so closely to real retail stores:
 
-1.  **`SinusoidalTrend(amplitude=200, freq=7)`**: Because our granularity is set to `D` (daily), specifying a period frequency `freq=7` creates a perfect $7$-day wave. This models the weekend shopping boost, where revenue oscillates smoothly between quiet weekdays and busy weekends.
+1.  **`SinusoidalTrend(amplitude=10, freq=7)`**: Because our granularity is set to `D` (daily), specifying a period frequency `freq=7` creates a perfect $7$-day wave. This models the weekend shopping boost, where revenue oscillates smoothly between quiet weekdays and busy weekends.
 2.  **`HolidayTrend(country='US', effect=500)`**: Automatically looks up federal US holidays (such as Thanksgiving, Christmas, and 4th of July). By setting `pre_window=3` and `post_window=1`, the model simulates the typical pre-holiday buying rush (gradual ramp starting 3 days early) peaking on the holiday itself, before dropping back to baseline the day after.
 3.  **`MissingData(mode='burst')`**: Rather than dropping random individual hours, `mode='burst'` drops consecutive blocks of days. This simulates physical retail real-world events, such as severe weather, power grid failures, or a product category experiencing a complete supplier stockout for $1$ to $3$ days.
