@@ -25,7 +25,7 @@ It reads the source CSV file and maps columns to their corresponding Pandas type
 To identify cyclic seasonality (like daily, weekly, or seasonal oscillations), it:
 *   Demeans the numeric column values to remove the constant bias: $y_{demeaned} = y - \bar{y}$.
 *   Performs a **Fast Fourier Transform (FFT)** on the demeaned array to compute the frequency spectrum:
-    \(Y(f) = \text{FFT}(y_{demeaned})\)
+    $Y(f) = \text{FFT}(y_{demeaned})$
 *   Computes absolute magnitudes and extracts the top $N$ (configured by `top_freq`) dominant frequencies with the largest spectral power. These act as initial guesses for the wave parameters.
 
 ### 3. Non-Linear Least Squares Curve Fitting
