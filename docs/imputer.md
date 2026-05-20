@@ -25,12 +25,12 @@ It reads the source CSV file and maps columns to their corresponding Pandas type
 To identify cyclic seasonality (like daily, weekly, or seasonal oscillations), it:
 *   Demeans the numeric column values to remove the constant bias: $y_{demeaned} = y - \bar{y}$.
 *   Performs a **Fast Fourier Transform (FFT)** on the demeaned array to compute the frequency spectrum:
-    $$Y(f) = \text{FFT}(y_{demeaned})$$
+    \(Y(f) = \text{FFT}(y_{demeaned})\)
 *   Computes absolute magnitudes and extracts the top $N$ (configured by `top_freq`) dominant frequencies with the largest spectral power. These act as initial guesses for the wave parameters.
 
 ### 3. Non-Linear Least Squares Curve Fitting
 Using the top FFT frequencies as starting bounds, it uses `scipy.optimize.curve_fit` to perform a non-linear least squares fit on the data using a sum-of-sines function plus a linear slope component:
-$$\hat{y}(t) = (\text{slope} \cdot t + \text{intercept}) + \sum_{i=1}^{N} A_i \sin(\omega_i t + \phi_i)$$
+\(\hat{y}(t) = (\text{slope} \cdot t + \text{intercept}) + \sum_{i=1}^{N} A_i \sin(\omega_i t + \phi_i)\)
 It solves for:
 *   Linear slope and intercept coefficients.
 *   Sinusoidal amplitudes ($A_i$), angular frequencies ($\omega_i$), and phase offsets ($\phi_i$).
