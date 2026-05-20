@@ -36,7 +36,7 @@ The primary command for creating synthetic datasets and saving them to CSV.
 tsdata generate \
   --start 2024-01-01 --end 2024-01-07 --granularity D \
   --dims "region:US,EU,AP" \
-  --mets "sales:LinearTrend(limit=100)+SinusoidalTrend(amplitude=10,freq=7)" \
+  --mets "sales:LinearTrend(slope=40)+SinusoidalTrend(amplitude=10,freq=7)" \
   --output sales_data.csv
 ```
 
@@ -82,8 +82,8 @@ Available trend functions:
     → sales:ARNoiseTrend(coefficients=[0.5,-0.2],noise_std=0.5)
   HolidayTrend(name: 'str' = 'default', country: 'str' = 'US', effect: 'float' = 50.0, pre_window: 'int' = 3, post_window: 'int' = 2, direction: "Literal['up', 'down']" = 'up', dates: 'list[str] | None' = None) -> 'None'
     → sales:HolidayTrend(country='US',effect=50,pre_window=3,post_window=2,direction='up')
-  LinearTrend(name: 'str' = 'default', offset: 'float' = 0.0, noise_level: 'float' = 0.0, limit: 'float' = 2.0) -> 'None'
-    → sales:LinearTrend(offset=0,noise_level=1,limit=10)
+  LinearTrend(name: 'str' = 'default', offset: 'float' = 0.0, noise_level: 'float' = 0.0, slope: 'float' = 2.0) -> 'None'
+    → sales:LinearTrend(offset=0,noise_level=1,slope=10)
   MarkovTrend(name: 'str' = 'default', states: 'list[str] | None' = None, values: 'list[float] | None' = None, stickiness: 'float | None' = None, transition_matrix: 'list[list[float]] | None' = None, noise_std: 'float' = 0.0) -> 'None'
     → sales:MarkovTrend(states=['low','high'],values=[10,100],stickiness=0.9,noise_std=5)
   SinusoidalTrend(name: 'str' = 'default', amplitude: 'float' = 1.0, freq: 'float' = 1.0, phase: 'float' = 0.0, noise_level: 'float' = 0.0) -> 'None'
@@ -131,7 +131,7 @@ Preset: daily-sales
   End: 2024-01-31
   Granularity: D
   Dimensions: product:A,B,C,D, region:X,Y,Z
-  Metrics: sales:LinearTrend(limit=1000)+WeekendTrend(weekend_effect=100)
+  Metrics: sales:LinearTrend(slope=45)+WeekendTrend(weekend_effect=100)
   Output: daily_sales.csv
 
 Usage: tsdata generate --preset daily-sales --output <output.csv>
@@ -180,7 +180,7 @@ tsdata generate --config config.json
     "device_id:auto_generate_name:sensor_"
   ],
   "metrics": [
-    "temp:LinearTrend(offset=22.0,limit=1)+SinusoidalTrend(amplitude=3.0,freq=1.0)+ARNoiseTrend(decay=0.9,noise_std=0.2)",
+    "temp:LinearTrend(offset=22.0,slope=15)+SinusoidalTrend(amplitude=3.0,freq=1.0)+ARNoiseTrend(decay=0.9,noise_std=0.2)",
     "humidity:SinusoidalTrend(amplitude=15.0,freq=1.0)+ARNoiseTrend(decay=0.8,noise_std=0.5)"
   ],
   "anomalies": [
@@ -208,6 +208,6 @@ export TSDATA_SEED="12345"
 # 2. Run the command (automatically picks up export values)
 tsdata generate \
   --dims "region:US,EU" \
-  --mets "visitors:LinearTrend(limit=1000)" \
+  --mets "visitors:LinearTrend(slope=10)" \
   --output visitors.csv
 ```

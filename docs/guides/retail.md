@@ -41,7 +41,7 @@ tsdata generate \
   --start 2023-01-01 --end 2023-12-31 --granularity D \
   --dims "store_id:auto_generate_name:STORE_" \
   --dims "product_category:Electronics,Apparel,Home" \
-  --mets "revenue:LinearTrend(offset=1000,limit=50)+SinusoidalTrend(amplitude=200,freq=7)+HolidayTrend(country='US',effect=500,pre_window=3,post_window=1)" \
+  --mets "revenue:LinearTrend(offset=1000,slope=50)+SinusoidalTrend(amplitude=200,freq=7)+HolidayTrend(country='US',effect=500,pre_window=3,post_window=1)" \
   --anomalies "revenue:MissingData(mode=burst,burst_probability=0.01,min_length=1,max_length=3)" \
   --seed 42 \
   --output retail_dataset.csv
@@ -61,7 +61,7 @@ Creating a JSON config is recommended for reproducibility.
     "product_category:random_choice:Electronics,Apparel,Home"
   ],
   "metrics": [
-    "revenue:LinearTrend(offset=1000,limit=50)+SinusoidalTrend(amplitude=200,freq=7)+HolidayTrend(country=US,effect=500,pre_window=3,post_window=1)"
+    "revenue:LinearTrend(offset=1000,slope=50)+SinusoidalTrend(amplitude=200,freq=7)+HolidayTrend(country=US,effect=500,pre_window=3,post_window=1)"
   ],
   "anomalies": [
     "revenue:MissingData(mode=burst,burst_probability=0.01,min_length=1,max_length=3)"
@@ -99,7 +99,7 @@ dg.add_dimension("store_id", auto_generate_name("STORE_"))
 dg.add_dimension("product_category", random_choice(["Electronics", "Apparel", "Home"]))
 
 # 3. Define and Layer our Revenue Trends
-growth_trend = LinearTrend(offset=1000.0, limit=50.0)
+growth_trend = LinearTrend(offset=1000.0, slope=50.0)
 weekly_seasonality = SinusoidalTrend(amplitude=200.0, freq=7.0) # Period = 7 days for weekly cycle
 holiday_spikes = HolidayTrend(country="US", effect=500.0, pre_window=3, post_window=1)
 

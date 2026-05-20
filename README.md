@@ -50,7 +50,7 @@ pip install ts-data-generator
 ```bash
 tsdata generate --start 2024-01-01 --end 2024-01-07 --granularity h \
     --dims "region:US,EU,AP" \
-    --mets "sales:LinearTrend(limit=100)+SinusoidalTrend(amplitude=10,freq=24)" \
+    --mets "sales:LinearTrend(slope=45)+SinusoidalTrend(amplitude=10,freq=24)" \
     --output sales.csv
 ```
 

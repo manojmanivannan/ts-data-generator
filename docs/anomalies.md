@@ -147,7 +147,7 @@ dg.to_granularity("5min")
 
 # 2. Setup Base Trends (Baseline CPU)
 cpu_trends = {
-    LinearTrend(offset=30.0, limit=2.0), # Creeping baseline load
+    LinearTrend(offset=30.0, slope=15.0), # Creeping baseline load
     SinusoidalTrend(amplitude=10.0, freq=1.0, noise_level=2.0) # Daily cycles
 }
 
@@ -176,7 +176,7 @@ In the CLI, use the `+` operator to chain anomaly classes:
 ```bash
 tsdata generate \
   --start 2024-01-01 --end 2024-01-05 --granularity h \
-  --mets "cpu_usage:LinearTrend(offset=30,limit=2)+SinusoidalTrend(amplitude=10,freq=1)" \
+  --mets "cpu_usage:LinearTrend(offset=30,slope=25)+SinusoidalTrend(amplitude=10,freq=1)" \
   --anomalies "cpu_usage:PointAnomaly(probability=0.015,magnitude=(30,50))+MissingData(mode=burst,burst_probability=0.01)" \
   --output cpu_telemetry.csv
 ```

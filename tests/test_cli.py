@@ -54,7 +54,7 @@ class TestSmartDefaults:
             "--end", "2019-01-02",
             "--granularity", "5min",
             "--dims", "product:A,B,C",
-            "--mets", "sales:LinearTrend(limit=10)",
+            "--mets", "sales:LinearTrend(slope=20)",
             "--output", temp_output
         ])
         assert result.exit_code == 0, f"Error: {result.output}"
@@ -71,7 +71,7 @@ class TestSmartDefaults:
             "--end", "2019-01-02",
             "--granularity", "5min",
             "--dims", "product:random_choice:A,B,C",
-            "--mets", "sales:LinearTrend(limit=10)",
+            "--mets", "sales:LinearTrend(slope=20)",
             "--output", temp_output
         ])
         assert result.exit_code == 0, f"Error: {result.output}"
@@ -86,7 +86,7 @@ class TestSmartDefaults:
             "--granularity", "5min",
             "--dims", "product:A,B,C",
             "--dims", "region:X,Y,Z",
-            "--mets", "sales:LinearTrend(limit=10)",
+            "--mets", "sales:LinearTrend(slope=20)",
             "--output", temp_output
         ])
         assert result.exit_code == 0, f"Error: {result.output}"
@@ -115,7 +115,7 @@ class TestConfigFile:
             "end": "2019-01-02",
             "granularity": "5min",
             "dimensions": ["product:random_choice:A,B,C"],
-            "metrics": ["sales:LinearTrend(limit=100)"],
+            "metrics": ["sales:LinearTrend(slope=30)"],
             "output": temp_output
         }
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
@@ -277,7 +277,7 @@ class TestEnvironmentVariables:
             "--end", "2019-01-02",
             "--granularity", "5min",
             "--dims", "product:A,B",
-            "--mets", "sales:LinearTrend(limit=10)",
+            "--mets", "sales:LinearTrend(slope=20)",
             "--output", temp_output
         ])
         assert result.exit_code == 0, f"Error: {result.output}"
@@ -290,7 +290,7 @@ class TestEnvironmentVariables:
             "--start", "2019-01-01",
             "--end", "2019-01-02",
             "--dims", "product:A,B",
-            "--mets", "sales:LinearTrend(limit=10)",
+            "--mets", "sales:LinearTrend(slope=20)",
             "--output", temp_output
         ])
         assert result.exit_code == 0, f"Error: {result.output}"
@@ -304,7 +304,7 @@ class TestEnvironmentVariables:
             "--end", "2019-01-02",
             "--granularity", "5min",
             "--dims", "product:A,B",
-            "--mets", "sales:LinearTrend(limit=10)"
+            "--mets", "sales:LinearTrend(slope=20)"
         ])
         assert result.exit_code == 0, f"Error: {result.output}"
         assert Path(temp_output).exists()
@@ -331,7 +331,7 @@ class TestErrorHandling:
             "--end", "2019-01-02",
             "--granularity", "5min",
             "--dims", "product:invalid_function:A,B",
-            "--mets", "sales:LinearTrend(limit=10)",
+            "--mets", "sales:LinearTrend(slope=20)",
             "--output", temp_output
         ])
         assert result.exit_code != 0
@@ -372,7 +372,7 @@ class TestErrorHandling:
             "--end", "2019-01-02",
             "--granularity", "5min",
             "--dims", "product:A,B",
-            "--mets", "sales:LinearTrend(limit=10)",
+            "--mets", "sales:LinearTrend(slope=20)",
             "--output", "/tmp/data.txt"
         ])
         assert result.exit_code != 0
@@ -428,7 +428,7 @@ class TestMultipleTrends:
             "--end", "2019-01-02",
             "--granularity", "5min",
             "--dims", "product:A,B",
-            "--mets", "sales:LinearTrend(limit=100)+WeekendTrend(weekend_effect=50)",
+            "--mets", "sales:LinearTrend(slope=30)+WeekendTrend(weekend_effect=50)",
             "--output", temp_output
         ])
         assert result.exit_code == 0, f"Error: {result.output}"
@@ -442,8 +442,8 @@ class TestMultipleTrends:
             "--end", "2019-01-02",
             "--granularity", "5min",
             "--dims", "product:A,B",
-            "--mets", "sales:LinearTrend(limit=100)",
-            "--mets", "orders:LinearTrend(limit=50)",
+            "--mets", "sales:LinearTrend(slope=30)",
+            "--mets", "orders:LinearTrend(slope=30)",
             "--output", temp_output
         ])
         assert result.exit_code == 0, f"Error: {result.output}"
@@ -473,7 +473,7 @@ class TestNumericValues:
             "--end", "2019-01-02",
             "--granularity", "5min",
             "--dims", "id:random_int:1,100",
-            "--mets", "sales:LinearTrend(limit=10)",
+            "--mets", "sales:LinearTrend(slope=20)",
             "--output", temp_output
         ])
         assert result.exit_code == 0, f"Error: {result.output}"
@@ -486,7 +486,7 @@ class TestNumericValues:
             "--end", "2019-01-02",
             "--granularity", "5min",
             "--dims", "price:random_float:10.5,100.5",
-            "--mets", "sales:LinearTrend(limit=10)",
+            "--mets", "sales:LinearTrend(slope=20)",
             "--output", temp_output
         ])
         assert result.exit_code == 0, f"Error: {result.output}"
@@ -513,7 +513,7 @@ class TestEdgeCases:
             "--end", "2019-01-02",
             "--granularity", "5min",
             "--dims", "source:constant:main",
-            "--mets", "sales:LinearTrend(limit=10)",
+            "--mets", "sales:LinearTrend(slope=20)",
             "--output", temp_output
         ])
         assert result.exit_code == 0, f"Error: {result.output}"
@@ -532,7 +532,7 @@ class TestEdgeCases:
             "--end", "2019-01-02",
             "--granularity", "5min",
             "--dims", "product:A",
-            "--mets", "sales:LinearTrend(limit=10)",
+            "--mets", "sales:LinearTrend(slope=20)",
             "--output", temp_output
         ])
         assert result.exit_code == 0, f"Error: {result.output}"
@@ -548,7 +548,7 @@ class TestEdgeCases:
                 "--end", "2019-01-02",
                 "--granularity", gran,
                 "--dims", "product:A,B",
-                "--mets", "sales:LinearTrend(limit=10)",
+                "--mets", "sales:LinearTrend(slope=20)",
                 "--output", temp_output
             ])
             assert result.exit_code == 0, f"Error for granularity {gran}: {result.output}"
@@ -581,7 +581,7 @@ class TestSeedFlag:
             "--end", "2019-01-02",
             "--granularity", "h",
             "--dims", "product:constant:A",
-            "--mets", "sales:LinearTrend(limit=100)",
+            "--mets", "sales:LinearTrend(slope=30)",
             "--seed", "42",
         ]
 
@@ -650,7 +650,7 @@ class TestAnomaliesFlag:
             "--end", "2019-01-02",
             "--granularity", "h",
             "--dims", "product:constant:A",
-            "--mets", "sales:LinearTrend(limit=100)",
+            "--mets", "sales:LinearTrend(slope=30)",
             "--anomalies", "sales:PointAnomaly(probability=1.0,magnitude=5,mode=additive)",
             "--seed", "42",
             "--output", temp_output,
@@ -659,9 +659,9 @@ class TestAnomaliesFlag:
 
         import pandas as pd
         df = pd.read_csv(temp_output, index_col=0)
-        # With no anomaly, LinearTrend(limit=100) over 24 hours produces
+        # With no anomaly, LinearTrend(slope=30) over 24 hours produces
         # values from 0 to ~100. With additive magnitude 5, each = trend + 5.
-        # LinearTrend(limit=100) default slope means limit/len
+        # LinearTrend(slope=30) uses tan(30°) ≈ 0.577 per time unit.
         assert len(df) == 25  # 24h + 1 (inclusive)
         assert all(df["sales"] > 0)
         # The anomaly is additive: min value should be at least 5
@@ -675,7 +675,7 @@ class TestAnomaliesFlag:
             "--end", "2019-01-02",
             "--granularity", "h",
             "--dims", "product:constant:A",
-            "--mets", "sales:LinearTrend(limit=100)",
+            "--mets", "sales:LinearTrend(slope=30)",
             "--anomalies", "sales:PointAnomaly(probability=1.0,magnitude=999,mode=replacement)",
             "--seed", "42",
             "--output", temp_output,
@@ -695,7 +695,7 @@ class TestAnomaliesFlag:
             "--end", "2019-01-02",
             "--granularity", "h",
             "--dims", "product:constant:A",
-            "--mets", "sales:LinearTrend(limit=100)",
+            "--mets", "sales:LinearTrend(slope=30)",
             "--anomalies", "sales:MissingData(probability=1.0)",
             "--seed", "42",
             "--output", temp_output,
@@ -714,7 +714,7 @@ class TestAnomaliesFlag:
             "--end", "2019-01-02",
             "--granularity", "h",
             "--dims", "product:constant:A",
-            "--mets", "sales:LinearTrend(limit=100)",
+            "--mets", "sales:LinearTrend(slope=30)",
             "--anomalies",
             "sales:MissingData(mode=burst,burst_probability=1.0,min_length=3,max_length=10)",
             "--seed", "42",
@@ -736,7 +736,7 @@ class TestAnomaliesFlag:
             "--end", "2019-01-02",
             "--granularity", "h",
             "--dims", "product:constant:A",
-            "--mets", "sales:LinearTrend(limit=100)",
+            "--mets", "sales:LinearTrend(slope=30)",
             "--anomalies",
             "sales:ConceptDrift(start_timestamp=2019-01-01T00:00:00,transition_window=18000,target_mean=100,"
             "target_std=2,hold_duration=360000,restore=false)",
@@ -759,7 +759,7 @@ class TestAnomaliesFlag:
             "--end", "2019-01-02",
             "--granularity", "h",
             "--dims", "product:constant:A",
-            "--mets", "sales:LinearTrend(limit=100)",
+            "--mets", "sales:LinearTrend(slope=30)",
             "--anomalies",
             "sales:ConceptDrift(start_timestamp=2019-01-01T00:00:00,transition_window=10800,"
             "target_mean=50,target_std=1,hold_duration=36000,restore=false)",
@@ -788,7 +788,7 @@ class TestAnomaliesFlag:
             "--end", "2019-01-02",
             "--granularity", "h",
             "--dims", "product:constant:A",
-            "--mets", "sales:LinearTrend(limit=100)",
+            "--mets", "sales:LinearTrend(slope=30)",
             "--anomalies", "sales:PointAnomaly(probability=1.0,magnitude=0,mode=replacement)",
             "--anomalies", "sales:MissingData(probability=1.0)",
             "--seed", "42",
@@ -810,8 +810,8 @@ class TestAnomaliesFlag:
             "--end", "2019-01-02",
             "--granularity", "h",
             "--dims", "product:constant:A",
-            "--mets", "sales:LinearTrend(limit=100)",
-            "--mets", "orders:LinearTrend(limit=50)",
+            "--mets", "sales:LinearTrend(slope=30)",
+            "--mets", "orders:LinearTrend(slope=30)",
             "--anomalies", "sales:PointAnomaly(probability=1.0,magnitude=5,mode=additive)",
             "--seed", "42",
             "--output", temp_output,
@@ -846,7 +846,7 @@ class TestConfigFileAnomalies:
             "end": "2019-01-02",
             "granularity": "h",
             "dimensions": ["product:constant:A"],
-            "metrics": ["sales:LinearTrend(limit=100)"],
+            "metrics": ["sales:LinearTrend(slope=30)"],
             "anomalies": ["sales:PointAnomaly(probability=1.0,magnitude=999,mode=replacement)"],
             "output": temp_output,
         }
@@ -871,7 +871,7 @@ class TestConfigFileAnomalies:
             "end": "2019-01-02",
             "granularity": "h",
             "dimensions": ["product:constant:A"],
-            "metrics": ["sales:LinearTrend(limit=100)"],
+            "metrics": ["sales:LinearTrend(slope=30)"],
             "anomalies": [],
             "output": temp_output,
         }

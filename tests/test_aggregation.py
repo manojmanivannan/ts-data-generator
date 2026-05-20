@@ -43,7 +43,7 @@ class TestAggregation:
         data_gen.granularity = Granularity.HOURLY
         data_gen.add_dimension(name="product", function=random_choice(["A", "B"]))
 
-        metric_trend = LinearTrend(name="linear", limit=10, offset=0, noise_level=0)
+        metric_trend = LinearTrend(name="linear", slope=20, offset=0, noise_level=0)
         data_gen.add_metric(
             name="sales", trends={metric_trend}, aggregation_type=AggregationType.SUM
         )
@@ -194,7 +194,7 @@ class TestAggregationEdgeCases:
         # Need at least one dimension for aggregation
         data_gen.add_dimension(name="protocol", function=random_choice(["TCP"]))
 
-        metric_trend = LinearTrend(name="linear", limit=1, offset=0, noise_level=0)
+        metric_trend = LinearTrend(name="linear", slope=5, offset=0, noise_level=0)
         data_gen.add_metric(name="metric1", trends={metric_trend})
 
         return data_gen
@@ -216,7 +216,7 @@ class TestAggregationEdgeCases:
         data_gen.add_dimension(name="protocol", function=random_choice(["TCP"]))
 
         # Use a small limit with large offset for near-constant values
-        metric_trend = LinearTrend(name="linear", limit=1, offset=10, noise_level=0)
+        metric_trend = LinearTrend(name="linear", slope=5, offset=10, noise_level=0)
         data_gen.add_metric(
             name="constant_metric",
             trends={metric_trend},

@@ -50,7 +50,7 @@ pip install holidays scipy matplotlib
   --end 2024-01-07 \
   --granularity h \
   --dims "region:US,EU,AP" \
-  --mets "sales:LinearTrend(limit=100)+SinusoidalTrend(amplitude=10,freq=24)" \
+  --mets "sales:LinearTrend(slope=10)+SinusoidalTrend(amplitude=10,freq=24)" \
   --output sales_data.csv</code></pre>
   </div>
   <div class="col" style="flex: 1; min-width: 300px; background: #fafafa; border: 1px solid #eee; border-radius: 6px; padding: 15px;">
@@ -68,7 +68,7 @@ dg.to_granularity("h")
 dg.add_metric(
     "sales",
     {
-        LinearTrend(offset=10.0, limit=10),
+        LinearTrend(offset=10.0, slope=10),
         SinusoidalTrend(amplitude=10.0, freq=24.0)
     }
 )
