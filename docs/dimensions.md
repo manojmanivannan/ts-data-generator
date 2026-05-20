@@ -118,6 +118,15 @@ df = dg.data
 print(df.head())
 ```
 
+Output:
+```bash
+                          epoch environment  node_id region  user_segment  coefficient device_group  custom_batch
+2024-01-01 00:00:00  1704067200  production  node_01   East             3     0.719306          d_1   batch_val_0
+2024-01-01 01:00:00  1704070800  production  node_02   West             3     0.323770          d_1   batch_val_3
+2024-01-01 02:00:00  1704074400  production  node_03   West             3     0.092849          d_1   batch_val_6
+2024-01-01 03:00:00  1704078000  production  node_01   East             2     0.189741          d_1   batch_val_9
+2024-01-01 04:00:00  1704081600  production  node_02  North             4     0.138835          d_1  batch_val_12
+```
 ---
 
 ## 🔗 Advanced: Linked Dimensions (Multi-Items)
@@ -162,4 +171,19 @@ dg.add_multi_items(
 # Render and verify
 df = dg.data
 print(df[["city", "country", "continent"]].head(10))
+```
+
+Output:
+```bash
+                         city country      continent
+2024-01-01 00:00:00    London      UK         Europe
+2024-01-01 01:00:00    Sydney      AU        Oceania
+2024-01-01 02:00:00  New York      US  North America
+2024-01-01 03:00:00    London      UK         Europe
+2024-01-01 04:00:00  New York      US  North America
+2024-01-01 05:00:00  New York      US  North America
+2024-01-01 06:00:00    Sydney      AU        Oceania
+2024-01-01 07:00:00     Tokyo      JP           Asia
+2024-01-01 08:00:00    Sydney      AU        Oceania
+2024-01-01 09:00:00     Tokyo      JP           Asia
 ```

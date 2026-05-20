@@ -214,6 +214,9 @@ print(df.head(10))
 dg.plot()
 ```
 
+Output:
+![trend_composition](./assets/trend_composition.png)
+
 ### Composing via the CLI
 In the command line, use the `+` operator to stack shorthand trend definitions:
 

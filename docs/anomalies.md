@@ -142,18 +142,19 @@ from ts_data_generator.anomalies import PointAnomaly, MissingData
 # 1. Setup Generator
 dg = DataGen(seed=999)
 dg.start_datetime = "2024-01-01"
-dg.end_datetime = "2024-01-05"
-dg.to_granularity("h")
+dg.end_datetime = "2024-01-02"
+dg.to_granularity("5min")
 
 # 2. Setup Base Trends (Baseline CPU)
 cpu_trends = {
     LinearTrend(offset=30.0, limit=2.0), # Creeping baseline load
-    SinusoidalTrend(amplitude=10.0, freq=1.0) # Daily cycles
+    SinusoidalTrend(amplitude=10.0, freq=1.0, noise_level=2.0) # Daily cycles
 }
 
 # 3. Setup Anomalies to stack
-spikes = PointAnomaly(probability=0.015, mode="additive", magnitude=(30.0, 50.0))
+spikes = PointAnomaly(probability=0.05, mode="additive", magnitude=(10.0, 15.0))
 outages = MissingData(mode="burst", burst_probability=0.01, min_length=2, max_length=4)
+
 
 # 4. Add Metric (providing both trends and the ordered anomalies list)
 dg.add_metric(
@@ -162,11 +163,12 @@ dg.add_metric(
     anomalies=[spikes, outages]
 )
 
-# 5. Generate and verify
-df = dg.data
-print(df.describe())
-print(df.head(20))
+# 5. Plot
+dg.plot()
 ```
+
+Output:
+![anomaly_composition](./assets/anomalies.png)
 
 ### Stacking via the CLI
 In the CLI, use the `+` operator to chain anomaly classes:
