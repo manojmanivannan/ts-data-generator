@@ -8,78 +8,158 @@ nav_order: 1
 
 # Dimension Generators
 
-Dimensions are non-numeric or static numeric columns that provide context and grouping for your time series data. In `ts-data-generator`, dimensions are implemented as infinite Python iterators (generators), allowing them to produce values for any length of time series.
+Dimensions are non-numeric or static categorical columns that provide context, labeling, and grouping for your time series metrics (e.g., `store_id`, `region`, `device_id`, `client_version`). 
 
-## Built-in Helpers
+In `ts-data-generator`, dimensions are designed to be **infinite Python iterators** (generators). Because they yield values on-demand, they can easily populate a dataset of any arbitrary duration or granularity without running out of memory.
 
-You can find these in `ts_data_generator.utils.functions`. These are designed to be used both in the Python API and via the CLI shorthand.
+---
 
-| Function | Description | Example CLI Shorthand |
-|:---|:---|:---|
-| `constant(value)` | Yields the same value indefinitely. If a list/tuple is provided, it cycles through them. | `region:constant:US` or `env:constant:prod,staging` |
-| `random_choice(vals)` | Uniformly selects a random element from the provided list at each step. | `status:random_choice:OK,ERROR,WARN` |
-| `ordered_choice(vals)` | Cycles through the provided elements in a round-robin (deterministic) fashion. | `node:ordered_choice:node1,node2,node3` |
-| `random_int(min, max)`| Yields a random integer between `min` and `max` (inclusive). | `user_id:random_int:1000,9999` |
-| `random_float(min, max)`| Yields a random float between `min` and `max` (exclusive). | `weight:random_float:0.0,1.0` |
-| `auto_generate_name(pre)`| Generates incremental names with a prefix (e.g., `d_1`, `d_2`). | `id:auto_generate_name:device` |
+## 🛠️ Built-in Dimension Helpers
 
-## CLI Shorthand
+The package includes a comprehensive set of pre-built dimension helpers inside `ts_data_generator.utils.functions`. These functions can be used in your Python scripts or invoked directly in your terminal using the CLI shorthand.
 
-The CLI provides a convenient way to define dimensions using the `--dims` (or `-d`) flag. The syntax follows:
-`name:function:arg1,arg2,...`
+| Helper | Type | Description | Example CLI Shorthand |
+|:---|:---|:---|:---|
+| `constant(value)` | Deterministic | Yields the same value indefinitely. | `env:constant:production` |
+| `ordered_choice(vals)` | Deterministic | Cycles through values in a round-robin order. | `server:ordered_choice:srv1,srv2,srv3` |
+| `random_choice(vals)` | Stochastic | Selects a random element uniformly at each step. | `region:random_choice:US,EU,AP` |
+| `random_int(min, max)`| Stochastic | Yields random integers in `[min, max]` (inclusive). | `user_id:random_int:1000,9999` |
+| `random_float(min, max)`| Stochastic | Yields random floats in `[min, max)` (exclusive). | `weight:random_float:0.0,1.0` |
+| `auto_generate_name(pre)`| Deterministic | Yields incrementing string keys with a prefix. | `id:auto_generate_name:sensor` |
 
-If the function name is omitted, it defaults to `random_choice`:
-`name:arg1,arg2,...`
+---
 
-### Examples:
+## 💻 CLI Shorthand Syntax
 
+The CLI provides a convenient way to define dimensions using the `--dims` (or `-d`) flag. 
+
+The format follows:
 ```bash
-# Randomly assign a region to each row
-tsdata generate --dims "region:US,EU,AP" ...
-
-# Use a specific helper with arguments
-tsdata generate --dims "device_id:auto_generate_name:sensor" ...
-
-# Multiple dimensions
-tsdata generate --dims "env:prod,test" --dims "region:ordered_choice:US,EU" ...
+--dims "column_name:helper_name:arg1,arg2,..."
 ```
 
-## Python API Usage
+> [!TIP]
+> If you omit the helper name entirely, the CLI will automatically default to `random_choice`:
+> `--dims "region:US,EU,AP"` is identical to `--dims "region:random_choice:US,EU,AP"`
 
-In the Python API, you pass an iterator to the `add_dimension` method.
+### Concrete CLI Examples:
+
+```bash
+# 1. Uniformly assign a random region to each row
+tsdata generate --dims "region:US,EU,AP" --start 2024-01-01 --end 2024-01-02 --granularity h --output data.csv
+
+# 2. Cycle deterministically through nodes (ordered_choice)
+tsdata generate --dims "node:ordered_choice:nodeA,nodeB,nodeC" --start 2024-01-01 --end 2024-01-02 --granularity h --output data.csv
+
+# 3. Generate incrementing device IDs with a prefix
+tsdata generate --dims "device:auto_generate_name:device_" --start 2024-01-01 --end 2024-01-02 --granularity h --output data.csv
+
+# 4. Generate random continuous float weights and random discrete integer IDs
+tsdata generate \
+  --dims "sensor_weight:random_float:0.5,1.5" \
+  --dims "cust_id:random_int:100000,999999" \
+  --start 2024-01-01 --end 2024-01-02 --granularity h --output data.csv
+```
+
+---
+
+## 🐍 Python API Usage
+
+When using the Python API, you pass an infinite generator or any standard Python `Iterable` to the `.add_dimension()` method.
+
+Here is a fully runnable script showcasing all built-in helpers and custom generators:
 
 ```python
 from ts_data_generator import DataGen
-from ts_data_generator.utils.functions import random_choice, auto_generate_name
+from ts_data_generator.utils.functions import (
+    constant,
+    ordered_choice,
+    random_choice,
+    random_float,
+    random_int,
+    auto_generate_name
+)
 
-dg = DataGen()
+# Initialize DataGen
+dg = DataGen(seed=42)
+dg.start_datetime = "2024-01-01"
+dg.end_datetime = "2024-01-03"
+dg.to_granularity("h")
 
-# Using built-in helpers
-dg.add_dimension("region", random_choice(["North", "South"]))
-dg.add_dimension("id", (f"id_{i}" for i in range(10000))) # Custom generator expression
+# 1. Using a static constant
+dg.add_dimension("environment", constant("production"))
 
-# Using custom functions
-def sequence_gen():
-    i = 0
+# 2. Cycling through list in round-robin order
+dg.add_dimension("node_id", ordered_choice(["node_01", "node_02", "node_03"]))
+
+# 3. Uniformly picking random values
+dg.add_dimension("region", random_choice(["North", "South", "East", "West"]))
+
+# 4. Generating random integers
+dg.add_dimension("user_segment", random_int(1, 5))
+
+# 5. Generating random floats
+dg.add_dimension("coefficient", random_float(0.0, 1.0))
+
+# 6. Auto-generating prefixed names (e.g. dev_1, dev_2, etc.)
+dg.add_dimension("device_group", auto_generate_name("dev"))
+
+# 7. Creating and attaching a completely custom infinite generator
+def custom_infinite_seq():
+    index = 0
     while True:
-        yield f"step_{i}"
-        i += 1
+        yield f"batch_val_{index}"
+        index += 3
 
-dg.add_dimension("sequence", sequence_gen())
+dg.add_dimension("custom_batch", custom_infinite_seq())
+
+# Verify column outputs
+df = dg.data
+print(df.head())
 ```
 
-## Advanced: Linked Dimensions (MultiItems)
+---
 
-Sometimes you need multiple columns that are logically linked (e.g., a city and its corresponding country). You can use the `MultiItems` class for this.
+## 🔗 Advanced: Linked Dimensions (Multi-Items)
+
+In real-world data, columns are often closely linked. For example, if you have a `city` column and a `country` column, you can't assign them independently (e.g., `New York` must map to `US`, not `UK`). 
+
+To generate multiple correlated columns simultaneously, use the `add_multi_items` API.
+
+> [!WARNING]
+> Do not use `.add_dimension()` for linked columns, as they will be generated independently and lose correlation. Instead, use `.add_multi_items()`.
+
+Here is a complete, runnable example showing how to configure linked city-country columns:
 
 ```python
-from ts_data_generator.core.models import MultiItems
 import random
+from ts_data_generator import DataGen
 
-def city_country_gen():
-    locations = [("New York", "US"), ("London", "UK"), ("Tokyo", "JP")]
+# 1. Define an infinite generator yielding tuples of values
+def city_country_generator():
+    options = [
+        ("New York", "US", "North America"),
+        ("London", "UK", "Europe"),
+        ("Tokyo", "JP", "Asia"),
+        ("Sydney", "AU", "Oceania")
+    ]
     while True:
-        yield random.choice(locations)
+        # Uniformly pick one tuple
+        yield random.choice(options)
 
-dg.add_multi_item(MultiItems(names=["city", "country"], function=city_country_gen()))
+# 2. Setup DataGen
+dg = DataGen(seed=123)
+dg.start_datetime = "2024-01-01"
+dg.end_datetime = "2024-01-02"
+dg.to_granularity("h")
+
+# 3. Add linked dimensions by passing the columns names list and the generator function
+dg.add_multi_items(
+    names=["city", "country", "continent"],
+    function=city_country_generator()
+)
+
+# Render and verify
+df = dg.data
+print(df[["city", "country", "continent"]].head(10))
 ```
