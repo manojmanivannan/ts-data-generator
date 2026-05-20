@@ -10,7 +10,8 @@ nav_order: 2
 
 Trends are the primary mathematical building blocks of metrics in `ts-data-generator`. Rather than writing complex equations for a metric, you define simple individual **Trend** components and **compose** them additively.
 
-The final clean baseline signal is the sum of all its composed trends: \(\text{Baseline}(t) = \sum_{i} \text{Trend}_i(t)\)
+The final clean baseline signal is the sum of all its composed trends:
+$$\text{Baseline}(t) = \sum_{i} \text{Trend}_i(t)$$
 
 ---
 
