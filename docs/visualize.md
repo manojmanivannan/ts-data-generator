@@ -93,6 +93,8 @@ plt.tight_layout()
 plt.show()
 ```
 
+Output:
+![temperature_trends_by_region](./assets/temperature_trends_by_region.png)
 ---
 
 ### 2. Plotly (Interactive & Dynamic Zoom)
@@ -127,6 +129,12 @@ fig.update_traces(line_color="#00D2FF", line_width=1.5)
 fig.show()
 ```
 
+<iframe
+    src="./assets/simulated_asset_price_chart.html"
+    width="100%"
+    height="600"
+    frameborder="0">
+</iframe>
 ---
 
 ### 3. Correlation Heatmap
@@ -136,7 +144,61 @@ If you have generated many metric columns, plotting a correlation matrix heatmap
 import seaborn as sns
 import matplotlib.pyplot as plt
 
-df = dg.data
+dg = DataGen()
+dg.start_datetime = "2024-01-01"
+dg.end_datetime = "2024-01-30"
+dg.to_granularity("D")
+
+# 2. Setup Base Trends (Baseline CPU)
+cpu_trends = {
+    LinearTrend(offset=30.0, slope=-15.0), # Creeping baseline load
+    SinusoidalTrend(amplitude=10.0, freq=1.0, noise_level=2.0) # Daily cycles
+}
+
+gpu_trends = {
+    LinearTrend(offset=20.0, slope=10.0), # Lower baseline load
+    SinusoidalTrend(phase=0.5, amplitude=5.0, freq=2.0, noise_level=1.0) # Daily cycles
+}
+
+ram_trends = {
+    LinearTrend(offset=50.0, slope=5.0), # Increasing baseline load
+    SinusoidalTrend(phase=0.25, amplitude=15.0, freq=0.5, noise_level=3.0) # Longer cycles
+}
+
+memory_usage_trends = {
+    LinearTrend(offset=40.0, slope=2.0), # Steady baseline
+    SinusoidalTrend(phase=0.75, amplitude=20.0, freq=0.25, noise_level=4.0) # Very long cycles
+}
+
+# 3. Setup Anomalies to stack
+spikes = PointAnomaly(probability=0.05, mode="additive", magnitude=(10.0, 15.0))
+outages = MissingData(mode="burst", burst_probability=0.01, min_length=2, max_length=4)
+
+
+# 4. Add Metric (providing both trends and the ordered anomalies list)
+dg.add_metric(
+    name="cpu_usage",
+    trends=cpu_trends,
+    anomalies=[spikes, outages]
+)
+dg.add_metric(
+    name="gpu_usage",
+    trends=gpu_trends,
+    anomalies=[spikes, outages]
+)
+dg.add_metric(
+    name="ram_usage",
+    trends=ram_trends,
+    anomalies=[spikes, outages]
+)
+
+dg.add_metric(
+    name="memory_usage",
+    trends=memory_usage_trends,
+    anomalies=[spikes, outages]
+)
+
+df = dg.data.drop(columns=["epoch"]) # Drop dimension for correlation analysis
 
 plt.figure(figsize=(8, 6))
 sns.heatmap(
@@ -151,3 +213,7 @@ plt.title("Metrics Correlation Heatmap", fontsize=12, fontweight="bold")
 plt.tight_layout()
 plt.show()
 ```
+
+Output:
+![correlation_heatmap](./assets/correlation_heatmap.png)
+---
