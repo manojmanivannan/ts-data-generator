@@ -64,13 +64,15 @@ from ts_data_generator.utils.trends import SinusoidalTrend
 # Setup multi-variate generation
 dg = DataGen(seed=42)
 dg.start_datetime = "2024-01-01"
-dg.end_datetime = "2024-01-03"
-dg.to_granularity("h")
+dg.end_datetime = "2024-12-30"
+dg.to_granularity("D")
 
 dg.add_dimension("region", random_choice(["North", "South"]))
-dg.add_metric("temperature", {SinusoidalTrend(amplitude=10, freq=1)})
+dg.add_metric("temperature", {SinusoidalTrend(phase=10, amplitude=10, freq=1, noise_level=2), 
+                              SinusoidalTrend(phase=20, amplitude=15, freq=365, noise_level=2)})
 
 df = dg.data.reset_index() # Seaborn works best with long-format columns
+
 
 # Styling parameters
 sns.set_theme(style="whitegrid")
