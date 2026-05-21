@@ -104,6 +104,10 @@ Plotly allows you to hover over spikes, zoom in on stochastically placed anomali
 
 ```python
 import plotly.express as px
+import plotly.io as pio
+
+pio.renderers.default = "browser"
+
 from ts_data_generator import DataGen
 from ts_data_generator.utils.trends import StockTrend
 
@@ -112,22 +116,38 @@ dg = DataGen(seed=777)
 dg.start_datetime = "2024-01-01"
 dg.end_datetime = "2024-01-07"
 dg.to_granularity("5min")
-dg.add_metric("asset_price", {StockTrend(amplitude=150.0, noise_level=0.1)})
+
+dg.add_metric(
+    "asset_price",
+    {StockTrend(amplitude=150.0, noise_level=15), StockTrend(amplitude=200.0, noise_level=30)}
+)
 
 df = dg.data
 
-# Render beautiful, interactive Plotly line chart
+# Render interactive Plotly line chart
 fig = px.line(
-    df, 
-    y="asset_price", 
+    df,
+    y="asset_price",
     title="Simulated Asset Price Walk (5-Min Granularity)",
-    labels={"index": "Timestamp", "asset_price": "Price (USD)"},
-    template="plotly_dark" # Premium sleek dark mode
+    labels={
+        "index": "Timestamp",
+        "asset_price": "Price (USD)"
+    },
+    template="plotly_white"
 )
 
-# Customize layout lines
-fig.update_xaxes(rangeslider_visible=True) # Adds a timeline range slider
-fig.update_traces(line_color="#00D2FF", line_width=1.5)
+# Customize layout
+fig.update_xaxes(
+    rangeslider_visible=True,
+    showgrid=True
+)
+
+fig.update_yaxes(showgrid=True)
+
+fig.update_traces(
+    line_color="#0077CC",
+    line_width=2
+)
 fig.show()
 ```
 
