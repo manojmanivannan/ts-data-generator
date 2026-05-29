@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="./tsdata-logo.svg" alt="ts-data-generator logo" width="200"/>
+<img src="https://raw.githubusercontent.com/manojmanivannan/ts-data-generator/refs/heads/main/tsdata-logo.svg" alt="ts-data-generator logo" width="200"/>
 
 # Synthetic Time Series Data Generator
 
