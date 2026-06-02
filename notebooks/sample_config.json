@@ -1,7 +1,7 @@
 {
     "start": "2024-01-01",
     "end": "2024-01-30",
-    "granularity": "H",
+    "granularity": "h",
     "seed": 42,
     "output": "output.csv",
     "dimensions": [
@@ -13,10 +13,10 @@
         "item_id:auto_generate_name:prod"
     ],
     "metrics": [
-        "sales:LinearTrend(limit=500,offset=10,noise_level=2)+WeekendTrend(weekend_effect=100,direction=up,noise_level=5,limit=200)+SinusoidalTrend(amplitude=50,freq=12,phase=6,noise_level=3)",
-        "temperature:SinusoidalTrend(amplitude=15,freq=12,phase=0,noise_level=1)+LinearTrend(limit=50,offset=20,noise_level=0.5)",
+        "sales:LinearTrend(slope=0.1,offset=10,noise_level=2)+WeekendTrend(weekend_effect=100,direction=up,noise_level=5,limit=200)+SinusoidalTrend(amplitude=50,freq=12,phase=6,noise_level=3)",
+        "temperature:SinusoidalTrend(amplitude=15,freq=12,phase=0,noise_level=1)+LinearTrend(slope=0.2,offset=20,noise_level=0.5)",
         "price:StockTrend(amplitude=20,direction=up,noise_level=0.5)+SinusoidalTrend(amplitude=5,freq=48,phase=12,noise_level=0.2)+ARNoiseTrend(coefficients=[0.5,-0.2],noise_std=0.5)",
-        "traffic:LinearTrend(limit=10,offset=30,noise_level=10)+WeekendTrend(weekend_effect=30,direction=down,noise_level=15,limit=30)+SinusoidalTrend(amplitude=10,freq=24,phase=0,noise_level=5)",
+        "traffic:LinearTrend(slope=1,offset=30,noise_level=10)+WeekendTrend(weekend_effect=30,direction=down,noise_level=15,limit=30)+SinusoidalTrend(amplitude=10,freq=24,phase=0,noise_level=5)",
         "load_states:MarkovTrend(states=[low,medium,high],values=[10,50,100],stickiness=0.9,noise_std=5)"
     ],
     "anomalies": [
