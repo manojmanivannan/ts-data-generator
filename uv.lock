@@ -1867,15 +1867,6 @@ wheels = [
 ]
 
 [[package]]
-name = "python-dotenv"
-version = "1.0.1"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/bc/57/e84d88dfe0aec03b7a2d4327012c1627ab5f03652216c63d49846d7a6c58/python-dotenv-1.0.1.tar.gz", hash = "sha256:e324ee90a023d808f1959c46bcbc04446a10ced277783dc6ee09987c37ec10ca", size = 39115, upload-time = "2024-01-23T06:33:00.505Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/6a/3e/b68c118422ec867fa7ab88444e1274aa40681c606d59ac27de5a5588f082/python_dotenv-1.0.1-py3-none-any.whl", hash = "sha256:f7b63ef50f1b690dddf550d03497b66d609393b40b564ed0d674909a68ebf16a", size = 19863, upload-time = "2024-01-23T06:32:58.246Z" },
-]
-
-[[package]]
 name = "python-json-logger"
 version = "4.1.0"
 source = { registry = "https://pypi.org/simple" }
@@ -2543,15 +2534,14 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "click" },
-    { name = "matplotlib" },
     { name = "pandas" },
     { name = "pydantic" },
-    { name = "python-dotenv" },
 ]
 
 [package.optional-dependencies]
 all = [
     { name = "holidays" },
+    { name = "matplotlib" },
     { name = "scipy", version = "1.15.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "scipy", version = "1.17.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
 ]
@@ -2565,6 +2555,9 @@ holidays = [
 imputer = [
     { name = "scipy", version = "1.15.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "scipy", version = "1.17.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+]
+plotting = [
+    { name = "matplotlib" },
 ]
 test = [
     { name = "pytest" },
@@ -2581,18 +2574,17 @@ dev = [
 requires-dist = [
     { name = "click", specifier = ">=8.0" },
     { name = "holidays", marker = "extra == 'holidays'", specifier = ">=0.96" },
-    { name = "matplotlib", specifier = ">=3.5" },
+    { name = "matplotlib", marker = "extra == 'plotting'", specifier = ">=3.5" },
     { name = "pandas", specifier = ">=1.5" },
     { name = "pydantic", specifier = ">=2.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.0" },
     { name = "pytest", marker = "extra == 'test'", specifier = ">=7.0" },
-    { name = "python-dotenv", specifier = ">=1.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.3" },
     { name = "ruff", marker = "extra == 'test'", specifier = ">=0.3" },
     { name = "scipy", marker = "extra == 'imputer'", specifier = ">=1.7" },
-    { name = "ts-data-generator", extras = ["holidays", "imputer"], marker = "extra == 'all'" },
+    { name = "ts-data-generator", extras = ["holidays", "imputer", "plotting"], marker = "extra == 'all'" },
 ]
-provides-extras = ["dev", "all", "holidays", "imputer", "test"]
+provides-extras = ["dev", "all", "holidays", "imputer", "plotting", "test"]
 
 [package.metadata.requires-dev]
 dev = [
