@@ -23,6 +23,7 @@ from ts_data_generator.exceptions import (
     MultiItemError,
     ValidationError,
 )
+from ts_data_generator.utils.trends import Trends
 from ts_data_generator.random import SeedableRNG
 from ts_data_generator.schema.models import (
     AggregationType,
@@ -335,7 +336,7 @@ class DataGen:
     def add_metric(
         self,
         name: str,
-        trends: list[object] | set[object],
+        trends: list[Trends] | set[Trends],
         aggregation_type: AggregationType = AggregationType.AVG,
         anomalies: list[Anomaly] | None = None,
     ) -> None:
