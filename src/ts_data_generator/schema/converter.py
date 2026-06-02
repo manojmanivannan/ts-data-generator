@@ -115,13 +115,22 @@ class SchemaConverter:
         Returns:
             Dict with ``linear`` and ``sinusoidal`` keys.
         """
-        import scipy.optimize  # lazy import — scipy is optional
+        try:
+            import scipy.optimize  # lazy import — scipy is optional
+        except ImportError:
+            raise ImportError(
+                "The 'scipy' library is required for this operation. "
+                "Install it with: uv add 'ts-data-generator[imputer]' or pip install 'ts-data-generator[imputer]'"
+            ) from None
 
         n = len(values)
         x = np.arange(n)
         linear_coeffs = np.polyfit(x, values, 1)
         column_trends: dict = {
-            "linear": {"slope": float(linear_coeffs[0]), "intercept": float(linear_coeffs[1])}
+            "linear": {
+                "slope": float(linear_coeffs[0]),
+                "intercept": float(linear_coeffs[1]),
+            }
         }
 
         demeaned = values - np.mean(values)
@@ -153,11 +162,13 @@ class SchemaConverter:
         num_fitted = (len(popt) - 1) // 3
         sinusoidal_trends = []
         for i in range(num_fitted):
-            sinusoidal_trends.append({
-                "angular_frequency": float(popt[i * 3 + 1]),
-                "magnitude": float(popt[i * 3]),
-                "phase_offset": float(popt[i * 3 + 2]),
-            })
+            sinusoidal_trends.append(
+                {
+                    "angular_frequency": float(popt[i * 3 + 1]),
+                    "magnitude": float(popt[i * 3]),
+                    "phase_offset": float(popt[i * 3 + 2]),
+                }
+            )
         column_trends["sinusoidal"] = sinusoidal_trends
 
         return column_trends

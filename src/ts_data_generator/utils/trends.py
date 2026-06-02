@@ -355,7 +355,7 @@ class HolidayTrend(Trends):
         except ImportError:
             raise ImportError(
                 "The 'holidays' library is required for automatic holiday resolution. "
-                "Install it with: pip install holidays\n"
+                "Install it with: uv add 'ts-data-generator[holidays]' or pip install 'ts-data-generator[holidays]'\n"
                 "Or provide explicit dates via the 'dates' parameter."
             ) from None
 

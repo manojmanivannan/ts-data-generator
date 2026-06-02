@@ -20,7 +20,6 @@ from ts_data_generator.utils import trends as trend_functions
 
 logger = logging.getLogger(__name__)
 
-ENV_PREFIX = "TSDATA_"
 DIM_SEPARATOR = ";"
 TREND_SEPARATOR = "+"
 VALUE_SEPARATOR = ","
@@ -36,7 +35,9 @@ class DimensionSpec(BaseModel):
     """A dimension specification in config."""
 
     name: str = Field(..., description="Dimension name")
-    function: str = Field(default=DEFAULT_DIMENSION_FUNCTION, description="Dimension function name")
+    function: str = Field(
+        default=DEFAULT_DIMENSION_FUNCTION, description="Dimension function name"
+    )
     values: list[str] = Field(..., description="Dimension values")
 
 
@@ -162,7 +163,11 @@ def _parse_dimension_spec(spec: str) -> tuple[str, str, tuple | list]:
     value_list = values.split(VALUE_SEPARATOR)
     if all(v.lstrip("-").replace(".", "", 1).isdigit() for v in value_list if v):
         parsed = tuple(
-            int(v) if v.isdigit() or (v.startswith("-") and v[1:].isdigit()) else float(v)
+            (
+                int(v)
+                if v.isdigit() or (v.startswith("-") and v[1:].isdigit())
+                else float(v)
+            )
             for v in value_list
         )
     else:
@@ -193,7 +198,9 @@ def _split_bracket_aware(text: str, sep: str = VALUE_SEPARATOR) -> list[str]:
     return parts
 
 
-def _parse_trend_spec(trend_spec: str) -> tuple[str, dict[str, int | float | str | bool | list]]:
+def _parse_trend_spec(
+    trend_spec: str,
+) -> tuple[str, dict[str, int | float | str | bool | list]]:
     """Parse a trend specification string.
 
     Format: ``TrendName(param1=value1,param2=value2)``
@@ -266,16 +273,6 @@ def _get_trend_function(function_name: str):
         ) from None
 
 
-def _load_env_defaults() -> dict[str, str]:
-    """Load default parameter values from TSDATA_* environment variables."""
-    defaults: dict[str, str] = {}
-    for key, value in os.environ.items():
-        if key.startswith(ENV_PREFIX):
-            config_key = key[len(ENV_PREFIX):].lower()
-            defaults[config_key] = value
-    return defaults
-
-
 def _load_config(config_path: Path) -> dict:
     """Load and validate a JSON configuration file.
 
@@ -295,9 +292,7 @@ def _load_config(config_path: Path) -> dict:
         raise click.BadParameter(f"Invalid config: {exc}") from exc
 
 
-def _apply_config_overrides(
-    config: dict, **cli_kwargs: str | None
-) -> dict:
+def _apply_config_overrides(config: dict, **cli_kwargs: str | None) -> dict:
     """Overlay CLI argument values on top of a config dict."""
     result = dict(config)
     for key in ("start", "end", "granularity", "output"):
@@ -306,7 +301,9 @@ def _apply_config_overrides(
     return result
 
 
-def _parse_anomaly_spec(spec: str) -> tuple[str, dict[str, int | float | str | bool | list]]:
+def _parse_anomaly_spec(
+    spec: str,
+) -> tuple[str, dict[str, int | float | str | bool | list]]:
     """Parse an anomaly specification string.
 
     Format: ``AnomalyType(param1=value1,param2=value2)``
@@ -332,7 +329,8 @@ def _get_anomaly_class(class_name: str):
         return getattr(anomaly_module, class_name)
     except AttributeError:
         available = [
-            a for a in dir(anomaly_module)
+            a
+            for a in dir(anomaly_module)
             if not a.startswith("_") and a not in ("Anomaly", "DriftSegment")
         ]
         raise click.BadParameter(
@@ -370,21 +368,21 @@ def main():
     type=str,
     multiple=True,
     help=f"Dimension specs (sep by {DIM_SEPARATOR}). "
-         "Formats: 'name:function:values' or 'name:values'",
+    "Formats: 'name:function:values' or 'name:values'",
 )
 @click.option(
     "--mets",
     type=str,
     multiple=True,
     help=f"Metric specs (sep by {DIM_SEPARATOR}). "
-         "Format: 'name:Trend(param=value)+Trend2'",
+    "Format: 'name:Trend(param=value)+Trend2'",
 )
 @click.option(
     "--anomalies",
     type=str,
     multiple=True,
     help="Anomaly specs keyed by metric name. Repeatable. "
-         "Format: 'metric:AnomalyType(param=value)+Anomaly2'",
+    "Format: 'metric:AnomalyType(param=value)+Anomaly2'",
 )
 @click.option("--output", type=str, help="Output CSV file path")
 @click.option(
@@ -497,11 +495,6 @@ def generate(
     \b
         # Using config file
         tsdata generate --config config.json
-
-    \b
-        # Using environment variables (prefix with TSDATA_)
-        TSDATA_START=2019-01-01 tsdata generate ...
-
     Config file schema::
 
         {
@@ -520,12 +513,6 @@ def generate(
           "output": "data.csv"
         }
     """
-    env_defaults = _load_env_defaults()
-
-    start = start or env_defaults.get("start")
-    end = end or env_defaults.get("end")
-    granularity = granularity or env_defaults.get("granularity")
-    output = output or env_defaults.get("output")
 
     if preset:
         preset_data = PRESETS[preset].copy()
@@ -625,6 +612,7 @@ def generate(
             anom_cls = _get_anomaly_class(anom_name)
             if anom_name == "ConceptDrift":
                 from ts_data_generator.anomalies import DriftSegment
+
                 segment = DriftSegment(**params)
                 # Check if we already have a ConceptDrift waiting to collect segments
                 existing = metrics_data[metric_name]["anomalies"]
@@ -636,7 +624,9 @@ def generate(
                 if found_cd is not None:
                     found_cd.segments.append(segment)
                 else:
-                    metrics_data[metric_name]["anomalies"].append(anom_cls(segments=[segment]))
+                    metrics_data[metric_name]["anomalies"].append(
+                        anom_cls(segments=[segment])
+                    )
             else:
                 metrics_data[metric_name]["anomalies"].append(anom_cls(**params))
 
