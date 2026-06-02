@@ -644,4 +644,12 @@ class DataGen:
         if not plot_cols:
             raise ValidationError("No numeric columns available for plotting.")
 
+        try:
+            import matplotlib.pyplot as plt
+        except ImportError:
+            raise ImportError(
+                "The 'matplotlib' library is required for plotting. "
+                "Install it with: uv add 'ts-data-generator[plotting]' or pip install 'ts-data-generator[plotting]'"
+            ) from None
+
         self.data.plot(y=plot_cols, **matplotlib_kwargs)
