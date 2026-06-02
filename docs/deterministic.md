@@ -22,7 +22,7 @@ To prevent this, `ts-data-generator` completely bypasses the global random state
 
 ```mermaid
 graph TD
-    A[DataGen(seed=42)] -->|Initializes| B[SeedableRNG]
+    A["DataGen(seed=42)"] -->|Initializes| B[SeedableRNG]
     B -->|Backs| C[NumPy BitGenerator: PCG64]
     C -->|Isolated Thread-Safe Stream| D[Trends Generation]
     C -->|Isolated Thread-Safe Stream| E[Anomalies Intervention]
