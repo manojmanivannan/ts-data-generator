@@ -120,7 +120,7 @@ class SchemaConverter:
         except ImportError:
             raise ImportError(
                 "The 'scipy' library is required for this operation. "
-                "Install it with: uv add 'ts-data-generator[imputer]' or pip install 'ts-data-generator[imputer]'"
+                "Install with: uv add 'ts-data-generator[imputer]'"
             ) from None
 
         n = len(values)

@@ -6,7 +6,6 @@ Provides the ``tsdata`` command-line interface via Click.
 import inspect
 import json
 import logging
-import os
 import re
 from pathlib import Path
 

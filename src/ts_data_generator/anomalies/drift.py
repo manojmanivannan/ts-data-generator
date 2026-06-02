@@ -2,14 +2,15 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import logging
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
 
 from ts_data_generator.anomalies.base import Anomaly
+from ts_data_generator.random import SeedableRNG
 
 if TYPE_CHECKING:
     from ts_data_generator.random import SeedableRNG
@@ -157,6 +158,4 @@ class ConceptDrift(Anomaly):
 
 
 def _normal(loc: float, scale: float, size: int, rng: SeedableRNG | None) -> np.ndarray:
-    if rng is not None:
-        return rng.normal(loc, scale, size)
-    return np.random.normal(loc, scale, size)
+    return SeedableRNG.normal_or_fallback(loc, scale, size, rng=rng)
