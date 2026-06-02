@@ -605,7 +605,10 @@ class DataGen:
     # ------------------------------------------------------------------
 
     def plot(
-        self, exclude: list[str] | None = None, include: list[str] | None = None
+        self,
+        exclude: list[str] | None = None,
+        include: list[str] | None = None,
+        **matplotlib_kwargs,
     ) -> None:
         """Plot numeric columns using matplotlib.
 
@@ -613,6 +616,7 @@ class DataGen:
             exclude: Column names to exclude from the plot.
             include: Column names to include. If both are empty, all
                 numeric columns (except ``epoch``) are plotted.
+            matplotlib_kwargs: Additional keyword arguments for matplotlib's plot function.
 
         Raises:
             ValidationError: If both exclude and include are provided, or
@@ -640,4 +644,4 @@ class DataGen:
         if not plot_cols:
             raise ValidationError("No numeric columns available for plotting.")
 
-        self.data.plot(y=plot_cols)
+        self.data.plot(y=plot_cols, **matplotlib_kwargs)
