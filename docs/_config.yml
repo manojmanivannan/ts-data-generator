@@ -28,3 +28,9 @@ kramdown:
 
 # Navigation
 nav_sort: ord
+
+# Mermaid
+mermaid:
+  # Version of mermaid library
+  # Pick an available version from https://cdn.jsdelivr.net/npm/mermaid/
+  version: "11.15.0"
