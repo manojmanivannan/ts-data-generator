@@ -12,26 +12,10 @@ from typing import TYPE_CHECKING
 import pandas as pd
 
 from ts_data_generator.exceptions import AggregationError
-from ts_data_generator.schema.models import AggregationType
+from ts_data_generator.schema.models import AggregationType, Granularity
 
 if TYPE_CHECKING:
     from ts_data_generator.schema.models import Dimensions, Metrics, MultiItems
-
-_GRANULARITY_ORDER: dict[str, int] = {
-    "s": 0,
-    "min": 1,
-    "5min": 2,
-    "h": 3,
-    "D": 4,
-    "W": 5,
-    "ME": 6,
-    "Y": 7,
-    "YE": 7,
-}
-
-_RESAMPLE_ALIASES: dict[str, str] = {
-    "Y": "YE",
-}
 
 
 def aggregate_dataframe(
@@ -65,7 +49,9 @@ def aggregate_dataframe(
         AggregationError: If *to_granularity* is finer than *from_granularity*.
         KeyError: If *to_granularity* is not a recognised granularity string.
     """
-    if _GRANULARITY_ORDER[to_granularity] < _GRANULARITY_ORDER[from_granularity]:
+    target = Granularity(to_granularity)
+    current = Granularity(from_granularity)
+    if target.finer_than(current):
         raise AggregationError(
             f"Cannot aggregate to finer granularity ({to_granularity}) "
             f"than current ({from_granularity})."
@@ -87,7 +73,7 @@ def aggregate_dataframe(
         else:
             group_keys.extend(key.split(","))
 
-    resample_freq = _RESAMPLE_ALIASES.get(to_granularity, to_granularity)
+    resample_freq = target.resample_alias()
 
     resampled = (
         data.drop("epoch", axis=1, errors="ignore")

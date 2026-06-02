@@ -111,8 +111,8 @@ class TestAggregation:
             data_gen_hourly_instance.aggregate("min")
 
     def test_aggregate_invalid_granularity(self, data_gen_5min_instance):
-        """Test that invalid granularity key raises KeyError"""
-        with pytest.raises(KeyError):
+        """Test that invalid granularity key raises ValueError"""
+        with pytest.raises(ValueError, match="not a valid Granularity"):
             data_gen_5min_instance.aggregate("invalid")
 
     def test_aggregate_returns_dataframe(self, data_gen_5min_instance):
