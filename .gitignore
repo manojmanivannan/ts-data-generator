@@ -36,3 +36,7 @@ env/
 
 # Logs
 *.log
+
+# Jekyll / Ruby
+docs/Gemfile.lock
+docs/_site/

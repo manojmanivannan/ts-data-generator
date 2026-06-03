@@ -52,21 +52,28 @@ pip install "ts-data-generator[imputer,plotting]" holidays
 `ts-data-generator` adapts to your workspace. Choose between rapid terminal prototyping or robust pipeline scripting.
 
 <div class="row" style="display: flex; gap: 20px; flex-wrap: wrap;">
-  <div class="col" style="flex: 1; min-width: 300px; background: #fafafa; border: 1px solid #eee; border-radius: 6px; padding: 15px;">
-    <h3>💻 Rapid Terminal Prototyping (CLI)</h3>
-    <p>Generate a production-ready dataset in a single terminal line with dimensions and composed metrics:</p>
-<pre><code class="language-bash">tsdata generate \
+  <div class="col" style="flex: 1; min-width: 300px; background: #fafafa; border: 1px solid #eee; border-radius: 6px; padding: 15px;" markdown="1">
+### 💻 Rapid Terminal Prototyping (CLI)
+
+Generate a production-ready dataset in a single terminal line with dimensions and composed metrics:
+
+```bash
+tsdata generate \
   --start 2024-01-01 \
   --end 2024-01-07 \
   --granularity h \
   --dims "region:US,EU,AP" \
   --mets "sales:LinearTrend(slope=10)+SinusoidalTrend(amplitude=10,freq=24)" \
-  --output sales_data.csv</code></pre>
+  --output sales_data.csv
+```
   </div>
-  <div class="col" style="flex: 1; min-width: 300px; background: #fafafa; border: 1px solid #eee; border-radius: 6px; padding: 15px;">
-    <h3>🐍 Pipeline Integration (Python API)</h3>
-    <p>Compose your generators directly inside your training/validation pipelines or notebooks:</p>
-<pre><code class="language-python">from ts_data_generator import DataGen
+  <div class="col" style="flex: 1; min-width: 300px; background: #fafafa; border: 1px solid #eee; border-radius: 6px; padding: 15px;" markdown="1">
+### 🐍 Pipeline Integration (Python API)
+
+Compose your generators directly inside your training/validation pipelines or notebooks:
+
+```python
+from ts_data_generator import DataGen
 from ts_data_generator.utils.trends import LinearTrend, SinusoidalTrend
 
 dg = DataGen(seed=42)
@@ -84,7 +91,8 @@ dg.add_metric(
 )
 
 df = dg.data # Retrieves the Pandas DataFrame
-dg.plot() # Instant interactive visualization</code></pre>
+dg.plot() # Instant interactive visualization
+```
   </div>
 </div>
 
