@@ -32,6 +32,12 @@ pip install ts-data-generator
 uv pip install ts-data-generator
 ```
 
+> **No install needed?** Run the CLI directly with [`uvx`](https://docs.astral.sh/uv/guides/tools/):
+> ```bash
+> uvx --from ts-data-generator tsdata --help
+> ```
+> Use `--from` (not `--with`) because the package name (`ts-data-generator`) differs from the executable name (`tsdata`).
+
 *Optional extras (install features as needed):*
 ```bash
 # Schema imputing / CSV reverse-engineering (requires scipy)

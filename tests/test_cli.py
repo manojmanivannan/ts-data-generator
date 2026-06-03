@@ -887,3 +887,59 @@ class TestConfigFileAnomalies:
             assert result.exit_code == 0, f"Error: {result.output}"
         finally:
             Path(config_path).unlink(missing_ok=True)
+
+
+class TestShowSampleConfig:
+    """Tests for --show-sample-config flag."""
+
+    @pytest.fixture
+    def runner(self):
+        return CliRunner()
+
+    def test_show_sample_config_outputs_valid_json(self, runner):
+        """--show-sample-config should print valid JSON with expected keys."""
+        result = runner.invoke(main, ["generate", "--show-sample-config"])
+        assert result.exit_code == 0, f"Error: {result.output}"
+
+        data = json.loads(result.output)
+        assert "start" in data
+        assert "end" in data
+        assert "granularity" in data
+        assert "dimensions" in data
+        assert "metrics" in data
+        assert "anomalies" in data
+        assert isinstance(data["dimensions"], list)
+        assert isinstance(data["metrics"], list)
+        assert isinstance(data["anomalies"], list)
+
+    @pytest.fixture
+    def temp_output(self, runner):
+        with tempfile.NamedTemporaryFile(suffix=".csv", delete=False) as f:
+            yield f.name
+        Path(f.name).unlink(missing_ok=True)
+
+    def test_show_sample_config_round_trip(self, runner, temp_output):
+        """Saving sample config output and using it with --config should generate data."""
+        result = runner.invoke(main, ["generate", "--show-sample-config"])
+        assert result.exit_code == 0
+
+        config_data = json.loads(result.output)
+        config_data["output"] = temp_output
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump(config_data, f)
+            config_path = f.name
+
+        try:
+            gen_result = runner.invoke(main, ["generate", "--config", config_path])
+            assert gen_result.exit_code == 0, f"Error: {gen_result.output}"
+            assert Path(temp_output).exists()
+        finally:
+            Path(config_path).unlink(missing_ok=True)
+
+    def test_show_sample_config_exits_without_generation(self, runner):
+        """--show-sample-config should not attempt data generation."""
+        result = runner.invoke(main, ["generate", "--show-sample-config"])
+        assert result.exit_code == 0
+        # Should not contain the "Generated" message that data generation produces
+        assert "Generated" not in result.output

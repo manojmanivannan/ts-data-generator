@@ -11,6 +11,34 @@ The `tsdata` command-line interface is a powerful, zero-code tool for rapid prot
 
 ---
 
+## 🚀 Running Without Installation
+
+You can use [`uvx`](https://docs.astral.sh/uv/guides/tools/) to run the CLI in a disposable environment — no install required:
+
+```bash
+uvx --from ts-data-generator tsdata --help
+```
+
+> **Important:** Use `--from` (not `--with`). The PyPI package is called `ts-data-generator` while the executable is `tsdata`, so `--from` tells uvx which package provides the command. Using `--with` will produce a warning and may resolve the wrong package.
+
+---
+
+## 📋 Get a Sample Config File
+
+Not sure what a valid JSON config looks like? Use `--show-sample-config` to dump a ready-to-edit config to stdout:
+
+```bash
+# Save the sample config to a file
+tsdata generate --show-sample-config > my_config.json
+
+# Edit it, then generate data from your custom config
+tsdata generate --config my_config.json
+```
+
+The sample config exercises all features — dimensions, composed metrics, and anomalies — so you can delete what you don't need and tweak the rest.
+
+---
+
 ## 💻 Commands
 
 ### 1. `tsdata generate`
@@ -30,6 +58,7 @@ The primary command for creating synthetic datasets and saving them to CSV.
 | `--output` | `-o` | `str` | Destination path to save the generated CSV. | **Required** |
 | `--config` | `-c` | `str` | Path to a local JSON configuration file. | `None` |
 | `--preset` | `-p` | `str` | Use a built-in config preset. | `None` |
+| `--show-sample-config` | | flag | Print a sample JSON config to stdout and exit. | `None` |
 
 #### Simple Shorthand CLI Example:
 ```bash

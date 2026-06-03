@@ -4,6 +4,7 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/ts_data_generator"]
+artifacts = ["src/ts_data_generator/data/*.json"]
 
 [project]
 name = "ts-data-generator"

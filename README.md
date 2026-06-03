@@ -45,6 +45,12 @@ For complete details on features, API reference, CLI usage, and advanced configu
 pip install ts-data-generator
 ```
 
+> **No install needed?** Run the CLI directly with [uv](https://docs.astral.sh/uv/):
+> ```bash
+> uvx --from ts-data-generator tsdata --help
+> ```
+> Use `--from` (not `--with`) because the package name (`ts-data-generator`) differs from the executable name (`tsdata`).
+
 ### CLI Usage
 
 ```bash

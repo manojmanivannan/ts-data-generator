@@ -392,6 +392,12 @@ def main():
     type=click.Choice(list(PRESETS.keys())),
     help="Use a preset configuration (use with --output to customize)",
 )
+@click.option(
+    "--show-sample-config",
+    is_flag=True,
+    help="Print a sample JSON config file to stdout and exit. "
+    "Redirect to a file to edit: 'tsdata generate --show-sample-config > config.json'",
+)
 def generate(
     start: str | None,
     end: str | None,
@@ -403,6 +409,7 @@ def generate(
     seed: int | None,
     config: Path | None,
     preset: str | None,
+    show_sample_config: bool,
 ) -> None:
     """Generate synthetic time series data and save to CSV.
 
@@ -504,6 +511,13 @@ def generate(
           "output": "data.csv"
         }
     """
+
+    if show_sample_config:
+        from importlib.resources import files
+
+        sample = files("ts_data_generator.data").joinpath("sample_config.json").read_text()
+        click.echo(sample)
+        return
 
     if preset:
         preset_data = PRESETS[preset].copy()
