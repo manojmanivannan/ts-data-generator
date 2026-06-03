@@ -12,7 +12,7 @@ from collections.abc import Generator
 from datetime import datetime
 from enum import Enum
 from itertools import chain, cycle
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import pandas as pd
 
@@ -76,17 +76,17 @@ class DataGen:
         dimensions: list[Dimensions] | None = None,
         metrics: list[Metrics] | None = None,
         multi_items: list[MultiItems] | None = None,
-        start_datetime: str | None = None,
-        end_datetime: str | None = None,
+        start_datetime: str | datetime | pd.Timestamp = "",
+        end_datetime: str | datetime | pd.Timestamp = "",
         granularity: Granularity = Granularity.FIVE_MIN,
         seed: int | None = None,
     ) -> None:
-        self._dimensions: list[Dimensions] = dimensions or []
-        self._metrics: list[Metrics] = metrics or []
-        self._multi_items: list[MultiItems] = multi_items or []
-        self._start_datetime: str | None = start_datetime
-        self._end_datetime: str | None = end_datetime
-        self._granularity: Granularity = granularity
+        self._dimensions = dimensions or []
+        self._metrics = metrics or []
+        self._multi_items = multi_items or []
+        self._start_datetime = start_datetime
+        self._end_datetime = end_datetime
+        self._granularity = granularity
         self._normalizer: Normalizer | None = None
         self._timestamps: pd.DatetimeIndex | None = None
         self._pending_regeneration = False
@@ -188,30 +188,34 @@ class DataGen:
     # ------------------------------------------------------------------
 
     @property
-    def start_datetime(self) -> str | None:
+    def start_datetime(self) -> str | datetime | pd.Timestamp:
         return self._start_datetime
 
     @start_datetime.setter
     def start_datetime(self, value: str) -> None:
-        if value is not None:
+        if not value:
             try:
                 datetime.fromisoformat(value)
             except ValueError as exc:
-                raise ValidationError("Dates must be in ISO format (YYYY-MM-DD).") from exc
+                raise ValidationError(
+                    "Dates must be in ISO format (YYYY-MM-DD)."
+                ) from exc
         self._start_datetime = value
         self._request_regeneration()
 
     @property
-    def end_datetime(self) -> str | None:
+    def end_datetime(self) -> str | datetime | pd.Timestamp:
         return self._end_datetime
 
     @end_datetime.setter
     def end_datetime(self, value: str) -> None:
-        if value is not None:
+        if not value:
             try:
                 datetime.fromisoformat(value)
             except ValueError as exc:
-                raise ValidationError("Dates must be in ISO format (YYYY-MM-DD).") from exc
+                raise ValidationError(
+                    "Dates must be in ISO format (YYYY-MM-DD)."
+                ) from exc
         self._end_datetime = value
         self._request_regeneration()
 
@@ -231,11 +235,7 @@ class DataGen:
     @property
     def multi_items(self) -> dict[str, MultiItems]:
         """Mapping of comma-joined names to MultiItems instance."""
-        return {
-            ",".join(names): mt
-            for mt in self._multi_items
-            for names in ([mt.names] if isinstance(mt.names, list) else mt.names)
-        }
+        return {",".join(names): mt for mt in self._multi_items for names in [mt.names]}
 
     @property
     def metrics(self) -> dict[str, Metrics]:
@@ -292,12 +292,16 @@ class DataGen:
         dimension = Dimensions(name=name, function=function)
 
         if dimension in self._dimensions:
-            raise DimensionError(f"Dimension with name {dimension.name!r} already exists.")
+            raise DimensionError(
+                f"Dimension with name {dimension.name!r} already exists."
+            )
 
         self._dimensions.append(dimension)
         self._request_regeneration()
 
-    def update_dimension(self, name: str, function: int | str | float | Generator | None) -> None:
+    def update_dimension(
+        self, name: str, function: int | str | float | Generator | None
+    ) -> None:
         """Update an existing dimension's generator function.
 
         Args:
@@ -415,13 +419,17 @@ class DataGen:
                 raise ValidationError("Multi-item values list must not be empty.")
             function = cycle(function)
 
-        items = MultiItems(names=names, function=function, aggregation_type=aggregation_type)
+        items = MultiItems(
+            names=names, function=function, aggregation_type=aggregation_type
+        )
 
         name_set = set(names)
         for mt in self._multi_items:
             overlap = name_set & set(mt.names)
             if overlap:
-                raise MultiItemError(f"Multi-item with name(s) {overlap} already exists.")
+                raise MultiItemError(
+                    f"Multi-item with name(s) {overlap} already exists."
+                )
 
         self._multi_items.append(items)
 
@@ -448,7 +456,9 @@ class DataGen:
 
         for item in overlapping:
             self.data.drop(item.names, axis=1, errors="ignore", inplace=True)
-            self._multi_items = [mt for mt in self._multi_items if mt.names != item.names]
+            self._multi_items = [
+                mt for mt in self._multi_items if mt.names != item.names
+            ]
 
     # ------------------------------------------------------------------
     # Data generation
@@ -470,8 +480,8 @@ class DataGen:
         if not self._end_datetime:
             raise ValidationError("end_datetime must be set.")
 
-        start = datetime.fromisoformat(self._start_datetime)
-        end = datetime.fromisoformat(self._end_datetime)
+        start = datetime.fromisoformat(cast(str, self._start_datetime))
+        end = datetime.fromisoformat(cast(str, self._end_datetime))
         if start > end:
             raise ValidationError("start_datetime cannot be after end_datetime.")
 
@@ -489,7 +499,9 @@ class DataGen:
             freq=self.granularity,
         )
 
-        reset_needed = self._timestamps is not None and len(self._timestamps) != len(new_timestamps)
+        reset_needed = self._timestamps is not None and len(self._timestamps) != len(
+            new_timestamps
+        )
 
         if reset_needed or self.data.empty:
             self.data = pd.DataFrame(index=new_timestamps)
@@ -497,7 +509,7 @@ class DataGen:
         self._timestamps = new_timestamps
 
         existing_columns: set[str] = set()
-        if self.data is not None and not self.data.empty:
+        if not self.data.empty:
             existing_columns = set(self.data.columns)
 
         metric_df = self._build_metrics(new_timestamps, existing_columns)
@@ -513,7 +525,12 @@ class DataGen:
         if "epoch" not in data.columns:
             unix_timestamps = [int(ts.timestamp()) for ts in new_timestamps]
             data = pd.concat(
-                [data, pd.DataFrame(unix_timestamps, columns=["epoch"], index=new_timestamps)],
+                [
+                    data,
+                    pd.DataFrame(
+                        unix_timestamps, columns=["epoch"], index=new_timestamps
+                    ),
+                ],
                 axis=1,
             )
 
@@ -555,7 +572,9 @@ class DataGen:
     def _sort_columns(self, data: pd.DataFrame) -> pd.DataFrame:
         dimension_names = list(self.dimensions.keys())
         metric_names = list(self.metrics.keys())
-        multi_item_names = list(chain.from_iterable(s.split(",") for s in self.multi_items.keys()))
+        multi_item_names = list(
+            chain.from_iterable(s.split(",") for s in self.multi_items.keys())
+        )
 
         column_order = ["epoch"] + dimension_names + metric_names + multi_item_names
         available = [col for col in column_order if col in data.columns]
@@ -603,7 +622,9 @@ class DataGen:
             ValidationError: If method is unrecognized.
         """
         if self._state == PipelineState.CONFIGURED:
-            raise ConfigurationError("Cannot normalize before generating data. Access .data first.")
+            raise ConfigurationError(
+                "Cannot normalize before generating data. Access .data first."
+            )
         self._normalizer = create_normalizer(method)
         self._normalizer.normalize(self.data)
         logger.info("Data normalized with method=%r.", method)
@@ -615,7 +636,9 @@ class DataGen:
             logger.warning("Data is not normalized. Denormalize has no effect.")
             return
         if self._normalizer is None:
-            logger.warning("denormalize() called but no normalization has been applied.")
+            logger.warning(
+                "denormalize() called but no normalization has been applied."
+            )
             return
         self._normalizer.denormalize(self.data)
         logger.info("Data denormalized.")
