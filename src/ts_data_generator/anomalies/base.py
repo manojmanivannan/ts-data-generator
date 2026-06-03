@@ -3,13 +3,11 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
 
-if TYPE_CHECKING:
-    from ts_data_generator.random import SeedableRNG
+from ts_data_generator.random import RNGProtocol
 
 
 class Anomaly(ABC):
@@ -24,14 +22,14 @@ class Anomaly(ABC):
         self,
         base_array: np.ndarray,
         timestamps: pd.DatetimeIndex,
-        rng: SeedableRNG | None = None,
+        rng: RNGProtocol,
     ) -> np.ndarray:
         """Apply the anomaly to the base array.
 
         Args:
             base_array: The metric values after trend composition.
             timestamps: DatetimeIndex of time points.
-            rng: Optional SeedableRNG for deterministic randomness.
+            rng: RNG instance for deterministic or non-deterministic generation.
 
         Returns:
             Modified numpy array (may be the same array mutated, or a copy).

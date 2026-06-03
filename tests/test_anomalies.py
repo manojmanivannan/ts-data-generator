@@ -8,7 +8,7 @@ from ts_data_generator import DataGen
 from ts_data_generator.anomalies.base import Anomaly
 from ts_data_generator.anomalies.missing import MissingData
 from ts_data_generator.anomalies.point import PointAnomaly
-from ts_data_generator.random import SeedableRNG
+from ts_data_generator.random import DefaultRNG, SeedableRNG
 from ts_data_generator.schema.models import Granularity, Metrics
 from ts_data_generator.utils.trends import LinearTrend
 
@@ -33,7 +33,7 @@ class TestPointAnomalyAdditive:
         timestamps = pd.date_range("2024-01-01", periods=n, freq="min")
 
         pa = PointAnomaly(probability=0.1, magnitude=5, mode="additive")
-        result = pa.intervene(base, timestamps, rng=None)
+        result = pa.intervene(base, timestamps, rng=DefaultRNG())
 
         # ~10% of values should differ from 1.0
         changed = np.sum(result != 1.0)
@@ -48,7 +48,7 @@ class TestPointAnomalyAdditive:
         timestamps = pd.date_range("2024-01-01", periods=n, freq="min")
 
         pa = PointAnomaly(probability=0.5, magnitude=3, mode="additive")
-        result = pa.intervene(base, timestamps, rng=None)
+        result = pa.intervene(base, timestamps, rng=DefaultRNG())
 
         # With 50% prob, we should see some anomalies
         assert np.any(result != 0.0)
@@ -61,7 +61,7 @@ class TestPointAnomalyReplacement:
         timestamps = pd.date_range("2024-01-01", periods=n, freq="min")
 
         pa = PointAnomaly(probability=0.05, magnitude=999, mode="replacement")
-        result = pa.intervene(base, timestamps, rng=None)
+        result = pa.intervene(base, timestamps, rng=DefaultRNG())
 
         # ~5% should be replaced with 999
         replaced = np.sum(result == 999)
@@ -79,7 +79,7 @@ class TestPointAnomalyMagnitudeTuple:
         timestamps = pd.date_range("2024-01-01", periods=n, freq="min")
 
         pa = PointAnomaly(probability=0.5, magnitude=(5, 20), mode="additive")
-        result = pa.intervene(base, timestamps, rng=None)
+        result = pa.intervene(base, timestamps, rng=DefaultRNG())
 
         anomalous = result[result != 0]
         # Values should be between 5 and 20
@@ -138,6 +138,19 @@ class TestPointAnomalyConstruction:
         with pytest.raises(ValueError):
             PointAnomaly(mode="invalid")  # type: ignore[arg-type]
 
+    def test_intervene_accepts_rng_protocol(self):
+        """intervene() accepts any RNGProtocol, not just SeedableRNG."""
+        n = 50
+        base = np.ones(n)
+        timestamps = pd.date_range("2024-01-01", periods=n, freq="min")
+        pa = PointAnomaly(probability=0.5, magnitude=10)
+
+        from ts_data_generator.random import DefaultRNG, RNGProtocol
+
+        rng: RNGProtocol = DefaultRNG()
+        result = pa.intervene(base, timestamps, rng=rng)
+        assert result.shape == base.shape
+
 
 class TestMetricsWithAnomalies:
     def test_metrics_accepts_anomalies_list(self):
@@ -156,7 +169,7 @@ class TestMetricsWithAnomalies:
         pa = PointAnomaly(probability=0.1, magnitude=5, mode="additive")
 
         m = Metrics(name="test", trends={trend}, anomalies=[pa])
-        result_df = m.generate(timestamps, rng=None)
+        result_df = m.generate(timestamps, rng=DefaultRNG()).signal
 
         values = result_df["test"].values
         # Some values should differ from base (got anomaly boost)
@@ -221,7 +234,7 @@ class TestPipelineOrdering:
 
         m = Metrics(name="test", trends=set(), anomalies=[pa1, pa2])
         rng = SeedableRNG(42)
-        result_df = m.generate(timestamps, rng=rng)
+        result_df = m.generate(timestamps, rng=rng).signal
         values = result_df["test"].values
 
         # With pa1→pa2 order, some 0s become 100 (hit by both),
@@ -243,8 +256,8 @@ class TestPipelineOrdering:
         m_forward = Metrics(name="test", trends=set(), anomalies=[pa1, pa2])
         m_reverse = Metrics(name="test", trends=set(), anomalies=[pa2, pa1])
 
-        result_forward = m_forward.generate(timestamps, rng=rng1)
-        result_reverse = m_reverse.generate(timestamps, rng=rng2)
+        result_forward = m_forward.generate(timestamps, rng=rng1).signal
+        result_reverse = m_reverse.generate(timestamps, rng=rng2).signal
 
         # Different ordering should produce different results
         assert not np.array_equal(
@@ -287,7 +300,7 @@ class TestMissingDataRandom:
         timestamps = pd.date_range("2024-01-01", periods=n, freq="min")
 
         md = MissingData(mode="random", probability=0.05)
-        result = md.intervene(base, timestamps, rng=None)
+        result = md.intervene(base, timestamps, rng=DefaultRNG())
 
         nan_count = np.sum(np.isnan(result))
         # ~5% of 2000 = 100, generous bounds
@@ -299,7 +312,7 @@ class TestMissingDataRandom:
         timestamps = pd.date_range("2024-01-01", periods=n, freq="min")
 
         md = MissingData(mode="random", probability=0.1)
-        result = md.intervene(base, timestamps, rng=None)
+        result = md.intervene(base, timestamps, rng=DefaultRNG())
 
         non_nan_mask = ~np.isnan(result)
         assert np.all(result[non_nan_mask] == base[non_nan_mask])
@@ -310,7 +323,7 @@ class TestMissingDataRandom:
         timestamps = pd.date_range("2024-01-01", periods=n, freq="min")
 
         md = MissingData(mode="random", probability=0.5)
-        result = md.intervene(base, timestamps, rng=None)
+        result = md.intervene(base, timestamps, rng=DefaultRNG())
 
         assert np.any(np.isnan(result))
 
@@ -479,7 +492,7 @@ class TestMissingDataPatterned:
             return ts.hour % 2 == 0  # even hours
 
         md = MissingData(mode="patterned", schedule=schedule)
-        result = md.intervene(base, timestamps, rng=None)
+        result = md.intervene(base, timestamps, rng=DefaultRNG())
 
         nan_mask = np.isnan(result)
         expected_nan = np.array([ts.hour % 2 == 0 for ts in timestamps])
@@ -543,7 +556,7 @@ class TestMissingDataPatterned:
             return ts.hour == 0  # only midnight
 
         md = MissingData(mode="patterned", schedule=schedule)
-        result = md.intervene(base, timestamps, rng=None)
+        result = md.intervene(base, timestamps, rng=DefaultRNG())
 
         non_nan_mask = ~np.isnan(result)
         assert np.all(result[non_nan_mask] == base[non_nan_mask])
@@ -560,7 +573,7 @@ class TestMissingDataPipelineWithPointAnomaly:
 
         m = Metrics(name="test", trends=set(), anomalies=[pa, md])
         rng = SeedableRNG(42)
-        result_df = m.generate(timestamps, rng=rng)
+        result_df = m.generate(timestamps, rng=rng).signal
         values = result_df["test"].values
 
         nan_mask = np.isnan(values)
@@ -581,7 +594,7 @@ class TestMissingDataPipelineWithPointAnomaly:
 
         m = Metrics(name="test", trends=set(), anomalies=[pa, md])
         rng = SeedableRNG(42)
-        result_df = m.generate(timestamps, rng=rng)
+        result_df = m.generate(timestamps, rng=rng).signal
         values = result_df["test"].values
 
         # Since MD runs last, NaN positions exist and are not overwritten
@@ -870,7 +883,7 @@ class TestConceptDriftTimestampResolution:
                            target_mean=10.0, target_std=0.0, hold_duration=864000)
         cd = ConceptDrift(segments=[seg])
 
-        result = cd.intervene(base, timestamps, rng=None)
+        result = cd.intervene(base, timestamps, rng=DefaultRNG())
         # Segment is skipped because start_timestamp is out of bounds;
         # result should be unchanged from base array.
         np.testing.assert_array_equal(result, base)
@@ -888,7 +901,7 @@ class TestConceptDriftTimestampResolution:
         cd = ConceptDrift(segments=[seg])
 
         with pytest.raises(ValueError, match="not found"):
-            cd.intervene(base, timestamps, rng=None)
+            cd.intervene(base, timestamps, rng=DefaultRNG())
 
 
 class TestConceptDriftMultiSegment:
@@ -948,7 +961,7 @@ class TestConceptDriftMultiSegment:
                             restore=True)
 
         cd = ConceptDrift(segments=[seg1, seg2])
-        result = cd.intervene(base, timestamps, rng=None)
+        result = cd.intervene(base, timestamps, rng=DefaultRNG())
 
         # seg1: start=50, tw=10, hold=100 → covers [50, 160)
         # seg2 starts at 160: tw=10, hold=100, restore_tw=10 → covers [160, 280)

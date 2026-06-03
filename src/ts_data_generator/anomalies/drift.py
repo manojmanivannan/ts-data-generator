@@ -4,16 +4,12 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
 
 from ts_data_generator.anomalies.base import Anomaly
-from ts_data_generator.random import SeedableRNG
-
-if TYPE_CHECKING:
-    from ts_data_generator.random import SeedableRNG
+from ts_data_generator.random import RNGProtocol
 
 
 @dataclass
@@ -73,7 +69,7 @@ class ConceptDrift(Anomaly):
         self,
         base_array: np.ndarray,
         timestamps: pd.DatetimeIndex,
-        rng: SeedableRNG | None = None,
+        rng: RNGProtocol,
     ) -> np.ndarray:
         result = base_array.copy()
         n = len(base_array)
@@ -120,7 +116,7 @@ class ConceptDrift(Anomaly):
         start: int,
         seg: DriftSegment,
         n: int,
-        rng: SeedableRNG | None,
+        rng: RNGProtocol,
         interval_seconds: float,
     ) -> None:
         tw = max(1, int(round(seg.transition_window / interval_seconds)))
@@ -157,5 +153,5 @@ class ConceptDrift(Anomaly):
                 ]
 
 
-def _normal(loc: float, scale: float, size: int, rng: SeedableRNG | None) -> np.ndarray:
-    return SeedableRNG.normal_or_fallback(loc, scale, size, rng=rng)
+def _normal(loc: float, scale: float, size: int, rng: RNGProtocol) -> np.ndarray:
+    return rng.normal(loc, scale, size)

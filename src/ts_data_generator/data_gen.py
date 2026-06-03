@@ -24,7 +24,7 @@ from ts_data_generator.exceptions import (
     ValidationError,
 )
 from ts_data_generator.plotting import plot_time_series
-from ts_data_generator.random import SeedableRNG
+from ts_data_generator.random import DefaultRNG, RNGProtocol, SeedableRNG
 from ts_data_generator.schema.models import (
     AggregationType,
     Dimensions,
@@ -83,9 +83,10 @@ class DataGen:
         self._normalizer: Normalizer | None = None
         self._timestamps: pd.DatetimeIndex | None = None
         self._pending_regeneration = False
-        self._rng: SeedableRNG | None = SeedableRNG(seed) if seed is not None else None
+        self._rng: RNGProtocol = SeedableRNG(seed) if seed is not None else DefaultRNG()
 
         self.data: pd.DataFrame = pd.DataFrame()
+        self._baselines: dict[str, pd.DataFrame] = {}
 
         if start_datetime and end_datetime:
             self._generate_data()
@@ -232,6 +233,14 @@ class DataGen:
     def metrics(self) -> dict[str, Metrics]:
         """Mapping of metric name to Metrics instance."""
         return {m.name: m for m in self._metrics}
+
+    @property
+    def baselines(self) -> dict[str, pd.DataFrame]:
+        """Clean (anomaly-free) baseline DataFrames keyed by metric name.
+
+        Populated after data generation. Empty until the first generation.
+        """
+        return self._baselines
 
     @property
     def trends(self) -> dict[str, dict[str, object]]:
@@ -501,6 +510,7 @@ class DataGen:
             rng=self._rng,
         )
         self.data = builder.build(new_timestamps, existing_data=self.data)
+        self._baselines = builder.baselines
         return self.data
 
     # ------------------------------------------------------------------

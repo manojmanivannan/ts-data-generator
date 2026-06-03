@@ -1,12 +1,16 @@
-"""Tests for Dimensions and MultiItems model classes."""
+"""Tests for Dimensions, MultiItems, and Metrics model classes."""
 
 from __future__ import annotations
 
+import numpy as np
 import pandas as pd
 import pytest
 
-from ts_data_generator.schema.models import Dimensions, MultiItems
+from ts_data_generator.anomalies.point import PointAnomaly
+from ts_data_generator.random import DefaultRNG, SeedableRNG
+from ts_data_generator.schema.models import Dimensions, Metrics, MultiItems
 from ts_data_generator.utils.functions import random_choice, random_int
+from ts_data_generator.utils.trends import LinearTrend
 
 # ── helpers ─────────────────────────────────────────────────────────────
 
@@ -73,6 +77,12 @@ class TestDimensionsGenerate:
         result = d.generate(_timestamps(3))
         assert list(result["x"]) == [10, 10, 10]
         assert list(result["y"]) == [20, 20, 20]
+
+    def test_generate_accepts_rng_protocol(self) -> None:
+        d = Dimensions(name="port", function=random_int(1, 100))
+        result = d.generate(_timestamps(5), rng=DefaultRNG())
+        assert isinstance(result, pd.DataFrame)
+        assert len(result) == 5
 
 
 class TestDimensionsFunctionSetter:
@@ -247,6 +257,16 @@ class TestMultiItemsGenerate:
         assert mi.data is not None
         assert len(mi.data) == 10
 
+    def test_generate_accepts_rng_protocol(self) -> None:
+        def gen():
+            while True:
+                yield (1, 2)
+
+        mi = MultiItems(names=["a", "b"], function=gen())
+        result = mi.generate(_timestamps(5), rng=DefaultRNG())
+        assert isinstance(result, pd.DataFrame)
+        assert len(result) == 5
+
 
 class TestMultiItemsFunctionSetter:
     """Tests for MultiItems.function setter."""
@@ -338,3 +358,54 @@ class TestMultiItemsToJson:
         assert isinstance(js, dict)
         assert js["names"] == ["a", "b"]
         assert "function" in js
+
+
+# ── Metrics ──────────────────────────────────────────────────────────────
+
+class TestMetricsGenerateReturnsMetricResult:
+    """Phase 2A: Metrics.generate() returns MetricResult with .signal and .baseline."""
+
+    def test_generate_returns_metric_result(self) -> None:
+        from ts_data_generator.schema.models import MetricResult
+
+        trend = LinearTrend(offset=10, noise_level=0)
+        m = Metrics(name="val", trends={trend})
+        result = m.generate(_timestamps(5), rng=DefaultRNG())
+        assert isinstance(result, MetricResult)
+
+    def test_metric_result_has_signal_and_baseline(self) -> None:
+        from ts_data_generator.schema.models import MetricResult
+
+        trend = LinearTrend(offset=10, noise_level=0)
+        m = Metrics(name="val", trends={trend})
+        result = m.generate(_timestamps(5), rng=DefaultRNG())
+        assert hasattr(result, "signal")
+        assert hasattr(result, "baseline")
+        assert isinstance(result.signal, pd.DataFrame)
+        assert isinstance(result.baseline, pd.DataFrame)
+
+    def test_without_anomalies_signal_equals_baseline(self) -> None:
+        trend = LinearTrend(offset=5, noise_level=0)
+        m = Metrics(name="val", trends={trend})
+        result = m.generate(_timestamps(10), rng=DefaultRNG())
+        np.testing.assert_array_equal(result.signal.values, result.baseline.values)
+
+    def test_with_anomalies_signal_differs_from_baseline(self) -> None:
+        n = 500
+        timestamps = _timestamps(n)
+        trend = LinearTrend(offset=10, noise_level=0)
+        anomaly = PointAnomaly(probability=0.5, magnitude=999, mode="additive")
+        m = Metrics(name="val", trends={trend}, anomalies=[anomaly])
+        result = m.generate(timestamps, rng=SeedableRNG(42))
+        assert not np.array_equal(result.signal.values, result.baseline.values)
+
+    def test_baseline_is_clean_no_anomaly_effect(self) -> None:
+        n = 500
+        timestamps = _timestamps(n)
+        trend = LinearTrend(offset=10, noise_level=0)
+        anomaly = PointAnomaly(probability=0.5, magnitude=999, mode="replacement")
+        m = Metrics(name="val", trends={trend}, anomalies=[anomaly])
+        result = m.generate(timestamps, rng=SeedableRNG(42))
+        # baseline should only contain trend offset (10), no 999 replacements
+        assert not np.any(result.baseline["val"].values == 999)
+        assert np.any(result.signal["val"].values == 999)

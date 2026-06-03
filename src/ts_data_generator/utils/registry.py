@@ -6,7 +6,7 @@ import importlib
 import logging
 from collections.abc import Callable
 
-import click
+from ts_data_generator.exceptions import RegistryError
 
 
 class Registry:
@@ -49,14 +49,14 @@ class Registry:
             The matching class or callable.
 
         Raises:
-            click.BadParameter: If *name* is not found in the module.
+            RegistryError: If *name* is not found in the module.
         """
         try:
             obj = getattr(self._module, name)
         except AttributeError:
             available = self.list_available()
             logging.warning("'%s' not found in %s", name, self._module.__name__)
-            raise click.BadParameter(
+            raise RegistryError(
                 f"'{name}' is not a valid option. "
                 f"Available: {', '.join(available)}"
             ) from None
@@ -64,7 +64,7 @@ class Registry:
         if self._base_class is not None:
             if not isinstance(obj, type) or not issubclass(obj, self._base_class):
                 available = self.list_available()
-                raise click.BadParameter(
+                raise RegistryError(
                     f"'{name}' is not a valid option. "
                     f"Available: {', '.join(available)}"
                 )

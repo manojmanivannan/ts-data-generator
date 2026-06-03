@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from ts_data_generator import DataGen
 from ts_data_generator.anomalies.base import Anomaly
+from ts_data_generator.exceptions import RegistryError
 from ts_data_generator.schema.models import Granularity
 from ts_data_generator.utils import functions as dimension_functions
 from ts_data_generator.utils import trends as trend_functions
@@ -262,7 +263,10 @@ def _get_dimension_function(function_name: str):
     Raises:
         click.BadParameter: If the function is not found.
     """
-    return _DIMENSION_REGISTRY.get(function_name)
+    try:
+        return _DIMENSION_REGISTRY.get(function_name)
+    except RegistryError as exc:
+        raise click.BadParameter(str(exc)) from exc
 
 
 def _get_trend_function(function_name: str):
@@ -271,7 +275,10 @@ def _get_trend_function(function_name: str):
     Raises:
         click.BadParameter: If the class is not found.
     """
-    return _TREND_REGISTRY.get(function_name)
+    try:
+        return _TREND_REGISTRY.get(function_name)
+    except RegistryError as exc:
+        raise click.BadParameter(str(exc)) from exc
 
 
 def _load_config(config_path: Path) -> dict:
@@ -324,7 +331,10 @@ def _get_anomaly_class(class_name: str):
     Raises:
         click.BadParameter: If the class is not found.
     """
-    return _ANOMALY_REGISTRY.get(class_name)
+    try:
+        return _ANOMALY_REGISTRY.get(class_name)
+    except RegistryError as exc:
+        raise click.BadParameter(str(exc)) from exc
 
 
 def _normalize_to_string(value: tuple | list | str) -> str:

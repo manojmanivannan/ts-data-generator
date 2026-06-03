@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-import click
 import pytest
 
+from ts_data_generator.exceptions import RegistryError
 from ts_data_generator.utils.registry import Registry
 
 # ── helpers for test modules ─────────────────────────────────────────────
@@ -62,7 +62,7 @@ class TestRegistryGet:
 
     def test_raises_bad_parameter_for_missing(self) -> None:
         r = Registry(_TEST_MODULE)
-        with pytest.raises(click.BadParameter, match="not a valid option"):
+        with pytest.raises(RegistryError, match="not a valid option"):
             r.get("nonexistent_thing")
 
     def test_base_class_filter(self) -> None:
@@ -76,26 +76,26 @@ class TestRegistryGet:
 
     def test_base_class_rejects_non_subclass(self) -> None:
         r = Registry(_TEST_MODULE, base_class=Base)
-        with pytest.raises(click.BadParameter, match="not a valid option"):
+        with pytest.raises(RegistryError, match="not a valid option"):
             r.get("NotSubclass")
 
     def test_base_class_rejects_function(self) -> None:
         """A module-level function is not a class, so issubclass check rejects it."""
         r = Registry(_TEST_MODULE, base_class=Base)
-        with pytest.raises(click.BadParameter, match="not a valid option"):
+        with pytest.raises(RegistryError, match="not a valid option"):
             r.get("top_level_fn")
 
     def test_base_class_rejects_string(self) -> None:
         """A string value (not a class) is rejected by base_class filter."""
         r = Registry(_TEST_MODULE, base_class=Base)
         # top_level_fn exists but is not a class
-        with pytest.raises(click.BadParameter):
+        with pytest.raises(RegistryError):
             r.get("top_level_fn")
 
     def test_name_filter_affects_error_message(self) -> None:
         """name_filter controls what appears in the 'Available:' error message."""
         r = Registry(_TEST_MODULE, name_filter=lambda n: n.startswith("Concrete"))
-        with pytest.raises(click.BadParameter) as exc_info:
+        with pytest.raises(RegistryError) as exc_info:
             r.get("NoSuchName")
         msg = str(exc_info.value)
         # ConcreteA and ConcreteB should be listed
