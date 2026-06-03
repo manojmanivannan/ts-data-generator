@@ -566,7 +566,7 @@ class DataGen:
         self,
         exclude: list[str] | None = None,
         include: list[str] | None = None,
-        **matplotlib_kwargs,
+        **matplotlib_kwargs: Any,
     ) -> None:
         """Plot numeric columns using matplotlib.
 
