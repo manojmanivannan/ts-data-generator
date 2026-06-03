@@ -75,11 +75,8 @@ class CustomStepTrend(Trends):
         steps = np.arange(n) // self._step_interval
         base_signal = steps * self._increment
         
-        # Add random minor fluctuations safely using the seeded RNG
-        if rng is not None:
-            noise = rng.normal(0, 0.1, n)
-        else:
-            noise = np.random.normal(0, 0.1, n)
+        # Add random minor fluctuations safely using the unified branching helper
+        noise = SeedableRNG.normal_or_fallback(0, 0.1, n, rng=rng)
             
         return base_signal + noise
 ```
@@ -117,12 +114,13 @@ class CustomClippingAnomaly(Anomaly):
         n = len(base_array)
         
         # Determine stochastically if clipping happens at each timestamp
+        # Use the seeded RNG when available to maintain determinism
         if rng is not None:
             mask = rng.random(n) < self._trigger_probability
         else:
             mask = np.random.random(n) < self._trigger_probability
             
-        # Apply capping capping intervention
+        # Apply clipping intervention
         result[mask] = np.minimum(result[mask], self._clip_limit)
         
         return result
