@@ -7,6 +7,7 @@ The :class:`SchemaConverter` reads a CSV file and can:
 """
 
 import logging
+import warnings
 
 import numpy as np
 import pandas as pd
@@ -153,9 +154,12 @@ class SchemaConverter:
         guess.append(np.mean(values))
 
         try:
-            popt, _ = scipy.optimize.curve_fit(
-                self._sinfunc, x, values, p0=guess, maxfev=10000
-            )
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", scipy.optimize.OptimizeWarning)
+                warnings.simplefilter("ignore", RuntimeWarning)
+                popt, _ = scipy.optimize.curve_fit(
+                    self._sinfunc, x, values, p0=guess, maxfev=10000
+                )
         except (RuntimeError, TypeError):
             raise
 
