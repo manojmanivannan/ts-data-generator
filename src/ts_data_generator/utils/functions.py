@@ -45,7 +45,9 @@ def constant(
 constant._example = "name:constant:10"
 
 
-def random_choice(iterable: Iterable[T], rng: RNGProtocol | None = None) -> Generator[T, None, None]:
+def random_choice(
+    iterable: Iterable[T], rng: RNGProtocol | None = None
+) -> Generator[T, None, None]:
     """Yield a random element from the iterable at each step.
 
     Args:
@@ -93,7 +95,9 @@ def random_int(start: int, end: int, rng: RNGProtocol | None = None) -> Generato
 random_int._example = "name:random_int:1,100"
 
 
-def random_float(start: float, end: float, rng: RNGProtocol | None = None) -> Generator[float, None, None]:
+def random_float(
+    start: float, end: float, rng: RNGProtocol | None = None
+) -> Generator[float, None, None]:
     """Yield a random float in [start, end) at each step.
 
     Args:

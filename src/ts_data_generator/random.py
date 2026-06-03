@@ -78,9 +78,7 @@ class SeedableRNG(RNGProtocol):
     def random(self, size: int | tuple | None = None) -> np.ndarray | float:
         return self._generator.random(size=size)
 
-    def integers(
-        self, low: int, high: int, size: int | tuple | None = None
-    ) -> np.ndarray | int:
+    def integers(self, low: int, high: int, size: int | tuple | None = None) -> np.ndarray | int:
         return self._generator.integers(low=low, high=high, size=size)
 
 
@@ -116,7 +114,5 @@ class DefaultRNG(RNGProtocol):
     def random(self, size: int | tuple | None = None) -> np.ndarray | float:
         return self._generator.random(size=size)
 
-    def integers(
-        self, low: int, high: int, size: int | tuple | None = None
-    ) -> np.ndarray | int:
+    def integers(self, low: int, high: int, size: int | tuple | None = None) -> np.ndarray | int:
         return self._generator.integers(low=low, high=high, size=size)

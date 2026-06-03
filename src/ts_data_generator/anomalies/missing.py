@@ -95,15 +95,11 @@ class MissingData(Anomaly):
 
         return result
 
-    def _apply_random(
-        self, result: np.ndarray, n: int, rng: RNGProtocol
-    ) -> None:
+    def _apply_random(self, result: np.ndarray, n: int, rng: RNGProtocol) -> None:
         mask = rng.random(n) < self._probability
         result[mask] = np.nan
 
-    def _apply_burst(
-        self, result: np.ndarray, n: int, rng: RNGProtocol
-    ) -> None:
+    def _apply_burst(self, result: np.ndarray, n: int, rng: RNGProtocol) -> None:
         i = 0
         while i < n:
             burst_trigger = rng.random() < self._burst_probability
@@ -115,9 +111,7 @@ class MissingData(Anomaly):
             else:
                 i += 1
 
-    def _apply_patterned(
-        self, result: np.ndarray, timestamps: pd.DatetimeIndex
-    ) -> None:
+    def _apply_patterned(self, result: np.ndarray, timestamps: pd.DatetimeIndex) -> None:
         for i, ts in enumerate(timestamps):
             if self._schedule(ts):  # type: ignore[misc]
                 result[i] = np.nan

@@ -67,9 +67,7 @@ def aggregate_dataframe(
         if multi_item.aggregation_type:
             for i, item_name in enumerate(key.split(",")):
                 atype = multi_item.aggregation_type[i]
-                agg_dict[item_name] = (
-                    atype.value if isinstance(atype, AggregationType) else atype
-                )
+                agg_dict[item_name] = atype.value if isinstance(atype, AggregationType) else atype
         else:
             group_keys.extend(key.split(","))
 

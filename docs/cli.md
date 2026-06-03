@@ -158,7 +158,7 @@ Or override specific values:
 
 ## 🔌 CLI Architecture: Pluggable Registries
 
-The CLI uses `Registry` objects (`ts_data_generator.utils.registry`) to look up dimension functions, trend classes, and anomaly classes by name. This replaced three duplicated `try/getattr/raise click.BadParameter` lookup functions with a single, reusable pattern.
+The CLI parser uses the `schema/parser.py` module to extract strings like `name=func(args)` into strongly typed `DimensionSpec`, `TrendSpec`, and `AnomalySpec` dataclasses. The parser uses `Registry` objects (`ts_data_generator.utils.registry`) to look up components securely.
 
 ```python
 # Each registry is instantiated with a module path and optional filters

@@ -57,16 +57,14 @@ class Registry:
             available = self.list_available()
             logging.warning("'%s' not found in %s", name, self._module.__name__)
             raise RegistryError(
-                f"'{name}' is not a valid option. "
-                f"Available: {', '.join(available)}"
+                f"'{name}' is not a valid option. Available: {', '.join(available)}"
             ) from None
 
         if self._base_class is not None:
             if not isinstance(obj, type) or not issubclass(obj, self._base_class):
                 available = self.list_available()
                 raise RegistryError(
-                    f"'{name}' is not a valid option. "
-                    f"Available: {', '.join(available)}"
+                    f"'{name}' is not a valid option. Available: {', '.join(available)}"
                 )
 
         return obj

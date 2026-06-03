@@ -50,9 +50,7 @@ class Trends(ABC):
         return self._name
 
     @abstractmethod
-    def generate(
-        self, timestamps: pd.DatetimeIndex, rng: RNGProtocol
-    ) -> np.ndarray:
+    def generate(self, timestamps: pd.DatetimeIndex, rng: RNGProtocol) -> np.ndarray:
         """Generate trend values for the given timestamps.
 
         Args:
@@ -111,9 +109,7 @@ class SinusoidalTrend(Trends):
     def noise_level(self) -> float:
         return self._noise_level
 
-    def generate(
-        self, timestamps: pd.DatetimeIndex, rng: RNGProtocol
-    ) -> np.ndarray:
+    def generate(self, timestamps: pd.DatetimeIndex, rng: RNGProtocol) -> np.ndarray:
         time_in_days = (timestamps - timestamps[0]).total_seconds() / (24 * 3600)
         phase_in_days = self._phase / 24.0
         base_wave = self._amplitude * np.sin(
@@ -172,9 +168,7 @@ class LinearTrend(Trends):
     def noise_level(self) -> float:
         return self._noise_level
 
-    def generate(
-        self, timestamps: pd.DatetimeIndex, rng: RNGProtocol
-    ) -> np.ndarray:
+    def generate(self, timestamps: pd.DatetimeIndex, rng: RNGProtocol) -> np.ndarray:
         time_deltas = timestamps - timestamps[0]
 
         freq_str = timestamps.freqstr if timestamps.freq else "D"
@@ -208,9 +202,7 @@ class WeekendTrend(Trends):
         CLI shorthand: ``WeekendTrend(weekend_effect=10,direction='up',noise_level=0.5,limit=10)``
     """
 
-    _example = (
-        "sales:WeekendTrend(weekend_effect=10,direction='up',noise_level=0.5,limit=10)"
-    )
+    _example = "sales:WeekendTrend(weekend_effect=10,direction='up',noise_level=0.5,limit=10)"
 
     def __init__(
         self,
@@ -242,14 +234,10 @@ class WeekendTrend(Trends):
     def limit(self) -> float:
         return self._limit
 
-    def generate(
-        self, timestamps: pd.DatetimeIndex, rng: RNGProtocol
-    ) -> np.ndarray:
+    def generate(self, timestamps: pd.DatetimeIndex, rng: RNGProtocol) -> np.ndarray:
         trend = np.zeros(len(timestamps))
         is_weekend = timestamps.weekday >= 5
-        adjustment = (
-            self._weekend_effect if self._direction == "up" else -self._weekend_effect
-        )
+        adjustment = self._weekend_effect if self._direction == "up" else -self._weekend_effect
         trend[is_weekend] = adjustment
         trend = np.clip(trend, -self._limit, self._limit)
         noise = rng.normal(0, self._noise_level, len(timestamps))
@@ -287,8 +275,7 @@ class HolidayTrend(Trends):
     """
 
     _example = (
-        "sales:HolidayTrend(country='US',effect=50,"
-        "pre_window=3,post_window=2,direction='up')"
+        "sales:HolidayTrend(country='US',effect=50,pre_window=3,post_window=2,direction='up')"
     )
 
     def __init__(
@@ -359,13 +346,9 @@ class HolidayTrend(Trends):
 
         start_date = timestamps[0].date()
         end_date = timestamps[-1].date()
-        return [
-            pd.Timestamp(d) for d in country_holidays if start_date <= d <= end_date
-        ]
+        return [pd.Timestamp(d) for d in country_holidays if start_date <= d <= end_date]
 
-    def generate(
-        self, timestamps: pd.DatetimeIndex, rng: RNGProtocol
-    ) -> np.ndarray:
+    def generate(self, timestamps: pd.DatetimeIndex, rng: RNGProtocol) -> np.ndarray:
         holiday_dates = self._resolve_holidays(timestamps)
         result = np.zeros(len(timestamps))
         sign = 1 if self._direction == "up" else -1
@@ -489,9 +472,7 @@ class ARNoiseTrend(Trends):
     def noise_std(self) -> float:
         return self._noise_std
 
-    def generate(
-        self, timestamps: pd.DatetimeIndex, rng: RNGProtocol
-    ) -> np.ndarray:
+    def generate(self, timestamps: pd.DatetimeIndex, rng: RNGProtocol) -> np.ndarray:
         n = len(timestamps)
         p = self._order
         total = n + p
@@ -561,13 +542,9 @@ class MarkovTrend(Trends):
             raise ValueError("At least 2 states are required.")
 
         if stickiness is not None and transition_matrix is not None:
-            raise ValueError(
-                "Provide either 'stickiness' or 'transition_matrix', not both."
-            )
+            raise ValueError("Provide either 'stickiness' or 'transition_matrix', not both.")
         if stickiness is None and transition_matrix is None:
-            raise ValueError(
-                "Either 'stickiness' or 'transition_matrix' must be provided."
-            )
+            raise ValueError("Either 'stickiness' or 'transition_matrix' must be provided.")
 
         self._states = list(states)
         self._values = np.array(values, dtype=np.float64)
@@ -583,16 +560,12 @@ class MarkovTrend(Trends):
                 )
             row_sums = mat.sum(axis=1)
             if not np.allclose(row_sums, 1.0):
-                raise ValueError(
-                    f"Each row of transition_matrix must sum to 1.0, got {row_sums}"
-                )
+                raise ValueError(f"Each row of transition_matrix must sum to 1.0, got {row_sums}")
             self._transition_matrix = mat
         else:
             if not 0 <= stickiness <= 1:
                 raise ValueError("stickiness must be in [0, 1]")
-            self._transition_matrix = self._build_stickiness_matrix(
-                stickiness, self._n_states
-            )
+            self._transition_matrix = self._build_stickiness_matrix(stickiness, self._n_states)
 
     @staticmethod
     def _build_stickiness_matrix(stickiness: float, n_states: int) -> np.ndarray:
@@ -621,9 +594,7 @@ class MarkovTrend(Trends):
     def noise_std(self) -> float:
         return self._noise_std
 
-    def generate(
-        self, timestamps: pd.DatetimeIndex, rng: RNGProtocol
-    ) -> np.ndarray:
+    def generate(self, timestamps: pd.DatetimeIndex, rng: RNGProtocol) -> np.ndarray:
         n = len(timestamps)
         n_states = self._n_states
         mat = self._transition_matrix
@@ -682,9 +653,7 @@ class StockTrend(Trends):
     def noise_level(self) -> float:
         return self._noise_level
 
-    def generate(
-        self, timestamps: pd.DatetimeIndex, rng: RNGProtocol
-    ) -> np.ndarray:
+    def generate(self, timestamps: pd.DatetimeIndex, rng: RNGProtocol) -> np.ndarray:
         num_steps = len(timestamps)
         trend = np.zeros(num_steps)
         drift_per_step = self._amplitude / num_steps if num_steps > 0 else 0

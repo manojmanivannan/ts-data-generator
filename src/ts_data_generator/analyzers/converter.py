@@ -157,9 +157,7 @@ class SchemaConverter:
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore", scipy.optimize.OptimizeWarning)
                 warnings.simplefilter("ignore", RuntimeWarning)
-                popt, _ = scipy.optimize.curve_fit(
-                    self._sinfunc, x, values, p0=guess, maxfev=10000
-                )
+                popt, _ = scipy.optimize.curve_fit(self._sinfunc, x, values, p0=guess, maxfev=10000)
         except (RuntimeError, TypeError):
             raise
 

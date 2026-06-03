@@ -57,9 +57,7 @@ class DimensionSpec(BaseModel):
     """A dimension specification in config."""
 
     name: str = Field(..., description="Dimension name")
-    function: str = Field(
-        default=DEFAULT_DIMENSION_FUNCTION, description="Dimension function name"
-    )
+    function: str = Field(default=DEFAULT_DIMENSION_FUNCTION, description="Dimension function name")
     values: list[str] = Field(..., description="Dimension values")
 
 
@@ -185,11 +183,7 @@ def _parse_dimension_spec(spec: str) -> tuple[str, str, tuple | list]:
     value_list = values.split(VALUE_SEPARATOR)
     if all(v.lstrip("-").replace(".", "", 1).isdigit() for v in value_list if v):
         parsed = tuple(
-            (
-                int(v)
-                if v.isdigit() or (v.startswith("-") and v[1:].isdigit())
-                else float(v)
-            )
+            (int(v) if v.isdigit() or (v.startswith("-") and v[1:].isdigit()) else float(v))
             for v in value_list
         )
     else:
@@ -249,8 +243,7 @@ def _parse_trend_spec(
                 key, value = param.split("=", 1)
             except ValueError:
                 raise click.BadParameter(
-                    f"Invalid parameter {param!r} in {trend_spec!r}. "
-                    f"Expected key=value format."
+                    f"Invalid parameter {param!r} in {trend_spec!r}. Expected key=value format."
                 ) from None
             param_dict[key] = _parse_value(value)
 
@@ -373,8 +366,7 @@ def main():
     "--mets",
     type=str,
     multiple=True,
-    help=f"Metric specs (sep by {DIM_SEPARATOR}). "
-    "Format: 'name:Trend(param=value)+Trend2'",
+    help=f"Metric specs (sep by {DIM_SEPARATOR}). Format: 'name:Trend(param=value)+Trend2'",
 )
 @click.option(
     "--anomalies",
@@ -547,9 +539,7 @@ def generate(
     mets_str = _normalize_to_string(mets)
 
     if not all([start, end, granularity, dims_str, mets_str, output]):
-        click.echo(
-            main.get_command(main, "generate").get_help(click.get_current_context())
-        )
+        click.echo(main.get_command(main, "generate").get_help(click.get_current_context()))
         return
 
     data_gen = DataGen(seed=seed)
@@ -623,9 +613,7 @@ def generate(
                 if found_cd is not None:
                     found_cd.segments.append(segment)
                 else:
-                    metrics_data[metric_name]["anomalies"].append(
-                        anom_cls(segments=[segment])
-                    )
+                    metrics_data[metric_name]["anomalies"].append(anom_cls(segments=[segment]))
             else:
                 metrics_data[metric_name]["anomalies"].append(anom_cls(**params))
 
@@ -656,9 +644,7 @@ def dimensions() -> None:
     funcs = [
         f
         for f in dir(dimension_functions)
-        if callable(getattr(dimension_functions, f))
-        and not f.startswith("_")
-        and f not in excluded
+        if callable(getattr(dimension_functions, f)) and not f.startswith("_") and f not in excluded
     ]
 
     click.echo("Available dimension functions:\n")
@@ -677,9 +663,7 @@ def metrics() -> None:
     funcs = [
         f
         for f in dir(trend_functions)
-        if callable(getattr(trend_functions, f))
-        and not f.startswith("_")
-        and "Trend" in f
+        if callable(getattr(trend_functions, f)) and not f.startswith("_") and "Trend" in f
     ]
 
     click.echo("Available trend functions:\n")
@@ -716,26 +700,19 @@ def presets(preset_name: str | None) -> None:
         click.echo(f"  Dimensions: {', '.join(cfg['dimensions'])}")
         click.echo(f"  Metrics: {', '.join(cfg['metrics'])}")
         click.echo(f"  Output: {cfg['output']}")
-        click.echo(
-            f"\nUsage: tsdata generate --preset {preset_name} --output <output.csv>"
-        )
+        click.echo(f"\nUsage: tsdata generate --preset {preset_name} --output <output.csv>")
         click.echo("Or override specific values:")
         click.echo(
-            f"  tsdata generate --preset {preset_name} "
-            f"--start 2024-02-01 --output mydata.csv"
+            f"  tsdata generate --preset {preset_name} --start 2024-02-01 --output mydata.csv"
         )
     else:
         click.echo("Available presets:\n")
         for name, cfg in PRESETS.items():
             click.echo(f"  {name}")
             click.echo(
-                f"    Start: {cfg['start']}, End: {cfg['end']}, "
-                f"Granularity: {cfg['granularity']}"
+                f"    Start: {cfg['start']}, End: {cfg['end']}, Granularity: {cfg['granularity']}"
             )
-            click.echo(
-                f"    Dimensions: {len(cfg['dimensions'])}, "
-                f"Metrics: {len(cfg['metrics'])}"
-            )
+            click.echo(f"    Dimensions: {len(cfg['dimensions'])}, Metrics: {len(cfg['metrics'])}")
             click.echo(f"    Output: {cfg['output']}")
             click.echo()
         click.echo("Use 'tsdata presets <name>' for detailed info on a preset.")

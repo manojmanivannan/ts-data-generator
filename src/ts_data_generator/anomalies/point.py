@@ -68,9 +68,7 @@ class PointAnomaly(Anomaly):
 
         return result
 
-    def _sample_magnitudes(
-        self, count: int, rng: RNGProtocol
-    ) -> np.ndarray:
+    def _sample_magnitudes(self, count: int, rng: RNGProtocol) -> np.ndarray:
         if isinstance(self._magnitude, tuple):
             low, high = self._magnitude
             return rng.uniform(low, high, count)

@@ -38,9 +38,7 @@ def plot_time_series(
         ImportError: If matplotlib is not installed.
     """
     if exclude and include:
-        raise ValidationError(
-            "Only one of 'exclude' or 'include' should be provided, not both."
-        )
+        raise ValidationError("Only one of 'exclude' or 'include' should be provided, not both.")
 
     exclude = exclude or []
     include = include or []
