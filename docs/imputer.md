@@ -52,7 +52,7 @@ pip install scipy matplotlib
 import os
 import pandas as pd
 import numpy as np
-from ts_data_generator.schema.converter import SchemaConverter
+from ts_data_generator.analyzers.converter import SchemaConverter
 
 # --- Step A: Generate a Dummy CSV File to Simulate Real Historical Data ---
 dummy_csv_path = "historical_device_log.csv"
