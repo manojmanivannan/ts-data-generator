@@ -1,0 +1,297 @@
+# Architecture Deepening Plan
+
+## Context
+
+The ts-data-generator codebase has 5 architectural friction points identified through exploration:
+
+1. **RNG seam is hypothetical** — `if rng is not None: rng.X() else: np.random.X()` is repeated 8+ times across trends and anomalies. `normal_or_fallback` leaks fallback logic onto the adapter interface. `functions.py` uses `random` stdlib, completely bypassing the seeded RNG.
+2. **Metric generation hides the clean baseline** — `Metrics.generate()` applies anomalies in-place, losing the pre-contamination signal. The docs promise "compare clean baseline against contaminated dataset" but the interface can't deliver it.
+3. **DataGen mixes collection management with pipeline execution** — 14 public methods, implicit ordering constraints (must set dates before metrics, must normalize after generation).
+4. **CLI parsing is entangled with Click** — spec-to-model bridge logic is inaccessible from the Python API. Registry raises `click.BadParameter`, a UI concern.
+5. **DataFrameBuilder is shallow** — its `build()` method is a thin loop that doesn't earn its keep as a separate module.
+
+The user wants all 5 addressed via TDD with parallel sub-agents.
+
+## Dependency Order
+
+```
+Phase 1: RNG seam (#1)          ← foundational, blocks #2 and #5
+  ↓
+Phase 2A: MetricResult (#2) ─┐
+                             ├─ can run in parallel
+Phase 2B: CLI extraction (#4) ┘
+  ↓
+Phase 3: DataFrameBuilder fold (#5) ← after 2A (generate() return type changes)
+  ↓
+Phase 4: DataGen state guards (#3) ← after 3 (data_gen.py changes significantly)
+```
+
+---
+
+## Phase 1: RNG Seam — From Hypothetical to Real
+
+### 1A. Add `RNGProtocol` ABC, `DefaultRNG`, and `integers()` to `random.py`
+
+**TDD — Red:**
+- `tests/test_random.py`: Add `TestDefaultRNG` class with tests:
+  - `test_default_rng_constructs_without_seed`
+  - `test_default_rng_normal_works`
+  - `test_default_rng_uniform_works`
+  - `test_default_rng_choice_works`
+  - `test_default_rng_random_works`
+  - `test_default_rng_integers_works`
+  - `test_default_rng_not_deterministic` — two instances produce different values
+  - `test_default_rng_seed_is_none`
+  - `test_seedable_rng_integers` — `SeedableRNG(42).integers(1, 100, size=20)` is deterministic
+  - `test_default_rng_satisfies_rng_protocol` — `isinstance(DefaultRNG(), RNGProtocol)` is True
+  - `test_seedable_rng_satisfies_rng_protocol` — `isinstance(SeedableRNG(42), RNGProtocol)` is True
+
+**Green:**
+- `src/ts_data_generator/random.py`:
+  - Define `RNGProtocol` ABC with abstract methods: `normal()`, `uniform()`, `choice()`, `random()`, `integers()`, `seed` property
+  - Register `SeedableRNG` as implementing `RNGProtocol` (it already implements all methods)
+  - Add `integers()` method to `SeedableRNG`
+  - Add `DefaultRNG` class that implements `RNGProtocol`, using `np.random.default_rng()` (unseeded) internally
+  - Change `SeedableRNG.seed` property return type to `int`
+  - `DefaultRNG.seed` property returns `None`
+  - **Remove** `SeedableRNG.normal_or_fallback()` static method
+  - Change all type annotations across the codebase from `SeedableRNG | None` to `RNGProtocol` (or `SeedableRNG` where a seedable one is specifically required)
+
+### 1B. Make `rng` required on `Trends.generate()`
+
+**TDD — Red:**
+- `tests/test_random.py`: Change `test_*_without_rng_still_works` to pass `DefaultRNG()` instead of omitting `rng`
+- Add test: `test_trend_generate_requires_rng` — calling `SinusoidalTrend().generate(timestamps)` without `rng` raises TypeError
+
+**Green:**
+- `src/ts_data_generator/utils/trends.py`:
+  - Change `Trends.generate()` abstract signature: `rng: RNGProtocol` (no `None` default)
+  - Each trend class: change `rng: SeedableRNG | None = None` → `rng: RNGProtocol`
+  - Replace every `SeedableRNG.normal_or_fallback(...)` call with `rng.normal(...)`
+  - In `MarkovTrend.generate()`: replace `if rng is not None` branches with direct `rng.choice()` / `rng.normal()` calls
+  - Update import: `from ts_data_generator.random import RNGProtocol`
+
+### 1C. Make `rng` required on `Anomaly.intervene()`
+
+**TDD — Red:**
+- `tests/test_anomalies.py`: Replace all `rng=None` with `rng=DefaultRNG()`
+- Rename `test_no_rng_falls_back_to_numpy_global` → `test_default_rng_produces_valid_output`
+- Add test: `test_point_anomaly_requires_rng` — no-rng call raises TypeError
+
+**Green:**
+- `src/ts_data_generator/anomalies/base.py`: Change `intervene()` to `rng: RNGProtocol`
+- `src/ts_data_generator/anomalies/point.py`: Remove all `if rng is not None` branches, use `rng.random()`, `rng.uniform()` directly
+- `src/ts_data_generator/anomalies/missing.py`: Remove all `if rng is not None` branches
+- `src/ts_data_generator/anomalies/drift.py`: Remove `_normal()` helper, replace with direct `rng.normal()` calls, change `intervene()` and `_apply_segment()` signatures to use `RNGProtocol`
+
+### 1D. Make `rng` required on `Metrics.generate()`
+
+**TDD — Red:**
+- `tests/test_models.py`: Change all `rng=None` to `rng=DefaultRNG()`
+- Add test: `test_metrics_generate_requires_rng`
+
+**Green:**
+- `src/ts_data_generator/schema/models.py`: Change `Metrics.generate()` to `rng: RNGProtocol`
+
+### 1E. Thread `rng` into `Dimensions.generate()` and `MultiItems.generate()`
+
+**TDD — Red:**
+- `tests/test_models.py`: Add tests verifying `Dimensions.generate(timestamps, rng=DefaultRNG())` works
+- Add tests verifying `MultiItems.generate(timestamps, rng=DefaultRNG())` works
+
+**Green:**
+- `src/ts_data_generator/schema/models.py`: Add `rng: RNGProtocol | None = None` parameter to `Dimensions.generate()` and `MultiItems.generate()`. (Keep optional since the generators are pre-created with their own functions.)
+
+### 1F. Wire `DefaultRNG` through DataGen and DataFrameBuilder
+
+**TDD — Red:**
+- `tests/test_generator.py`: Add test: `test_datagen_without_seed_uses_default_rng` — `DataGen()._rng` is a `DefaultRNG` instance
+- Add test: `test_datagen_without_seed_produces_data` — generation works without seed
+
+**Green:**
+- `src/ts_data_generator/data_gen.py`: Change `self._rng` init to:
+  ```python
+  self._rng: RNGProtocol = SeedableRNG(seed) if seed is not None else DefaultRNG()
+  ```
+- `src/ts_data_generator/core/dataframe_builder.py`: Change `rng: SeedableRNG | None = None` → `rng: RNGProtocol`
+
+### 1G. Thread `rng` into dimension generator functions
+
+**TDD — Red:**
+- New tests in `tests/test_functions.py` (or add to `tests/test_generator.py`):
+  - `test_random_choice_with_rng_is_deterministic`
+  - `test_random_int_with_rng_is_deterministic`
+  - `test_random_float_with_rng_is_deterministic`
+  - `test_auto_generate_name_with_rng_is_deterministic`
+
+**Green:**
+- `src/ts_data_generator/utils/functions.py`:
+  - Add `rng: RNGProtocol | None = None` parameter to `random_choice`, `random_int`, `random_float`
+  - When `rng` is provided, use `rng.choice()`, `rng.integers()`, `rng.uniform()` instead of `random.choice/randint/uniform`
+  - Add `rng` parameter to `auto_generate_name`, use `rng.integers()` when provided
+
+### 1H. Update all remaining test files
+
+- Search all test files for `rng=None` patterns and replace with `DefaultRNG()` or remove the argument
+- Remove any tests that explicitly test the `rng=None` fallback path (they tested the old hypothetical seam, which no longer exists)
+- Verify all existing tests pass with the new required-rng interface
+
+---
+
+## Phase 2A: MetricResult — Separate Clean Baseline from Contaminated Signal
+
+### 2A-1. Define `MetricResult` and change `Metrics.generate()`
+
+**TDD — Red:**
+- `tests/test_models.py`: Add tests:
+  - `test_metrics_generate_returns_metric_result` — verify return type has `.signal` and `.baseline`
+  - `test_metric_result_signal_matches_contaminated_output` — `result.signal` matches what `generate()` used to return
+  - `test_metric_result_baseline_is_clean` — `result.baseline` has no anomalies applied
+  - `test_metric_result_without_anomalies_signal_equals_baseline` — when no anomalies, signal == baseline
+  - `test_metric_result_with_anomalies_signal_differs_from_baseline` — when anomalies exist, signal ≠ baseline
+
+**Green:**
+- `src/ts_data_generator/schema/models.py`:
+  ```python
+  from typing import NamedTuple
+
+  class MetricResult(NamedTuple):
+      signal: pd.DataFrame   # contaminated (trends + anomalies)
+      baseline: pd.DataFrame # clean (trends only)
+  ```
+  - Modify `Metrics.generate()` to compute baseline before anomalies, return `MetricResult`
+
+### 2A-2. Update DataFrameBuilder to use `MetricResult.signal`
+
+**TDD — Red:**
+- `tests/test_dataframe_builder.py`: Add test verifying builder still produces correct DataFrames with MetricResult
+
+**Green:**
+- `src/ts_data_generator/core/dataframe_builder.py`: In `_build_metrics()`, use `result = metric.generate(timestamps, rng=self._rng)` then `result.signal`
+
+### 2A-3. Expose baselines through DataGen
+
+**TDD — Red:**
+- `tests/test_generator.py`: Add tests:
+  - `test_datagen_baselines_returns_dict`
+  - `test_datagen_baseline_matches_clean_signal`
+  - `test_datagen_baseline_differs_from_contaminated`
+
+**Green:**
+- `src/ts_data_generator/data_gen.py`: Add `_baselines` dict, populate during `_generate_data()`, expose as `baselines` property
+
+---
+
+## Phase 2B: CLI Parsing — Extract Spec-to-Model Bridge
+
+### 2B-1. Add `RegistryError` and refactor `Registry`
+
+**TDD — Red:**
+- `tests/test_registry.py`: Change expected exception from `click.BadParameter` to `RegistryError`
+- Add test: `test_registry_get_raises_registry_error_for_missing`
+
+**Green:**
+- `src/ts_data_generator/exceptions.py`: Add `RegistryError(DataGeneratorError)`
+- `src/ts_data_generator/utils/registry.py`: Change `click.BadParameter` raises to `RegistryError`, remove `import click`
+
+### 2B-2. Create `schema/parser.py`
+
+**TDD — Red:**
+- New file `tests/test_parser.py`:
+  - `test_parse_trend_spec_valid` — `"LinearTrend(slope=30)"` → `("LinearTrend", {"slope": 30})`
+  - `test_parse_trend_spec_invalid` — `"not_a_trend"` → raises `ValueError`
+  - `test_parse_dimension_spec_with_function` — `"product:random_choice:A,B,C"` → expected tuple
+  - `test_parse_dimension_spec_without_function` — `"product:A,B,C"` → expected tuple with default
+  - `test_parse_anomaly_spec_valid`
+  - `test_get_dimension_function_found` / `test_get_dimension_function_not_found`
+  - `test_get_trend_function_found` / `test_get_trend_function_not_found`
+  - `test_get_anomaly_class_found` / `test_get_anomaly_class_not_found`
+  - `test_presets_dict_is_valid`
+  - `test_generator_config_validates` / `test_generator_config_invalid_granularity`
+  - `test_load_config_valid_json` / `test_load_config_invalid_json`
+  - `test_apply_config_overrides`
+
+**Green:**
+- New file `src/ts_data_generator/schema/parser.py`:
+  - Move from `cli.py`: constants (`DIM_SEPARATOR`, etc.), `DimensionSpec`, `MetricSpec`, `GeneratorConfig`, `PRESETS`, parsing functions (`_parse_value`, `_parse_dimension_spec`, `_split_bracket_aware`, `_parse_trend_spec`, `_parse_anomaly_spec`), registry accessors (`_get_dimension_function`, `_get_trend_function`, `_get_anomaly_class`), `_load_config`, `_apply_config_overrides`, `_normalize_to_string`, registry instances
+  - Change all `click.BadParameter` raises to `ValueError` or `RegistryError`
+- `src/ts_data_generator/cli.py`: Slim down to Click framework + error adapter
+  - Import parsing from `schema.parser`
+  - Wrap `RegistryError`/`ValueError` as `click.BadParameter` at CLI call sites
+
+---
+
+## Phase 3: DataFrameBuilder Fold
+
+### 3-1. Inline DataFrameBuilder logic into DataGen
+
+**TDD — Red:**
+- `tests/test_generator.py`: Add tests:
+  - `test_generate_data_produces_epoch_column`
+  - `test_generate_data_skips_existing_columns`
+  - `test_generate_data_column_order`
+  - `test_generate_data_with_no_models_returns_epoch_only`
+
+**Green:**
+- `src/ts_data_generator/data_gen.py`: Inline the `build()` logic into `_generate_data()`. This includes:
+  - Building metric DataFrames from `MetricResult.signal`
+  - Building dimension DataFrames
+  - Building multi-item DataFrames
+  - Composing the final DataFrame with epoch column and column sorting
+- Delete `src/ts_data_generator/core/dataframe_builder.py`
+- Update `src/ts_data_generator/core/__init__.py` (remove DataFrameBuilder export if any)
+- Remove `from ts_data_generator.core.dataframe_builder import DataFrameBuilder` from `data_gen.py`
+
+### 3-2. Merge tests
+
+- Move unique test cases from `tests/test_dataframe_builder.py` into `tests/test_generator.py`
+- Delete `tests/test_dataframe_builder.py`
+
+---
+
+## Phase 4: DataGen State Guards
+
+### 4-1. Add `PipelineState` enum and state guards
+
+**TDD — Red:**
+- `tests/test_generator.py`: Add tests:
+  - `test_datagen_initial_state_is_configured`
+  - `test_datagen_generate_transitions_to_generated`
+  - `test_datagen_normalize_before_generate_raises` — `ConfigurationError` raised
+  - `test_datagen_denormalize_before_normalize_raises` — warning logged, no crash
+  - `test_datagen_normalize_transitions_to_normalized`
+  - `test_datagen_denormalize_transitions_to_generated`
+
+**Green:**
+- `src/ts_data_generator/data_gen.py`:
+  - Add `PipelineState` enum: `CONFIGURED`, `GENERATED`, `NORMALIZED`
+  - Add `self._state = PipelineState.CONFIGURED` in `__init__`
+  - Set `self._state = PipelineState.GENERATED` at end of `_generate_data()`
+  - Set `self._state = PipelineState.NORMALIZED` at end of `normalize()`
+  - Guard `normalize()`: raise `ConfigurationError` if state is `CONFIGURED`
+  - Guard `denormalize()`: return early with warning if state is not `NORMALIZED`
+  - Set `self._state = PipelineState.GENERATED` at end of `denormalize()`
+  - Add `state` read-only property
+
+---
+
+## Files Modified Per Phase
+
+| Phase | Files Modified | New Files |
+|-------|---------------|-----------|
+| 1 | `random.py`, `utils/trends.py`, `anomalies/base.py`, `anomalies/point.py`, `anomalies/missing.py`, `anomalies/drift.py`, `schema/models.py`, `core/dataframe_builder.py`, `data_gen.py`, `utils/functions.py`, `tests/test_random.py`, `tests/test_anomalies.py`, `tests/test_models.py`, `tests/test_generator.py` | — |
+| 2A | `schema/models.py`, `core/dataframe_builder.py`, `data_gen.py`, `tests/test_models.py`, `tests/test_generator.py` | — |
+| 2B | `utils/registry.py`, `exceptions.py`, `cli.py` | `schema/parser.py`, `tests/test_parser.py` |
+| 3 | `data_gen.py` | — |
+| 4 | `data_gen.py`, `exceptions.py`, `tests/test_generator.py` | — |
+
+## Verification
+
+After each phase:
+1. Run `pytest tests/ -x` to confirm all tests pass
+2. Run `ruff check src/` to confirm no lint errors
+3. After Phase 1: verify `grep -rn "rng=None\|rng: SeedableRNG | None" src/` returns no results (except `functions.py` and `Dimensions.generate()`/`MultiItems.generate()` where rng remains optional for backward compat). Verify `grep -rn "normal_or_fallback" src/` returns no results.
+4. After Phase 2A: verify that `Metrics.generate()` returns `MetricResult` and `DataGen.baselines` is accessible
+5. After Phase 2B: verify `python -m ts_data_generator.cli` still works end-to-end with a preset
+6. After Phase 3: verify `grep -rn "DataFrameBuilder" src/` returns no results
+7. After Phase 4: verify that calling `normalize()` before generating data raises `ConfigurationError`
