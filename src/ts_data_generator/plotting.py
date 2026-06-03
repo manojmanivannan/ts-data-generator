@@ -8,16 +8,19 @@ column, auto-selecting numeric columns).
 from __future__ import annotations
 
 import importlib.util
+from typing import Any
+
+import pandas as pd
 
 from ts_data_generator.exceptions import ValidationError
 
 
 def plot_time_series(
-    data,
+    data: pd.DataFrame,
     *,
     exclude: list[str] | None = None,
     include: list[str] | None = None,
-    **matplotlib_kwargs,
+    **matplotlib_kwargs: Any,
 ) -> None:
     """Plot numeric columns from a time-indexed DataFrame.
 

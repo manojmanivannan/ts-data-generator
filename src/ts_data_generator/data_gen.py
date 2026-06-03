@@ -11,7 +11,7 @@ import logging
 from collections.abc import Generator
 from datetime import datetime
 from itertools import cycle
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import pandas as pd
 
@@ -40,6 +40,7 @@ from ts_data_generator.transforms.normalizer import Normalizer, create_normalize
 from ts_data_generator.utils.functions import constant
 
 logger = logging.getLogger(__name__)
+
 
 class DataGen:
     """Generate synthetic time series data with dimensions, metrics, and trends.
@@ -242,7 +243,9 @@ class DataGen:
     # ------------------------------------------------------------------
 
     def add_dimension(
-        self, name: str, function: int | float | str | list | Generator
+        self,
+        name: str,
+        function: int | float | str | list[Any] | Generator[Any, None, None],
     ) -> None:
         """Add a new dimension column.
 
