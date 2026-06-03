@@ -18,7 +18,7 @@ Understanding how these primitives work and interact is key to generating high-f
 
 Every dataset goes through a five-stage processing pipeline. This pipeline ensures that context (dimensions), mathematical signals (trends), errors (anomalies), and scales (normalization) are resolved in a strict, logical sequence.
 
-Here is the sequential flow of execution:
+Here is the sequential flow of execution, which is strictly guarded by the underlying `PipelineState` (`CONFIGURED` -> `GENERATED` -> `NORMALIZED`):
 
 ```mermaid
 graph TD
@@ -59,8 +59,7 @@ Metrics represent the **numeric observations** you want to track (e.g., `cpu_uti
 
 ### 3. Anomalies (Perturbation)
 Anomalies represent **real-world failure events** or regime shifts (e.g., network spikes, missing sensor data, or system recalibration drift).
-*   **Decoupled Intervention**: Anomalies are injected *after* the base metrics are generated. This is critical: it keeps the clean baseline mathematical trend completely separate from the failure events.
-*   **Stochastic Perturbation**: You specify the rules (e.g., a $2\%$ chance of a network drop-out lasting $3$ to $5$ consecutive intervals). The pipeline stochastically modifies the base array in place. This makes benchmarking anomaly detection models exceptionally easy because you can compare the clean baseline against the contaminated dataset to get perfect labels.
+*   **Decoupled Intervention**: Anomalies are injected *after* the base metrics are generated. This is critical: it keeps the clean baseline mathematical trend completely separate from the failure events. Because metrics return a `MetricResult` object (containing both a `baseline` and a `signal`), you can directly compare the clean baseline against the contaminated dataset to get perfect labels when benchmarking anomaly detection models.
 
 [Learn more about Anomaly Injection]({{ site.baseurl }}/anomalies){: .btn .btn-outline }
 

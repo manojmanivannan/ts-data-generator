@@ -75,9 +75,7 @@ class MinMaxStrategy(NormalizationStrategy):
         numeric = data.select_dtypes(include=["number"])
         descaled = numeric.copy()
         for col in numeric.columns:
-            descaled[col] = (
-                numeric[col] * (self._max[col] - self._min[col]) + self._min[col]
-            )
+            descaled[col] = numeric[col] * (self._max[col] - self._min[col]) + self._min[col]
         return descaled
 
 

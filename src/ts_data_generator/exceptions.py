@@ -27,3 +27,7 @@ class AggregationError(DataGeneratorError):
 
 class ConfigurationError(DataGeneratorError):
     """Raised when configuration is invalid (missing fields, bad JSON)."""
+
+
+class RegistryError(DataGeneratorError):
+    """Raised when a registry lookup fails (missing name, wrong base class)."""

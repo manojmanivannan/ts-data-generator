@@ -3,15 +3,13 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import TYPE_CHECKING, Literal
+from typing import Literal
 
 import numpy as np
 import pandas as pd
 
 from ts_data_generator.anomalies.base import Anomaly
-
-if TYPE_CHECKING:
-    from ts_data_generator.random import SeedableRNG
+from ts_data_generator.random import RNGProtocol
 
 
 class MissingData(Anomaly):
@@ -83,7 +81,7 @@ class MissingData(Anomaly):
         self,
         base_array: np.ndarray,
         timestamps: pd.DatetimeIndex,
-        rng: SeedableRNG | None = None,
+        rng: RNGProtocol,
     ) -> np.ndarray:
         result = base_array.copy()
         n = len(base_array)
@@ -97,25 +95,14 @@ class MissingData(Anomaly):
 
         return result
 
-    def _apply_random(
-        self, result: np.ndarray, n: int, rng: SeedableRNG | None
-    ) -> None:
-        if rng is not None:
-            mask = rng.random(n) < self._probability
-        else:
-            mask = np.random.random(n) < self._probability
+    def _apply_random(self, result: np.ndarray, n: int, rng: RNGProtocol) -> None:
+        mask = rng.random(n) < self._probability
         result[mask] = np.nan
 
-    def _apply_burst(
-        self, result: np.ndarray, n: int, rng: SeedableRNG | None
-    ) -> None:
+    def _apply_burst(self, result: np.ndarray, n: int, rng: RNGProtocol) -> None:
         i = 0
         while i < n:
-            if rng is not None:
-                burst_trigger = rng.random() < self._burst_probability
-            else:
-                burst_trigger = np.random.random() < self._burst_probability
-
+            burst_trigger = rng.random() < self._burst_probability
             if burst_trigger:
                 length = self._sample_length(rng)
                 end = min(i + length, n)
@@ -124,14 +111,10 @@ class MissingData(Anomaly):
             else:
                 i += 1
 
-    def _apply_patterned(
-        self, result: np.ndarray, timestamps: pd.DatetimeIndex
-    ) -> None:
+    def _apply_patterned(self, result: np.ndarray, timestamps: pd.DatetimeIndex) -> None:
         for i, ts in enumerate(timestamps):
             if self._schedule(ts):  # type: ignore[misc]
                 result[i] = np.nan
 
-    def _sample_length(self, rng: SeedableRNG | None) -> int:
-        if rng is not None:
-            return int(np.floor(rng.uniform(self._min_length, self._max_length + 1)))
-        return int(np.floor(np.random.uniform(self._min_length, self._max_length + 1)))
+    def _sample_length(self, rng: RNGProtocol) -> int:
+        return int(np.floor(rng.uniform(self._min_length, self._max_length + 1)))

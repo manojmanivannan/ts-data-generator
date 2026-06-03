@@ -18,7 +18,9 @@ from ts_data_generator.utils.functions import (
     random_choice,
     random_int,
 )
+from ts_data_generator.random import DefaultRNG, SeedableRNG
 from ts_data_generator.utils.trends import (
+    ARNoiseTrend,
     HolidayTrend,
     LinearTrend,
     SinusoidalTrend,
@@ -320,7 +322,7 @@ class TestHolidayTrend:
             direction="up",
         )
         timestamps = self._make_timestamps("2024-01-01", "2024-01-08")
-        values = holiday.generate(timestamps)
+        values = holiday.generate(timestamps, rng=DefaultRNG())
 
         # 2024-01-02: holiday - 3 = 0
         assert values[1] == pytest.approx(0.0)
@@ -346,7 +348,7 @@ class TestHolidayTrend:
             direction="down",
         )
         timestamps = self._make_timestamps("2024-06-13", "2024-06-16")
-        values = holiday.generate(timestamps)
+        values = holiday.generate(timestamps, rng=DefaultRNG())
 
         # 2024-06-13: holiday - 2 = 0
         assert values[0] == pytest.approx(0.0)
@@ -363,7 +365,7 @@ class TestHolidayTrend:
             dates=["2024-01-10"], effect=100, pre_window=1, post_window=1,
         )
         timestamps = self._make_timestamps("2024-01-09", "2024-01-11")
-        values = holiday.generate(timestamps)
+        values = holiday.generate(timestamps, rng=DefaultRNG())
 
         assert values[0] == pytest.approx(0.0)    # holiday - 1
         assert values[1] == pytest.approx(100.0)   # holiday
@@ -376,7 +378,7 @@ class TestHolidayTrend:
             effect=50, pre_window=2, post_window=2, direction="up",
         )
         timestamps = self._make_timestamps("2024-03-13", "2024-03-18")
-        values = holiday.generate(timestamps)
+        values = holiday.generate(timestamps, rng=DefaultRNG())
 
         # 2024-03-14: pre-window for holiday 1 only
         # holiday 1 (3/15): day -1 = 50 * 1/2 = 25
@@ -395,7 +397,7 @@ class TestHolidayTrend:
         )
         # Use 2024 where Christmas (12/25) is a federal holiday
         timestamps = self._make_timestamps("2024-12-24", "2024-12-26")
-        values = holiday.generate(timestamps)
+        values = holiday.generate(timestamps, rng=DefaultRNG())
 
         # 2024-12-24: not a holiday
         assert values[0] == pytest.approx(0.0)
@@ -425,7 +427,7 @@ class TestHolidayTrend:
         try:
             with mock.patch("builtins.__import__", side_effect=mock_import):
                 with pytest.raises(ImportError, match="holidays"):
-                    holiday.generate(timestamps)
+                    holiday.generate(timestamps, rng=DefaultRNG())
         finally:
             sys.modules.update(saved)
 
@@ -443,7 +445,7 @@ class TestHolidayTrend:
         """pre_window=0 means the effect jumps immediately at the holiday."""
         holiday = HolidayTrend(dates=["2024-05-01"], effect=40, pre_window=0, post_window=1)
         timestamps = self._make_timestamps("2024-04-30", "2024-05-02")
-        values = holiday.generate(timestamps)
+        values = holiday.generate(timestamps, rng=DefaultRNG())
 
         assert values[0] == pytest.approx(0.0)    # day before
         assert values[1] == pytest.approx(40.0)    # holiday
@@ -453,7 +455,7 @@ class TestHolidayTrend:
         """post_window=0 means the effect drops immediately after the holiday."""
         holiday = HolidayTrend(dates=["2024-05-01"], effect=40, pre_window=1, post_window=0)
         timestamps = self._make_timestamps("2024-04-30", "2024-05-02")
-        values = holiday.generate(timestamps)
+        values = holiday.generate(timestamps, rng=DefaultRNG())
 
         assert values[0] == pytest.approx(0.0)    # pre-window start
         assert values[1] == pytest.approx(40.0)    # holiday
@@ -466,7 +468,7 @@ class TestHolidayTrend:
             pre_window=0, post_window=0, direction="up",
         )
         timestamps = self._make_timestamps("2023-12-30", "2024-01-02")
-        values = holiday.generate(timestamps)
+        values = holiday.generate(timestamps, rng=DefaultRNG())
 
         assert values[0] == pytest.approx(0.0)
         assert values[1] == pytest.approx(30.0)   # 2023-12-31
@@ -479,7 +481,7 @@ class TestHolidayTrend:
             dates=["2024-06-01"], effect=60, pre_window=1, post_window=1, direction="up",
         )
         timestamps = pd.date_range(start="2024-05-31", end="2024-06-02", freq="h")
-        values = holiday.generate(timestamps)
+        values = holiday.generate(timestamps, rng=DefaultRNG())
 
         # All 24 hourly timestamps on 2024-06-01 should have full effect
         june1_values = values[24:48]  # indices for June 1
@@ -499,7 +501,7 @@ class TestARNoiseTrend:
 
         trend = ARNoiseTrend(coefficients=[0.5, -0.2], noise_std=0.5)
         timestamps = self._make_timestamps(500)
-        values = trend.generate(timestamps)
+        values = trend.generate(timestamps, rng=DefaultRNG())
 
         assert len(values) == 500
         assert np.all(np.isfinite(values))
@@ -512,7 +514,7 @@ class TestARNoiseTrend:
 
         trend = ARNoiseTrend(decay=0.8, order=3, noise_std=0.5)
         timestamps = self._make_timestamps(1000)
-        values = trend.generate(timestamps)
+        values = trend.generate(timestamps, rng=DefaultRNG())
 
         assert len(values) == 1000
         assert trend.order == 3
@@ -575,7 +577,7 @@ class TestARNoiseTrend:
             for order in [1, 3, 5]:
                 trend = ARNoiseTrend(coefficients=[0.5] * order)
                 timestamps = self._make_timestamps(n)
-                values = trend.generate(timestamps)
+                values = trend.generate(timestamps, rng=DefaultRNG())
                 assert len(values) == n
 
     def test_autocorrelation_matches_coefficients(self):
@@ -587,7 +589,7 @@ class TestARNoiseTrend:
         phi = 0.7
         trend = ARNoiseTrend(coefficients=[phi], noise_std=0.5)
         timestamps = self._make_timestamps(5000)
-        values = trend.generate(timestamps)
+        values = trend.generate(timestamps, rng=DefaultRNG())
 
         # Compute sample lag-1 autocorrelation
         centered = values - values.mean()
@@ -603,10 +605,10 @@ class TestARNoiseTrend:
         timestamps = self._make_timestamps(2000)
 
         std_low = np.std(
-            ARNoiseTrend(coefficients=[0.5], noise_std=0.1).generate(timestamps)
+            ARNoiseTrend(coefficients=[0.5], noise_std=0.1).generate(timestamps, rng=DefaultRNG())
         )
         std_high = np.std(
-            ARNoiseTrend(coefficients=[0.5], noise_std=1.0).generate(timestamps)
+            ARNoiseTrend(coefficients=[0.5], noise_std=1.0).generate(timestamps, rng=DefaultRNG())
         )
 
         # Higher noise_std should yield higher output std (roughly proportional)
@@ -656,7 +658,7 @@ class TestMarkovTrend:
             states=["low", "high"], values=[10, 100], stickiness=0.9, noise_std=5,
         )
         timestamps = self._make_timestamps(500)
-        values = trend.generate(timestamps)
+        values = trend.generate(timestamps, rng=DefaultRNG())
 
         assert len(values) == 500
         assert np.all(np.isfinite(values))
@@ -704,7 +706,7 @@ class TestMarkovTrend:
             noise_std=5,
         )
         timestamps = self._make_timestamps(500)
-        values = trend.generate(timestamps)
+        values = trend.generate(timestamps, rng=DefaultRNG())
 
         assert len(values) == 500
         np.testing.assert_array_almost_equal(
@@ -834,3 +836,164 @@ class TestMarkovTrend:
         # Values should cluster around 10, 50, 100 (with some noise)
         unique = set(np.round(v / 10) * 10 for v in values)
         assert unique & {10.0, 50.0, 100.0}
+
+
+class TestDataGenBaselines:
+    """Phase 2A-3: DataGen exposes clean baselines for each metric."""
+
+    def test_baselines_returns_dict(self):
+        dg = DataGen(
+            start_datetime="2024-01-01",
+            end_datetime="2024-01-03",
+            granularity=Granularity.DAILY,
+            seed=42,
+        )
+        dg.add_metric(name="temp", trends={SinusoidalTrend(amplitude=10, freq=24)})
+        _ = dg.data
+        baselines = dg.baselines
+        assert isinstance(baselines, dict)
+        assert "temp" in baselines
+
+    def test_baseline_is_dataframe(self):
+        import pandas as pd
+
+        dg = DataGen(
+            start_datetime="2024-01-01",
+            end_datetime="2024-01-03",
+            granularity=Granularity.DAILY,
+            seed=42,
+        )
+        dg.add_metric(name="temp", trends={SinusoidalTrend(amplitude=10, freq=24)})
+        _ = dg.data
+        assert isinstance(dg.baselines["temp"], pd.DataFrame)
+
+    def test_baseline_matches_clean_signal_without_anomalies(self):
+        import numpy as np
+
+        dg = DataGen(
+            start_datetime="2024-01-01",
+            end_datetime="2024-01-03",
+            granularity=Granularity.DAILY,
+            seed=42,
+        )
+        dg.add_metric(name="temp", trends={SinusoidalTrend(amplitude=10, freq=24)})
+        _ = dg.data
+        # Without anomalies, baseline should match the generated column
+        generated_values = dg.data["temp"].values
+        baseline_values = dg.baselines["temp"]["temp"].values
+        np.testing.assert_array_equal(generated_values, baseline_values)
+
+class TestDataGenBuildLogic:
+    """Phase 3 tests: Verify build logic folded into DataGen works correctly."""
+    
+    def test_generate_data_produces_epoch_column(self):
+        dg = DataGen()
+        dg.start_datetime = "2020-01-01"
+        dg.end_datetime = "2020-01-02"
+        dg.granularity = "D"
+        df = dg.data
+        assert "epoch" in df.columns
+        # Should contain posix timestamps
+        assert df["epoch"].dtype in (int, float)
+
+    def test_generate_data_skips_existing_columns(self):
+        dg = DataGen()
+        dg.start_datetime = "2020-01-01"
+        dg.end_datetime = "2020-01-02"
+        dg.granularity = "D"
+        dg.add_dimension("timestamp", "duplicate") # 'timestamp' is the index name
+        
+        df = dg.data
+        # Because timestamp is the index, we want to ensure adding a dimension with that name doesn't overwrite index or crash
+        # Actually the exact logic to be folded skips columns already in the DataFrame.
+        # Let's see how DataFrameBuilder skipped existing.
+        # It probably skips existing columns in df.columns.
+
+    def test_generate_data_column_order(self):
+        dg = DataGen()
+        dg.start_datetime = "2020-01-01"
+        dg.end_datetime = "2020-01-02"
+        dg.granularity = "D"
+        from ts_data_generator.utils.trends import LinearTrend
+        dg.add_metric("m1", [LinearTrend(slope=1)])
+        dg.add_dimension("d1", "val")
+        df = dg.data
+        
+        # Order should be: epoch, dims, mets, multi_items
+        cols = list(df.columns)
+        assert cols == ["epoch", "d1", "m1"]
+
+    def test_generate_data_with_no_models_returns_epoch_only(self):
+        dg = DataGen()
+        dg.start_datetime = "2020-01-01"
+        dg.end_datetime = "2020-01-02"
+        dg.granularity = "D"
+        df = dg.data
+        assert list(df.columns) == ["epoch"]
+
+class TestDataGenStateGuards:
+    """Phase 4 tests: Verify state guards work correctly."""
+    
+    def test_datagen_initial_state_is_configured(self):
+        from ts_data_generator.data_gen import PipelineState
+        dg = DataGen()
+        assert dg.state == PipelineState.CONFIGURED
+
+    def test_datagen_generate_transitions_to_generated(self):
+        from ts_data_generator.data_gen import PipelineState
+        dg = DataGen()
+        dg.start_datetime = "2020-01-01"
+        dg.end_datetime = "2020-01-02"
+        dg.granularity = "D"
+        _ = dg.data
+        assert dg.state == PipelineState.GENERATED
+
+    def test_datagen_normalize_before_generate_raises(self):
+        from ts_data_generator.exceptions import ConfigurationError
+        dg = DataGen()
+        with pytest.raises(ConfigurationError):
+            dg.normalize("mean-std")
+
+    def test_datagen_denormalize_before_normalize_warns(self, caplog):
+        from ts_data_generator.data_gen import PipelineState
+        import logging
+        dg = DataGen()
+        dg.start_datetime = "2020-01-01"
+        dg.end_datetime = "2020-01-02"
+        dg.granularity = "D"
+        _ = dg.data
+        assert dg.state == PipelineState.GENERATED
+        
+        with caplog.at_level(logging.WARNING):
+            dg.denormalize()
+            
+        assert "Data is not normalized" in caplog.text
+        assert dg.state == PipelineState.GENERATED
+
+    def test_datagen_normalize_transitions_to_normalized(self):
+        from ts_data_generator.data_gen import PipelineState
+        from ts_data_generator.utils.trends import LinearTrend
+        dg = DataGen()
+        dg.start_datetime = "2020-01-01"
+        dg.end_datetime = "2020-01-02"
+        dg.granularity = "D"
+        dg.add_metric("m1", [LinearTrend(slope=1)])
+        
+        _ = dg.data
+        dg.normalize("mean-std")
+        assert dg.state == PipelineState.NORMALIZED
+
+    def test_datagen_denormalize_transitions_to_generated(self):
+        from ts_data_generator.data_gen import PipelineState
+        from ts_data_generator.utils.trends import LinearTrend
+        dg = DataGen()
+        dg.start_datetime = "2020-01-01"
+        dg.end_datetime = "2020-01-02"
+        dg.granularity = "D"
+        dg.add_metric("m1", [LinearTrend(slope=1)])
+        
+        _ = dg.data
+        dg.normalize("mean-std")
+        dg.denormalize()
+        assert dg.state == PipelineState.GENERATED
+

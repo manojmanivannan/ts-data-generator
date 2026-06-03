@@ -10,21 +10,22 @@ import json
 import logging
 from collections.abc import Generator
 from datetime import datetime
-from itertools import cycle
-from typing import TYPE_CHECKING, Any
+from enum import Enum
+from itertools import chain, cycle
+from typing import TYPE_CHECKING, Any, cast
 
 import pandas as pd
 
 from ts_data_generator.aggregator import aggregate_dataframe
-from ts_data_generator.core.dataframe_builder import DataFrameBuilder
 from ts_data_generator.exceptions import (
+    ConfigurationError,
     DimensionError,
     MetricError,
     MultiItemError,
     ValidationError,
 )
 from ts_data_generator.plotting import plot_time_series
-from ts_data_generator.random import SeedableRNG
+from ts_data_generator.random import DefaultRNG, RNGProtocol, SeedableRNG
 from ts_data_generator.schema.models import (
     AggregationType,
     Dimensions,
@@ -40,6 +41,12 @@ from ts_data_generator.transforms.normalizer import Normalizer, create_normalize
 from ts_data_generator.utils.functions import constant
 
 logger = logging.getLogger(__name__)
+
+
+class PipelineState(Enum):
+    CONFIGURED = "configured"
+    GENERATED = "generated"
+    NORMALIZED = "normalized"
 
 
 class DataGen:
@@ -69,26 +76,32 @@ class DataGen:
         dimensions: list[Dimensions] | None = None,
         metrics: list[Metrics] | None = None,
         multi_items: list[MultiItems] | None = None,
-        start_datetime: str | None = None,
-        end_datetime: str | None = None,
+        start_datetime: str | datetime | pd.Timestamp = "",
+        end_datetime: str | datetime | pd.Timestamp = "",
         granularity: Granularity = Granularity.FIVE_MIN,
         seed: int | None = None,
     ) -> None:
-        self._dimensions: list[Dimensions] = dimensions or []
-        self._metrics: list[Metrics] = metrics or []
-        self._multi_items: list[MultiItems] = multi_items or []
-        self._start_datetime: str | None = start_datetime
-        self._end_datetime: str | None = end_datetime
-        self._granularity: Granularity = granularity
+        self._dimensions = dimensions or []
+        self._metrics = metrics or []
+        self._multi_items = multi_items or []
+        self._start_datetime = start_datetime
+        self._end_datetime = end_datetime
+        self._granularity = granularity
         self._normalizer: Normalizer | None = None
         self._timestamps: pd.DatetimeIndex | None = None
         self._pending_regeneration = False
-        self._rng: SeedableRNG | None = SeedableRNG(seed) if seed is not None else None
+        self._rng: RNGProtocol = SeedableRNG(seed) if seed is not None else DefaultRNG()
 
         self.data: pd.DataFrame = pd.DataFrame()
+        self._baselines: dict[str, pd.DataFrame] = {}
+        self._state: PipelineState = PipelineState.CONFIGURED
 
         if start_datetime and end_datetime:
             self._generate_data()
+
+    @property
+    def state(self) -> PipelineState:
+        return self._state
 
     def __repr__(self) -> str:
         lines = ["DataGen("]
@@ -175,12 +188,12 @@ class DataGen:
     # ------------------------------------------------------------------
 
     @property
-    def start_datetime(self) -> str | None:
+    def start_datetime(self) -> str | datetime | pd.Timestamp:
         return self._start_datetime
 
     @start_datetime.setter
     def start_datetime(self, value: str) -> None:
-        if value is not None:
+        if not value:
             try:
                 datetime.fromisoformat(value)
             except ValueError as exc:
@@ -191,12 +204,12 @@ class DataGen:
         self._request_regeneration()
 
     @property
-    def end_datetime(self) -> str | None:
+    def end_datetime(self) -> str | datetime | pd.Timestamp:
         return self._end_datetime
 
     @end_datetime.setter
     def end_datetime(self, value: str) -> None:
-        if value is not None:
+        if not value:
             try:
                 datetime.fromisoformat(value)
             except ValueError as exc:
@@ -222,16 +235,20 @@ class DataGen:
     @property
     def multi_items(self) -> dict[str, MultiItems]:
         """Mapping of comma-joined names to MultiItems instance."""
-        return {
-            ",".join(names): mt
-            for mt in self._multi_items
-            for names in ([mt.names] if isinstance(mt.names, list) else mt.names)
-        }
+        return {",".join(names): mt for mt in self._multi_items for names in [mt.names]}
 
     @property
     def metrics(self) -> dict[str, Metrics]:
         """Mapping of metric name to Metrics instance."""
         return {m.name: m for m in self._metrics}
+
+    @property
+    def baselines(self) -> dict[str, pd.DataFrame]:
+        """Clean (anomaly-free) baseline DataFrames keyed by metric name.
+
+        Populated after data generation. Empty until the first generation.
+        """
+        return self._baselines
 
     @property
     def trends(self) -> dict[str, dict[str, object]]:
@@ -463,16 +480,13 @@ class DataGen:
         if not self._end_datetime:
             raise ValidationError("end_datetime must be set.")
 
-        start = datetime.fromisoformat(self._start_datetime)
-        end = datetime.fromisoformat(self._end_datetime)
+        start = datetime.fromisoformat(cast(str, self._start_datetime))
+        end = datetime.fromisoformat(cast(str, self._end_datetime))
         if start > end:
             raise ValidationError("start_datetime cannot be after end_datetime.")
 
     def _generate_data(self) -> pd.DataFrame:
         """Build or rebuild the full generated DataFrame.
-
-        Uses :class:`DataFrameBuilder` to compose dimension, metric, and
-        multi-item data.
 
         Returns:
             The updated :attr:`data` DataFrame.
@@ -494,14 +508,77 @@ class DataGen:
 
         self._timestamps = new_timestamps
 
-        builder = DataFrameBuilder(
-            dimensions=self.dimensions,
-            metrics=self.metrics,
-            multi_items=self.multi_items,
-            rng=self._rng,
-        )
-        self.data = builder.build(new_timestamps, existing_data=self.data)
+        existing_columns: set[str] = set()
+        if not self.data.empty:
+            existing_columns = set(self.data.columns)
+
+        metric_df = self._build_metrics(new_timestamps, existing_columns)
+        dimension_df = self._build_dimensions(new_timestamps, existing_columns)
+        multi_item_df = self._build_multi_items(new_timestamps, existing_columns)
+
+        data = self.data
+
+        for component in (dimension_df, metric_df, multi_item_df):
+            if not component.empty:
+                data = pd.concat([data, component], axis=1)
+
+        if "epoch" not in data.columns:
+            unix_timestamps = [int(ts.timestamp()) for ts in new_timestamps]
+            data = pd.concat(
+                [
+                    data,
+                    pd.DataFrame(
+                        unix_timestamps, columns=["epoch"], index=new_timestamps
+                    ),
+                ],
+                axis=1,
+            )
+
+        self.data = self._sort_columns(data)
+        self._state = PipelineState.GENERATED
         return self.data
+
+    def _build_metrics(
+        self, timestamps: pd.DatetimeIndex, existing_columns: set[str]
+    ) -> pd.DataFrame:
+        df = pd.DataFrame(index=timestamps)
+        for metric in self.metrics.values():
+            if metric.name not in existing_columns:
+                result = metric.generate(timestamps, rng=self._rng)
+                self._baselines[metric.name] = result.baseline
+                df = pd.concat([df, result.signal], axis=1)
+        return df
+
+    def _build_dimensions(
+        self, timestamps: pd.DatetimeIndex, existing_columns: set[str]
+    ) -> pd.DataFrame:
+        df = pd.DataFrame(index=timestamps)
+        for dimension in self.dimensions.values():
+            if dimension.name not in existing_columns:
+                generated = dimension.generate(timestamps, rng=self._rng)
+                df = pd.concat([df, generated], axis=1)
+        return df
+
+    def _build_multi_items(
+        self, timestamps: pd.DatetimeIndex, existing_columns: set[str]
+    ) -> pd.DataFrame:
+        df = pd.DataFrame(index=timestamps)
+        for multi_item in self.multi_items.values():
+            if any(item not in existing_columns for item in multi_item.names):
+                generated = multi_item.generate(timestamps, rng=self._rng)
+                df = pd.concat([df, generated], axis=1)
+        return df
+
+    def _sort_columns(self, data: pd.DataFrame) -> pd.DataFrame:
+        dimension_names = list(self.dimensions.keys())
+        metric_names = list(self.metrics.keys())
+        multi_item_names = list(
+            chain.from_iterable(s.split(",") for s in self.multi_items.keys())
+        )
+
+        column_order = ["epoch"] + dimension_names + metric_names + multi_item_names
+        available = [col for col in column_order if col in data.columns]
+        return data.reindex(columns=available)
 
     # ------------------------------------------------------------------
     # Aggregation
@@ -544,12 +621,20 @@ class DataGen:
         Raises:
             ValidationError: If method is unrecognized.
         """
+        if self._state == PipelineState.CONFIGURED:
+            raise ConfigurationError(
+                "Cannot normalize before generating data. Access .data first."
+            )
         self._normalizer = create_normalizer(method)
         self._normalizer.normalize(self.data)
         logger.info("Data normalized with method=%r.", method)
+        self._state = PipelineState.NORMALIZED
 
     def denormalize(self) -> None:
         """Reverse the last normalization in place."""
+        if self._state != PipelineState.NORMALIZED:
+            logger.warning("Data is not normalized. Denormalize has no effect.")
+            return
         if self._normalizer is None:
             logger.warning(
                 "denormalize() called but no normalization has been applied."
@@ -557,6 +642,7 @@ class DataGen:
             return
         self._normalizer.denormalize(self.data)
         logger.info("Data denormalized.")
+        self._state = PipelineState.GENERATED
 
     # ------------------------------------------------------------------
     # Plotting

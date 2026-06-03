@@ -4,16 +4,12 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
 
 from ts_data_generator.anomalies.base import Anomaly
-from ts_data_generator.random import SeedableRNG
-
-if TYPE_CHECKING:
-    from ts_data_generator.random import SeedableRNG
+from ts_data_generator.random import RNGProtocol
 
 
 @dataclass
@@ -73,7 +69,7 @@ class ConceptDrift(Anomaly):
         self,
         base_array: np.ndarray,
         timestamps: pd.DatetimeIndex,
-        rng: SeedableRNG | None = None,
+        rng: RNGProtocol,
     ) -> np.ndarray:
         result = base_array.copy()
         n = len(base_array)
@@ -83,9 +79,7 @@ class ConceptDrift(Anomaly):
             start = self._resolve_start(seg, timestamps, n)
             if start >= n:
                 continue
-            self._apply_segment(
-                result, base_array, start, seg, n, rng, interval_seconds
-            )
+            self._apply_segment(result, base_array, start, seg, n, rng, interval_seconds)
 
         return result
 
@@ -98,9 +92,7 @@ class ConceptDrift(Anomaly):
                 f"start_timestamp {seg.start_timestamp} is out of bounds for timestamps range "
                 f"{timestamps[0]} to {timestamps[-1]}. Skipping this segment."
             )
-            return (
-                n  # Return n to indicate no valid start index, segment will be skipped
-            )
+            return n  # Return n to indicate no valid start index, segment will be skipped
         try:
             idx = timestamps.get_loc(ts)
         except KeyError:
@@ -108,9 +100,7 @@ class ConceptDrift(Anomaly):
                 f"start_timestamp {seg.start_timestamp} not found in timestamps"
             ) from None
         if isinstance(idx, slice):
-            raise ValueError(
-                f"start_timestamp {seg.start_timestamp} matched multiple timestamps"
-            )
+            raise ValueError(f"start_timestamp {seg.start_timestamp} matched multiple timestamps")
         return int(idx)
 
     @staticmethod
@@ -120,7 +110,7 @@ class ConceptDrift(Anomaly):
         start: int,
         seg: DriftSegment,
         n: int,
-        rng: SeedableRNG | None,
+        rng: RNGProtocol,
         interval_seconds: float,
     ) -> None:
         tw = max(1, int(round(seg.transition_window / interval_seconds)))
@@ -149,13 +139,9 @@ class ConceptDrift(Anomaly):
             if restore_end > restore_start:
                 indices = np.arange(restore_start, restore_end)
                 alphas = (indices - restore_start) / tw
-                target_draws = _normal(
-                    seg.target_mean, seg.target_std, len(indices), rng
-                )
-                result[indices] = (1 - alphas) * target_draws + alphas * base_array[
-                    indices
-                ]
+                target_draws = _normal(seg.target_mean, seg.target_std, len(indices), rng)
+                result[indices] = (1 - alphas) * target_draws + alphas * base_array[indices]
 
 
-def _normal(loc: float, scale: float, size: int, rng: SeedableRNG | None) -> np.ndarray:
-    return SeedableRNG.normal_or_fallback(loc, scale, size, rng=rng)
+def _normal(loc: float, scale: float, size: int, rng: RNGProtocol) -> np.ndarray:
+    return rng.normal(loc, scale, size)

@@ -46,7 +46,7 @@ You can extend `ts-data-generator` by adding custom **Trends** or **Anomalies**.
 
 A trend defines a clean base signal. To build a custom trend:
 1.  Create a class that inherits from the abstract base class `Trends` (located in `ts_data_generator.utils.trends`).
-2.  Implement the `generate(self, timestamps: pd.DatetimeIndex, rng: SeedableRNG | None = None) -> np.ndarray` method.
+2.  Implement the `generate(self, timestamps: pd.DatetimeIndex, rng: RNGProtocol) -> np.ndarray` method.
 3.  Ensure your mathematical transformations return a NumPy array of floats matching the length of `timestamps`.
 4.  **Important**: All stochastic choices *must* use the passed-down `rng` object to maintain determinism.
 
@@ -55,7 +55,7 @@ A trend defines a clean base signal. To build a custom trend:
 import numpy as np
 import pandas as pd
 from ts_data_generator.utils.trends import Trends
-from ts_data_generator.random import SeedableRNG
+from ts_data_generator.random import RNGProtocol
 
 class CustomStepTrend(Trends):
     """Generates a custom step wave that increments by a factor every N timestamps."""
@@ -68,7 +68,7 @@ class CustomStepTrend(Trends):
     def generate(
         self, 
         timestamps: pd.DatetimeIndex, 
-        rng: SeedableRNG | None = None
+        rng: RNGProtocol
     ) -> np.ndarray:
         n = len(timestamps)
         # Create baseline array
@@ -76,7 +76,7 @@ class CustomStepTrend(Trends):
         base_signal = steps * self._increment
         
         # Add random minor fluctuations safely using the unified branching helper
-        noise = SeedableRNG.normal_or_fallback(0, 0.1, n, rng=rng)
+        noise = rng.normal(0, 0.1, n)
             
         return base_signal + noise
 ```
@@ -87,7 +87,7 @@ class CustomStepTrend(Trends):
 
 An anomaly perturbs a metric *after* the baseline trends are compiled. To build a custom anomaly:
 1.  Create a class that inherits from the abstract base class `Anomaly` (located in `ts_data_generator.anomalies.base`).
-2.  Implement the `intervene(self, base_array: np.ndarray, timestamps: pd.DatetimeIndex, rng: SeedableRNG | None = None) -> np.ndarray` method.
+2.  Implement the `intervene(self, base_array: np.ndarray, timestamps: pd.DatetimeIndex, rng: RNGProtocol) -> np.ndarray` method.
 3.  Mutate or copy `base_array` and return the contaminated NumPy array.
 
 #### Composed Boilerplate Template:
@@ -95,7 +95,7 @@ An anomaly perturbs a metric *after* the baseline trends are compiled. To build 
 import numpy as np
 import pandas as pd
 from ts_data_generator.anomalies.base import Anomaly
-from ts_data_generator.random import SeedableRNG
+from ts_data_generator.random import RNGProtocol
 
 class CustomClippingAnomaly(Anomaly):
     """Clips or caps all metric values at a strict threshold stochastically."""
@@ -108,7 +108,7 @@ class CustomClippingAnomaly(Anomaly):
         self, 
         base_array: np.ndarray, 
         timestamps: pd.DatetimeIndex, 
-        rng: SeedableRNG | None = None
+        rng: RNGProtocol
     ) -> np.ndarray:
         result = base_array.copy()
         n = len(base_array)

@@ -9,19 +9,31 @@ from __future__ import annotations
 import logging
 from collections.abc import Generator
 from enum import Enum
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NamedTuple
 
 import numpy as np
 import pandas as pd
 
+from ts_data_generator.random import RNGProtocol
 from ts_data_generator.utils.functions import auto_generate_name
 from ts_data_generator.utils.trends import Trends
 
 if TYPE_CHECKING:
     from ts_data_generator.anomalies.base import Anomaly
-    from ts_data_generator.random import SeedableRNG
 
 logger = logging.getLogger(__name__)
+
+
+class MetricResult(NamedTuple):
+    """Result of ``Metrics.generate()``.
+
+    Attributes:
+        signal: DataFrame with anomalies applied (trends + anomalies).
+        baseline: DataFrame with trends only (no anomalies).
+    """
+
+    signal: pd.DataFrame
+    baseline: pd.DataFrame
 
 
 class Granularity(Enum):
@@ -112,25 +124,25 @@ class Metrics:
         """The ordered list of anomaly injectors applied after trends."""
         return self._anomalies
 
-    def generate(
-        self, timestamps: pd.DatetimeIndex, rng: SeedableRNG | None = None
-    ) -> pd.DataFrame:
+    def generate(self, timestamps: pd.DatetimeIndex, rng: RNGProtocol) -> MetricResult:
         """Generate metric values for the given timestamps.
 
         Args:
             timestamps: DatetimeIndex of time points.
-            rng: Optional SeedableRNG passed through to each trend and anomaly.
+            rng: RNG instance passed through to each trend and anomaly.
 
         Returns:
-            DataFrame with a single column named after this metric.
+            MetricResult with .signal (trends + anomalies) and .baseline (trends only).
         """
         data = np.zeros(len(timestamps))
         for trend in self._trends:
             data += trend.generate(timestamps, rng=rng)
+        baseline_df = pd.DataFrame(data.copy(), columns=[self._name], index=timestamps)
         for anomaly in self._anomalies:
             data = anomaly.intervene(data, timestamps, rng=rng)
-        self._data = pd.DataFrame(data, columns=[self._name], index=timestamps)
-        return self._data
+        signal_df = pd.DataFrame(data, columns=[self._name], index=timestamps)
+        self._data = signal_df
+        return MetricResult(signal=signal_df, baseline=baseline_df)
 
     def __repr__(self) -> str:
         return str(self.to_json())
@@ -181,26 +193,23 @@ class Dimensions:
     @function.setter
     def function(self, value: int | str | float | Generator) -> None:
         if not isinstance(value, (int, str, float, Generator, list)):
-            raise ValueError(
-                "function must be a generator object or int, str, float, or list"
-            )
+            raise ValueError("function must be a generator object or int, str, float, or list")
         self._function = value
 
-    def generate(self, timestamps: pd.DatetimeIndex) -> pd.DataFrame:
+    def generate(
+        self, timestamps: pd.DatetimeIndex, rng: RNGProtocol | None = None
+    ) -> pd.DataFrame:
         """Generate dimension values for the given timestamps.
 
         Args:
             timestamps: DatetimeIndex of time points.
+            rng: Unused; accepted for API consistency with other generate() methods.
 
         Returns:
             DataFrame with one column (or multiple if name is a list of names).
         """
         data = [
-            (
-                list(next(self._function))
-                if isinstance(self._name, list)
-                else [next(self._function)]
-            )
+            (list(next(self._function)) if isinstance(self._name, list) else [next(self._function)])
             for _ in timestamps
         ]
         columns = self._name if isinstance(self._name, list) else [self._name]
@@ -274,16 +283,17 @@ class MultiItems:
     @function.setter
     def function(self, value: int | str | float | Generator) -> None:
         if not isinstance(value, (int, str, float, Generator, list)):
-            raise ValueError(
-                "function must be a generator object or int, str, float, or list"
-            )
+            raise ValueError("function must be a generator object or int, str, float, or list")
         self._function = value
 
-    def generate(self, timestamps: pd.DatetimeIndex) -> pd.DataFrame:
+    def generate(
+        self, timestamps: pd.DatetimeIndex, rng: RNGProtocol | None = None
+    ) -> pd.DataFrame:
         """Generate linked values for all names at each timestamp.
 
         Args:
             timestamps: DatetimeIndex of time points.
+            rng: Unused; accepted for API consistency with other generate() methods.
 
         Returns:
             DataFrame with one column per name in the multi-item group.

@@ -2,15 +2,13 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Literal
+from typing import Literal
 
 import numpy as np
 import pandas as pd
 
 from ts_data_generator.anomalies.base import Anomaly
-
-if TYPE_CHECKING:
-    from ts_data_generator.random import SeedableRNG
+from ts_data_generator.random import RNGProtocol
 
 
 class PointAnomaly(Anomaly):
@@ -54,15 +52,12 @@ class PointAnomaly(Anomaly):
         self,
         base_array: np.ndarray,
         timestamps: pd.DatetimeIndex,
-        rng: SeedableRNG | None = None,
+        rng: RNGProtocol,
     ) -> np.ndarray:
         result = base_array.copy()
         n = len(base_array)
 
-        if rng is not None:
-            mask = rng.random(n) < self._probability
-        else:
-            mask = np.random.random(n) < self._probability
+        mask = rng.random(n) < self._probability
 
         if self._mode == "additive":
             magnitudes = self._sample_magnitudes(np.sum(mask), rng)
@@ -73,12 +68,8 @@ class PointAnomaly(Anomaly):
 
         return result
 
-    def _sample_magnitudes(
-        self, count: int, rng: SeedableRNG | None
-    ) -> np.ndarray:
+    def _sample_magnitudes(self, count: int, rng: RNGProtocol) -> np.ndarray:
         if isinstance(self._magnitude, tuple):
             low, high = self._magnitude
-            if rng is not None:
-                return rng.uniform(low, high, count)
-            return np.random.uniform(low, high, count)
+            return rng.uniform(low, high, count)
         return np.full(count, self._magnitude)

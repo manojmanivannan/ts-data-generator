@@ -2,10 +2,45 @@
 
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
+
 import numpy as np
 
 
-class SeedableRNG:
+class RNGProtocol(ABC):
+    """Abstract base class defining the RNG interface."""
+
+    @property
+    @abstractmethod
+    def seed(self) -> int | None:
+        """The seed used to initialize this RNG, or None if unseeded."""
+        ...
+
+    @abstractmethod
+    def normal(
+        self, loc: float = 0.0, scale: float = 1.0, size: int | tuple | None = None
+    ) -> np.ndarray | float: ...
+
+    @abstractmethod
+    def uniform(
+        self, low: float = 0.0, high: float = 1.0, size: int | tuple | None = None
+    ) -> np.ndarray | float: ...
+
+    @abstractmethod
+    def choice(
+        self, a: np.ndarray | list, size: int | None = None, p: np.ndarray | None = None
+    ) -> np.ndarray | object: ...
+
+    @abstractmethod
+    def random(self, size: int | tuple | None = None) -> np.ndarray | float: ...
+
+    @abstractmethod
+    def integers(
+        self, low: int, high: int, size: int | tuple | None = None
+    ) -> np.ndarray | int: ...
+
+
+class SeedableRNG(RNGProtocol):
     """Wraps a PCG64-backed numpy Generator for deterministic randomness.
 
     Args:
@@ -30,27 +65,41 @@ class SeedableRNG:
     ) -> np.ndarray | float:
         return self._generator.normal(loc=loc, scale=scale, size=size)
 
-    @staticmethod
-    def normal_or_fallback(
-        loc: float = 0.0,
-        scale: float = 1.0,
-        size: int | tuple | None = None,
-        rng: SeedableRNG | None = None,
+    def uniform(
+        self, low: float = 0.0, high: float = 1.0, size: int | tuple | None = None
     ) -> np.ndarray | float:
-        """Draw normal samples via *rng* when available, else fall back to ``np.random``.
+        return self._generator.uniform(low=low, high=high, size=size)
 
-        Args:
-            loc: Mean of the normal distribution.
-            scale: Standard deviation.
-            size: Number of samples (or shape tuple).
-            rng: Optional ``SeedableRNG`` instance.
+    def choice(
+        self, a: np.ndarray | list, size: int | None = None, p: np.ndarray | None = None
+    ) -> np.ndarray | object:
+        return self._generator.choice(a, size=size, p=p)
 
-        Returns:
-            Numpy array or scalar of normal draws.
-        """
-        if rng is not None:
-            return rng.normal(loc, scale, size)
-        return np.random.normal(loc, scale, size)
+    def random(self, size: int | tuple | None = None) -> np.ndarray | float:
+        return self._generator.random(size=size)
+
+    def integers(self, low: int, high: int, size: int | tuple | None = None) -> np.ndarray | int:
+        return self._generator.integers(low=low, high=high, size=size)
+
+
+class DefaultRNG(RNGProtocol):
+    """Unseeded RNG backed by numpy's default_rng() (non-deterministic).
+
+    Used when no seed is provided to DataGen. Satisfies RNGProtocol so all
+    code paths can use the same interface regardless of seeding.
+    """
+
+    def __init__(self) -> None:
+        self._generator = np.random.default_rng()
+
+    @property
+    def seed(self) -> None:
+        return None
+
+    def normal(
+        self, loc: float = 0.0, scale: float = 1.0, size: int | tuple | None = None
+    ) -> np.ndarray | float:
+        return self._generator.normal(loc=loc, scale=scale, size=size)
 
     def uniform(
         self, low: float = 0.0, high: float = 1.0, size: int | tuple | None = None
@@ -64,3 +113,6 @@ class SeedableRNG:
 
     def random(self, size: int | tuple | None = None) -> np.ndarray | float:
         return self._generator.random(size=size)
+
+    def integers(self, low: int, high: int, size: int | tuple | None = None) -> np.ndarray | int:
+        return self._generator.integers(low=low, high=high, size=size)
