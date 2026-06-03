@@ -12,7 +12,9 @@ from typing import TypeVar
 T = TypeVar("T")
 
 
-def constant(value: int | str | float | list | tuple) -> Generator[int | str | float, None, None]:
+def constant(
+    value: int | str | float | list[int | str | float] | tuple[int | str | float, ...],
+) -> Generator[int | str | float, None, None]:
     """Yield the same constant value indefinitely.
 
     If given a list or tuple, cycles through the values — each timestamp

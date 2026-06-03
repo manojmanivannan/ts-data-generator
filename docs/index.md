@@ -32,9 +32,19 @@ pip install ts-data-generator
 uv pip install ts-data-generator
 ```
 
-*Optional but recommended (to enable automatic country-specific holiday detection):*
+*Optional extras (install features as needed):*
 ```bash
-pip install holidays scipy matplotlib
+# Schema imputing / CSV reverse-engineering (requires scipy)
+pip install "ts-data-generator[imputer]"
+
+# Built-in line plotting (requires matplotlib)
+pip install "ts-data-generator[plotting]"
+
+# Country-specific holiday detection (requires holidays)
+pip install holidays
+
+# All optional features
+pip install "ts-data-generator[imputer,plotting]" holidays
 ```
 
 ### 2. Choose Your Workflow

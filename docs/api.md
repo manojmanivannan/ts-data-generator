@@ -27,7 +27,16 @@ dg = DataGen(seed=42)
 *   `start_datetime` (str | None): Start date/time string (ISO format `YYYY-MM-DD` or `YYYY-MM-DDTHH:MM:SS`).
 *   `end_datetime` (str | None): End date/time string (ISO format).
 *   `granularity` (Granularity | str): Time step interval (default `Granularity.FIVE_MIN`).
-*   `seed` (int | None): Seed for deterministic PCG64 random generation.
+*   `seed` (int | None): Seed for deterministic PCG64 random generation. When set, all randomness flows through an isolated `SeedableRNG` instance backed by PCG64.
+
+### Properties:
+*   `.data` — The generated `pd.DataFrame`, indexed by timestamp. Triggers lazy generation if not yet built.
+*   `.granularity` — Read/write property. Get or set the current granularity (accepts `Granularity` enum or string like `"h"`, `"D"`). Writing triggers regeneration.
+*   `.start_datetime` / `.end_datetime` — Read/write ISO datetime strings. Writing triggers regeneration.
+*   `.dimensions` — Mapping of dimension name to `Dimensions` instance.
+*   `.metrics` — Mapping of metric name to `Metrics` instance.
+*   `.multi_items` — Mapping of comma-joined names to `MultiItems` instance.
+*   `.trends` — Nested mapping `{metric_name: {trend_name: trend_instance}}`.
 
 ---
 
@@ -41,45 +50,88 @@ Sets the generation time step using a predefined frequency or Pandas alias strin
 Adds a categorical or context column mapping to the index.
 *   **Parameters**:
     *   `name`: The resulting column name in the DataFrame.
-    *   `function`: An infinite generator, static value, or list that cycles.
+    *   `function`: An infinite generator, static value, or list that cycles. Static values (`int`, `float`, `str`) are wrapped as constants; lists are cycled infinitely.
+*   **Raises**: `DimensionError` if a dimension with this name already exists. `ValidationError` if the function type is unsupported.
 
-### `.add_metric(name: str, trends: list[object] | set[object], aggregation_type: AggregationType = AggregationType.AVG, anomalies: list[Anomaly] | None = None)`
+### `.update_dimension(name: str, function: int | str | float | Generator | None)`
+Update an existing dimension's generator function.
+*   **Parameters**:
+    *   `name`: The dimension name to update.
+    *   `function`: New generator or static value. Pass `None` to skip.
+*   **Raises**: `DimensionError` if the dimension does not exist.
+
+### `.remove_dimension(name: str)`
+Remove a dimension and its column from the data.
+*   **Parameters**:
+    *   `name`: The dimension name to remove.
+
+### `.add_metric(name: str, trends: list[Trends] | set[Trends], aggregation_type: AggregationType = AggregationType.AVG, anomalies: list[Anomaly] | None = None)`
 Composes and adds a numeric metric column by summing multiple trends together.
 *   **Parameters**:
     *   `name`: The resulting column name in the DataFrame.
-    *   `trends`: A list or set of `Trend` instances. Their generated arrays are summed.
+    *   `trends`: A list or set of `Trends` subclasses (e.g. `SinusoidalTrend`, `LinearTrend`). Their generated arrays are summed to form the base signal.
     *   `aggregation_type`: The `AggregationType` enum (e.g. `AVG`, `SUM`, `MIN`, `MAX`) used when resampling via `.aggregate()`. Defaults to `AVG`.
     *   `anomalies`: An optional list of `Anomaly` instances applied sequentially *after* trend composition.
+*   **Raises**: `MetricError` if a metric with this name already exists, or if duplicate trends are detected.
+
+### `.remove_metric(name: str)`
+Remove a metric and its column from the data.
+*   **Parameters**:
+    *   `name`: The metric name to remove.
 
 ### `.add_multi_items(names: list[str], function: int | float | str | list | Generator, aggregation_type: list[AggregationType | str] | None = None)`
 Adds multiple correlated columns that are generated together from a single iterator (e.g., city and country).
 *   **Parameters**:
     *   `names`: A list of column names.
-    *   `function`: A generator yielding tuples of values matching the length of `names`.
+    *   `function`: A generator yielding tuples of values matching the length of `names`. Static values are wrapped as constants; lists are cycled.
     *   `aggregation_type`: Optional list of aggregation methods for resampling.
+*   **Raises**: `MultiItemError` if any name overlaps with existing multi-items. `ValidationError` if generation fails.
+
+### `.remove_multi_item(names: str | list[str])`
+Remove a multi-item group and its columns from the data.
+*   If any of the given names overlap with a multi-item group, that entire group is removed.
 
 ---
 
-## 📊 Retrieval, Aggregation, & Visualization
+## 📊 Retrieval, Aggregation, Normalization & Visualization
 
 ### `.data` (Property)
-Triggers the underlying dataframe builder (if not already compiled/cached) and returns a clean, fully aligned `pandas.DataFrame` indexed by timestamp.
+Triggers the underlying `DataFrameBuilder` (if not already built) and returns a clean, fully aligned `pandas.DataFrame` indexed by timestamp. The builder coordinates generation across dimensions, metrics, and multi-items in a deterministic pipeline.
+
+### `.shape() -> tuple[int, int]`
+Return the `(rows, columns)` shape of the generated data.
+
+### `.head(n: int = 5) -> pd.DataFrame`
+Return the first *n* rows of generated data.
+
+### `.tail(n: int = 5) -> pd.DataFrame`
+Return the last *n* rows of generated data.
 
 ### `.aggregate(granularity: str) -> pd.DataFrame`
 Aggregates the generated data to a coarser granularity (e.g., daily down to weekly, or hourly down to daily).
-*   **Rule**: You can only aggregate to a *coarser* granularity than the current one (e.g., you cannot downsample hourly to minutes).
-*   It automatically applies the metric-specific aggregation types (`AVG`, `SUM`, etc.) defined when the metrics were added.
+*   **Rule**: You can only aggregate to a *coarser* granularity than the current one. Uses `Granularity.coarser_than()` and `Granularity.finer_than()` for validation, which replaced the old module-level `_GRANULARITY_ORDER` dict.
+*   It automatically applies the metric-specific aggregation types (`AVG`, `SUM`, etc.) and multi-item aggregation types defined when the metrics were added.
 
-### `.plot(include: list[str] | None = None, exclude: list[str] | None = None)`
+### `.normalize(method: str = "min-max")`
+Apply normalization to numeric columns in place.
+*   `method`: `"min-max"` or `"mean-std"` (default `"min-max"`).
+*   Uses the `Normalizer` class from `ts_data_generator.transforms.normalizer`.
+
+### `.denormalize()`
+Reverse the last normalization in place. Safe to call even if no normalization has been applied.
+
+### `.plot(include: list[str] | None = None, exclude: list[str] | None = None, **matplotlib_kwargs)`
 Renders a quick, native line plot of your numeric columns using matplotlib.
 *   `include`: Explicit list of column names to plot.
 *   `exclude`: List of column names to omit from plotting.
+*   `matplotlib_kwargs`: Additional keyword arguments passed to matplotlib's `plot` function (e.g. `figsize`, `color`, `linestyle`).
+*   **Raises**: `ImportError` if matplotlib is not installed. Install with `uv add 'ts-data-generator[plotting]'`.
 
 ---
 
 ## 🐍 Full End-to-End Lifecycle Script
 
-Here is a complete, copy-pasteable script that exercises the full `DataGen` lifecycle: setup, dimensions, composition of metrics with trends and anomalies, linked multi-items, dataframe extraction, aggregation, and plotting.
+Here is a complete, copy-pasteable script that exercises the full `DataGen` lifecycle: setup, dimensions, composition of metrics with trends and anomalies, linked multi-items, dataframe extraction, normalization, aggregation, and plotting.
 
 ```python
 from ts_data_generator import DataGen
@@ -150,12 +202,39 @@ df = dg.data
 print("--- Raw Generated DataFrame ---")
 print(df.head(10))
 
-# 7. Aggregate to daily granularity
+# 7. Normalize numeric columns in-place
+dg.normalize(method="min-max")
+print("\n--- Normalized DataFrame ---")
+print(dg.data.head())
+
+# 8. Denormalize back to original values
+dg.denormalize()
+
+# 9. Aggregate to daily granularity
 # cpu_utilization is automatically averaged, completed_transactions is summed!
 daily_df = dg.aggregate(granularity="D")
 print("\n--- Daily Aggregated DataFrame ---")
 print(daily_df.head())
 
-# 8. Render quick built-in line charts of our numeric metrics
+# 10. Render quick built-in line charts of our numeric metrics
 dg.plot(include=["cpu_utilization"])
 ```
+
+---
+
+## 🏗️ Internal Architecture
+
+### `DataFrameBuilder` (`ts_data_generator.core.dataframe_builder`)
+The internal engine that coordinates generation across dimensions, metrics, and multi-items. Called by `DataGen._generate_data()` to produce the final DataFrame.
+
+### `SeedableRNG` (`ts_data_generator.random`)
+Wraps a PCG64-backed `numpy.random.Generator` for deterministic randomness. Provides `normal_or_fallback()` — a static helper that routes through the seeded RNG when available, falling back to `np.random` otherwise. This eliminated 13 duplicated `if rng is not None:` branches across the codebase.
+
+### `Registry` (`ts_data_generator.utils.registry`)
+A lightweight reflection-based registry for CLI-pluggable types. Used by the CLI to look up dimension functions, trend classes, and anomaly classes by name. The three CLI lookups (`_DIMENSION_REGISTRY`, `_TREND_REGISTRY`, `_ANOMALY_REGISTRY`) replaced 3 nearly identical `try/getattr/except/raise click.BadParameter` lookup functions.
+
+### `Normalizer` (`ts_data_generator.transforms.normalizer`)
+Provides `min-max` and `mean-std` normalization with exact denormalization support.
+
+### `aggregate_dataframe` (`ts_data_generator.aggregator`)
+Handles DataFrame resampling to coarser granularities, respecting per-metric aggregation types and granularity ordering via `Granularity.coarser_than()` and `Granularity.finer_than()` (which replaced the old module-level `_GRANULARITY_ORDER` dict).

@@ -42,6 +42,19 @@ When you initialize `DataGen(seed=12345)`, a private `SeedableRNG` object is cre
 ### 2. Deep Seeding Propagation
 This isolated `rng` instance is passed directly down into every individual Trend, Anomaly, and Dimension generator during the execution of the building pipeline. Every single decision (like stochastically triggering a `PointAnomaly` spike or sampling a random choice dimension) uses only this passed-down `rng` instance.
 
+### 3. Unified RNG Branching with `normal_or_fallback()`
+Previous versions required each trend and anomaly to duplicate the `if rng is not None:` branching pattern — over 13 occurrences across 4 files. These are now consolidated into a single static helper on `SeedableRNG`:
+
+```python
+@staticmethod
+def normal_or_fallback(loc, scale, size, rng=None):
+    if rng is not None:
+        return rng.normal(loc, scale, size)
+    return np.random.normal(loc, scale, size)
+```
+
+When writing a custom trend or anomaly, use `SeedableRNG.normal_or_fallback(0, noise_level, len(timestamps), rng=rng)` instead of duplicating the branching pattern.
+
 ---
 
 ## 🐍 Python & CLI Usage

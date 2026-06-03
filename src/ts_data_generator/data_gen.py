@@ -11,19 +11,19 @@ import logging
 from collections.abc import Generator
 from datetime import datetime
 from itertools import cycle
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import pandas as pd
 
+from ts_data_generator.aggregator import aggregate_dataframe
 from ts_data_generator.core.dataframe_builder import DataFrameBuilder
 from ts_data_generator.exceptions import (
-    AggregationError,
     DimensionError,
     MetricError,
     MultiItemError,
     ValidationError,
 )
-from ts_data_generator.utils.trends import Trends
+from ts_data_generator.plotting import plot_time_series
 from ts_data_generator.random import SeedableRNG
 from ts_data_generator.schema.models import (
     AggregationType,
@@ -32,6 +32,7 @@ from ts_data_generator.schema.models import (
     Metrics,
     MultiItems,
 )
+from ts_data_generator.utils.trends import Trends
 
 if TYPE_CHECKING:
     from ts_data_generator.anomalies.base import Anomaly
@@ -39,22 +40,6 @@ from ts_data_generator.transforms.normalizer import Normalizer, create_normalize
 from ts_data_generator.utils.functions import constant
 
 logger = logging.getLogger(__name__)
-
-_GRANULARITY_ORDER: dict[str, int] = {
-    "s": 0,
-    "min": 1,
-    "5min": 2,
-    "h": 3,
-    "D": 4,
-    "W": 5,
-    "ME": 6,
-    "Y": 7,
-    "YE": 7,
-}
-
-_RESAMPLE_ALIASES: dict[str, str] = {
-    "Y": "YE",
-}
 
 
 class DataGen:
@@ -258,7 +243,9 @@ class DataGen:
     # ------------------------------------------------------------------
 
     def add_dimension(
-        self, name: str, function: int | float | str | list | Generator
+        self,
+        name: str,
+        function: int | float | str | list[Any] | Generator[Any, None, None],
     ) -> None:
         """Add a new dimension column.
 
@@ -523,6 +510,8 @@ class DataGen:
     def aggregate(self, granularity: str) -> pd.DataFrame:
         """Aggregate data to a coarser granularity.
 
+        Delegates to :func:`ts_data_generator.aggregator.aggregate_dataframe`.
+
         Args:
             granularity: Target granularity string (e.g. ``"h"``, ``"D"``).
 
@@ -533,46 +522,14 @@ class DataGen:
             AggregationError: If target granularity is finer than current.
             KeyError: If granularity string is not recognized.
         """
-        if _GRANULARITY_ORDER[granularity] < _GRANULARITY_ORDER[self.granularity]:
-            raise AggregationError(
-                f"Cannot aggregate to finer granularity ({granularity}) "
-                f"than current ({self.granularity})."
-            )
-
-        agg_dict: dict[str, str] = {
-            name: metric.aggregation_type.value for name, metric in self.metrics.items()
-        }
-
-        group_keys = list(self.dimensions.keys())
-
-        for key, multi_item in self.multi_items.items():
-            if multi_item.aggregation_type:
-                for i, item_name in enumerate(key.split(",")):
-                    atype = multi_item.aggregation_type[i]
-                    agg_dict[item_name] = (
-                        atype.value if isinstance(atype, AggregationType) else atype
-                    )
-            else:
-                group_keys.extend(key.split(","))
-
-        resample_freq = _RESAMPLE_ALIASES.get(granularity, granularity)
-
-        resampled = (
-            self.data.drop("epoch", axis=1, errors="ignore")
-            .reset_index()
-            .groupby(group_keys)
-            .resample(resample_freq, on="index")
-            .agg(agg_dict)
-            .reset_index()
-            .set_index("index")
-            .sort_index()
+        return aggregate_dataframe(
+            data=self.data,
+            metrics=self.metrics,
+            dimensions=self.dimensions,
+            multi_items=self.multi_items,
+            from_granularity=self.granularity,
+            to_granularity=granularity,
         )
-
-        if isinstance(resampled.columns, pd.MultiIndex):
-            resampled.columns = resampled.columns.get_level_values(0)
-
-        resampled["epoch"] = resampled.index.astype("int64") // 10**9
-        return resampled
 
     # ------------------------------------------------------------------
     # Normalization
@@ -609,9 +566,11 @@ class DataGen:
         self,
         exclude: list[str] | None = None,
         include: list[str] | None = None,
-        **matplotlib_kwargs,
+        **matplotlib_kwargs: Any,
     ) -> None:
         """Plot numeric columns using matplotlib.
+
+        Delegates to :func:`ts_data_generator.plotting.plot_time_series`.
 
         Args:
             exclude: Column names to exclude from the plot.
@@ -623,34 +582,9 @@ class DataGen:
             ValidationError: If both exclude and include are provided, or
                 if no numeric columns are available.
         """
-        if exclude and include:
-            raise ValidationError(
-                "Only one of 'exclude' or 'include' should be provided, not both."
-            )
-
-        exclude = exclude or []
-        include = include or []
-
-        numeric_cols = self.data.select_dtypes(include=["number"]).columns.tolist()
-        if "epoch" in numeric_cols:
-            numeric_cols.remove("epoch")
-
-        if exclude:
-            plot_cols = [c for c in numeric_cols if c not in exclude]
-        elif include:
-            plot_cols = [c for c in numeric_cols if c in include]
-        else:
-            plot_cols = numeric_cols
-
-        if not plot_cols:
-            raise ValidationError("No numeric columns available for plotting.")
-
-        try:
-            import matplotlib.pyplot as plt
-        except ImportError:
-            raise ImportError(
-                "The 'matplotlib' library is required for plotting. "
-                "Install it with: uv add 'ts-data-generator[plotting]' or pip install 'ts-data-generator[plotting]'"
-            ) from None
-
-        self.data.plot(y=plot_cols, **matplotlib_kwargs)
+        plot_time_series(
+            self.data,
+            exclude=exclude,
+            include=include,
+            **matplotlib_kwargs,
+        )

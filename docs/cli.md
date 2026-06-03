@@ -69,7 +69,7 @@ Available dimension functions:
 ---
 
 ### 3. `tsdata metrics`
-Lists all available metric trend functions, their exact parameters, and CLI shorthand examples.
+Lists all available metric trend functions, their exact parameters, and CLI shorthand examples. Uses the `Registry` class to reflectively discover all `Trends` subclasses in the `ts_data_generator.utils.trends` module.
 
 ```bash
 $ tsdata metrics
@@ -90,10 +90,12 @@ Available trend functions:
     → sales:SinusoidalTrend(amplitude=1,freq=24,phase=0,noise_level=0)
   StockTrend(name: 'str' = 'default', amplitude: 'float' = 15.0, direction: "Literal['up', 'down']" = 'up', noise_level: 'float' = 0.0) -> 'None'
     → sales:StockTrend(amplitude=15.0,direction='up',noise_level=0.0)
-  Trends(name: 'str' = 'default') -> 'None'
   WeekendTrend(name: 'str' = 'default', weekend_effect: 'float' = 1.0, direction: "Literal['up', 'down']" = 'up', noise_level: 'float' = 0.0, limit: 'float' = 10.0) -> 'None'
     → sales:WeekendTrend(weekend_effect=10,direction='up',noise_level=0.5,limit=10)
 ```
+
+> [!NOTE]
+> The `Trends` base class is automatically filtered out of the list. The CLI uses a `Registry` object with `base_class=Trends` to ensure only concrete trend subclasses are available.
 
 ---
 
@@ -116,7 +118,17 @@ Available presets:
     Dimensions: 1, Metrics: 2
     Output: hourly_metrics.csv
   minute-stock
-    ...
+    Start: 2024-01-01, End: 2024-01-02, Granularity: 5min
+    Dimensions: 1, Metrics: 1
+    Output: minute_stock.csv
+  weekly-revenue
+    Start: 2024-01-01, End: 2024-12-31, Granularity: D
+    Dimensions: 2, Metrics: 1
+    Output: weekly_revenue.csv
+  monthly-recurring
+    Start: 2024-01-01, End: 2024-12-31, Granularity: D
+    Dimensions: 1, Metrics: 1
+    Output: monthly_mrr.csv
 ```
 
 To see exact config details of a preset:
@@ -131,11 +143,45 @@ Preset: daily-sales
   End: 2024-01-31
   Granularity: D
   Dimensions: product:A,B,C,D, region:X,Y,Z
-  Metrics: sales:LinearTrend(slope=45)+WeekendTrend(weekend_effect=100)
+  Metrics: sales:LinearTrend(slope=30)+WeekendTrend(weekend_effect=100)
   Output: daily_sales.csv
 
 Usage: tsdata generate --preset daily-sales --output <output.csv>
+Or override specific values:
+  tsdata generate --preset daily-sales --start 2024-02-01 --output mydata.csv
 ```
+
+> [!NOTE]
+> Presets define default values for `start`, `end`, `granularity`, `dims`, `mets`, and `output`.  CLI flags override preset values — use `--start`, `--end`, or `--output` to customise without editing the preset.
+
+---
+
+## 🔌 CLI Architecture: Pluggable Registries
+
+The CLI uses `Registry` objects (`ts_data_generator.utils.registry`) to look up dimension functions, trend classes, and anomaly classes by name. This replaced three duplicated `try/getattr/raise click.BadParameter` lookup functions with a single, reusable pattern.
+
+```python
+# Each registry is instantiated with a module path and optional filters
+_DIMENSION_REGISTRY = Registry(
+    "ts_data_generator.utils.functions",
+    name_filter=lambda n: not n.startswith("_"),
+)
+_TREND_REGISTRY = Registry(
+    "ts_data_generator.utils.trends",
+    name_filter=lambda n: not n.startswith("_") and n != "Trends",
+    base_class=Trends,
+)
+_ANOMALY_REGISTRY = Registry(
+    "ts_data_generator.anomalies",
+    name_filter=lambda n: not n.startswith("_") and n != "Anomaly",
+    base_class=Anomaly,
+)
+```
+
+- **`name_filter`** controls which names appear in error messages and `list_available()`.
+- **`base_class`** ensures only concrete subclasses of `Trends` or `Anomaly` are available, filtering out abstract bases and non-class values.
+
+To add a new CLI-pluggable type (e.g. a custom trend), simply define a class that inherits from `Trends` in the `ts_data_generator.utils.trends` module — the Registry discovers it automatically. No need to register it manually.
 
 ---
 
@@ -187,6 +233,27 @@ tsdata generate --config config.json
     "temp:PointAnomaly(probability=0.005,magnitude=(5.0,15.0))+MissingData(mode=burst,burst_probability=0.002,min_length=3,max_length=6)"
   ],
   "output": "iot_telemetry.csv"
+}
+```
+
+### Complete Example 3: `concept_drift.json`
+```json
+{
+  "start": "2024-01-01T00:00:00",
+  "end": "2024-01-07T23:00:00",
+  "granularity": "h",
+  "seed": 42,
+  "dimensions": [
+    "region:North,South"
+  ],
+  "metrics": [
+    "cpu:LinearTrend(offset=30,slope=2)+SinusoidalTrend(amplitude=10,freq=1)"
+  ],
+  "anomalies": [
+    "cpu:PointAnomaly(probability=0.01,magnitude=(10,20))",
+    "cpu:ConceptDrift(start_timestamp=2024-01-03T12:00:00,transition_window=3600,target_mean=80,target_std=5,hold_duration=14400,restore=true)"
+  ],
+  "output": "concept_drift.csv"
 }
 ```
 

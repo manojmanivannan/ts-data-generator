@@ -8,13 +8,12 @@ from __future__ import annotations
 
 import logging
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Literal
+from typing import Literal
 
 import numpy as np
 import pandas as pd
 
-if TYPE_CHECKING:
-    from ts_data_generator.random import SeedableRNG
+from ts_data_generator.random import SeedableRNG
 
 logger = logging.getLogger(__name__)
 
@@ -121,10 +120,7 @@ class SinusoidalTrend(Trends):
         base_wave = self._amplitude * np.sin(
             2 * np.pi * (1 / self._freq) * (time_in_days + phase_in_days)
         )
-        if rng is not None:
-            noise = rng.normal(0, self._noise_level, len(timestamps))
-        else:
-            noise = np.random.normal(0, self._noise_level, len(timestamps))
+        noise = SeedableRNG.normal_or_fallback(0, self._noise_level, len(timestamps), rng=rng)
         return base_wave + noise
 
 
@@ -195,10 +191,7 @@ class LinearTrend(Trends):
 
         coefficient = np.tan(np.radians(self._slope))
         base_trend = coefficient * time_numeric + self._offset
-        if rng is not None:
-            noise = rng.normal(0, self._noise_level, len(timestamps))
-        else:
-            noise = np.random.normal(0, self._noise_level, len(timestamps))
+        noise = SeedableRNG.normal_or_fallback(0, self._noise_level, len(timestamps), rng=rng)
         return base_trend + noise
 
 
@@ -260,10 +253,7 @@ class WeekendTrend(Trends):
         )
         trend[is_weekend] = adjustment
         trend = np.clip(trend, -self._limit, self._limit)
-        if rng is not None:
-            noise = rng.normal(0, self._noise_level, len(timestamps))
-        else:
-            noise = np.random.normal(0, self._noise_level, len(timestamps))
+        noise = SeedableRNG.normal_or_fallback(0, self._noise_level, len(timestamps), rng=rng)
         return trend + noise
 
 
@@ -297,7 +287,10 @@ class HolidayTrend(Trends):
         ImportError: If ``holidays`` is not installed and no ``dates`` are provided.
     """
 
-    _example = "sales:HolidayTrend(country='US',effect=50,pre_window=3,post_window=2,direction='up')"
+    _example = (
+        "sales:HolidayTrend(country='US',effect=50,"
+        "pre_window=3,post_window=2,direction='up')"
+    )
 
     def __init__(
         self,
@@ -355,7 +348,7 @@ class HolidayTrend(Trends):
         except ImportError:
             raise ImportError(
                 "The 'holidays' library is required for automatic holiday resolution. "
-                "Install it with: uv add 'ts-data-generator[holidays]' or pip install 'ts-data-generator[holidays]'\n"
+                "Install with: uv add 'ts-data-generator[holidays]'\n"
                 "Or provide explicit dates via the 'dates' parameter."
             ) from None
 
@@ -504,10 +497,7 @@ class ARNoiseTrend(Trends):
         p = self._order
         total = n + p
 
-        if rng is not None:
-            noise = rng.normal(0, self._noise_std, total)
-        else:
-            noise = np.random.normal(0, self._noise_std, total)
+        noise = SeedableRNG.normal_or_fallback(0, self._noise_std, total, rng=rng)
 
         result = np.zeros(total)
         result[:p] = noise[:p]
@@ -639,12 +629,10 @@ class MarkovTrend(Trends):
         n_states = self._n_states
         mat = self._transition_matrix
 
+        noise = SeedableRNG.normal_or_fallback(0, self._noise_std, n, rng=rng)
         if rng is not None:
-            noise = rng.normal(0, self._noise_std, n)
-            # Initial state: uniformly random
             init_state = rng.choice(n_states)
         else:
-            noise = np.random.normal(0, self._noise_std, n)
             init_state = np.random.choice(n_states)
 
         # Generate state sequence
@@ -708,10 +696,7 @@ class StockTrend(Trends):
         trend = np.zeros(num_steps)
         drift_per_step = self._amplitude / num_steps if num_steps > 0 else 0
 
-        if rng is not None:
-            volatilities = rng.normal(0, self._noise_level, num_steps)
-        else:
-            volatilities = np.random.normal(0, self._noise_level, num_steps)
+        volatilities = SeedableRNG.normal_or_fallback(0, self._noise_level, num_steps, rng=rng)
 
         for i in range(1, num_steps):
             trend[i] = trend[i - 1] + drift_per_step + volatilities[i]

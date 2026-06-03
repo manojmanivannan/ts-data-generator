@@ -6,7 +6,6 @@ Provides the ``tsdata`` command-line interface via Click.
 import inspect
 import json
 import logging
-import os
 import re
 from pathlib import Path
 
@@ -14,9 +13,12 @@ import click
 from pydantic import BaseModel, Field, field_validator
 
 from ts_data_generator import DataGen
+from ts_data_generator.anomalies.base import Anomaly
 from ts_data_generator.schema.models import Granularity
 from ts_data_generator.utils import functions as dimension_functions
 from ts_data_generator.utils import trends as trend_functions
+from ts_data_generator.utils.registry import Registry
+from ts_data_generator.utils.trends import Trends
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +26,25 @@ DIM_SEPARATOR = ";"
 TREND_SEPARATOR = "+"
 VALUE_SEPARATOR = ","
 DEFAULT_DIMENSION_FUNCTION = "random_choice"
+
+# ---------------------------------------------------------------------------
+# Registries for CLI-pluggable types
+# ---------------------------------------------------------------------------
+
+_DIMENSION_REGISTRY = Registry(
+    "ts_data_generator.utils.functions",
+    name_filter=lambda n: not n.startswith("_"),
+)
+_TREND_REGISTRY = Registry(
+    "ts_data_generator.utils.trends",
+    name_filter=lambda n: not n.startswith("_") and n != "Trends",
+    base_class=Trends,
+)
+_ANOMALY_REGISTRY = Registry(
+    "ts_data_generator.anomalies",
+    name_filter=lambda n: not n.startswith("_") and n != "Anomaly",
+    base_class=Anomaly,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -241,36 +262,16 @@ def _get_dimension_function(function_name: str):
     Raises:
         click.BadParameter: If the function is not found.
     """
-    try:
-        return getattr(dimension_functions, function_name)
-    except AttributeError:
-        available = [
-            f
-            for f in dir(dimension_functions)
-            if callable(getattr(dimension_functions, f)) and not f.startswith("_")
-        ]
-        raise click.BadParameter(
-            f"Unknown dimension function {function_name!r}. Available: {', '.join(available)}"
-        ) from None
+    return _DIMENSION_REGISTRY.get(function_name)
 
 
 def _get_trend_function(function_name: str):
-    """Look up a trend function by name.
+    """Look up a trend class by name.
 
     Raises:
-        click.BadParameter: If the function is not found.
+        click.BadParameter: If the class is not found.
     """
-    try:
-        return getattr(trend_functions, function_name)
-    except AttributeError:
-        available = [
-            f
-            for f in dir(trend_functions)
-            if callable(getattr(trend_functions, f)) and "Trend" in f
-        ]
-        raise click.BadParameter(
-            f"Unknown trend function {function_name!r}. Available: {', '.join(available)}"
-        ) from None
+    return _TREND_REGISTRY.get(function_name)
 
 
 def _load_config(config_path: Path) -> dict:
@@ -323,19 +324,7 @@ def _get_anomaly_class(class_name: str):
     Raises:
         click.BadParameter: If the class is not found.
     """
-    from ts_data_generator import anomalies as anomaly_module
-
-    try:
-        return getattr(anomaly_module, class_name)
-    except AttributeError:
-        available = [
-            a
-            for a in dir(anomaly_module)
-            if not a.startswith("_") and a not in ("Anomaly", "DriftSegment")
-        ]
-        raise click.BadParameter(
-            f"Unknown anomaly type {class_name!r}. Available: {', '.join(available)}"
-        ) from None
+    return _ANOMALY_REGISTRY.get(class_name)
 
 
 def _normalize_to_string(value: tuple | list | str) -> str:

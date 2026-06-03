@@ -36,6 +36,27 @@ class Granularity(Enum):
     MONTHLY = "ME"
     YEARLY = "Y"
 
+    def order(self) -> int:
+        """Return the rank of this granularity (lower = finer, higher = coarser).
+
+        Ranks: s=0, min=1, 5min=2, h=3, D=4, W=5, ME=6, Y=7.
+        """
+        _ranks = {"s": 0, "min": 1, "5min": 2, "h": 3, "D": 4, "W": 5, "ME": 6, "Y": 7}
+        return _ranks[self.value]
+
+    def coarser_than(self, other: Granularity) -> bool:
+        """Return True if this granularity is coarser (fewer data points) than *other*."""
+        return self.order() > other.order()
+
+    def finer_than(self, other: Granularity) -> bool:
+        """Return True if this granularity is finer (more data points) than *other*."""
+        return self.order() < other.order()
+
+    def resample_alias(self) -> str:
+        """Return the pandas resample alias for this granularity (e.g. ``\"Y\"`` -> ``\"YE\"``)."""
+        _aliases = {"Y": "YE"}
+        return _aliases.get(self.value, self.value)
+
 
 class AggregationType(Enum):
     """Aggregation method used when resampling data to a coarser granularity."""
