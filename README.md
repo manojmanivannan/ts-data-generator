@@ -10,7 +10,7 @@
 
 Generate realistic synthetic time series datasets with configurable dimensions,
 metrics, composable trend functions, and injectable anomalies — via a Python API
-or the `tsdata` CLI.
+or the `tsdata` CLI or [online](https://ts-data-generator.fastapicloud.dev/)
 
 <img src="https://github.com/manojmanivannan/ts-data-generator/raw/main/notebooks/image.png" alt="sample plot" width="800"/>
 
