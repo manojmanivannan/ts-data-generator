@@ -76,7 +76,7 @@ line-ending = "auto"
 
 [tool.pytest.ini_options]
 addopts = "-ra -q"
-testpaths = ["tests"]
+testpaths = ["tests", "tsdata/tests"]
 
 [tool.uv.workspace]
 members = ["tsdata"]

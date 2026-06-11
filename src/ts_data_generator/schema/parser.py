@@ -99,7 +99,7 @@ PRESETS = {
         granularity="h",
         output="hourly_metrics.csv",
         dimensions=["server:web1,web2,db1,db2", "metric:cpu,memory,disk"],
-        metrics=["value:SinusoidalTrend(period=24,amplitude=10)+LinearTrend(slope=0.1)"],
+        metrics=["value:SinusoidalTrend(freq=24,amplitude=10)+LinearTrend(slope=0.1)"],
     ),
     "minute-stock": PresetConfig(
         start="2024-01-01 09:30:00",
@@ -107,7 +107,7 @@ PRESETS = {
         granularity="min",
         output="minute_stock.csv",
         dimensions=["ticker:AAPL,MSFT,GOOGL"],
-        metrics=["price:StockTrend(volatility=0.01)"],
+        metrics=["price:StockTrend(noise_level=0.01)"],
         anomalies=["price:PointAnomaly(probability=0.05,magnitude=5.0,mode=additive)"],
     ),
     "weekly-revenue": PresetConfig(
@@ -116,7 +116,7 @@ PRESETS = {
         granularity="W",
         output="weekly_revenue.csv",
         dimensions=["department:electronics,clothing,home"],
-        metrics=["revenue:LinearTrend(slope=1000)+SinusoidalTrend(period=52,amplitude=5000)"],
+        metrics=["revenue:LinearTrend(slope=30)+SinusoidalTrend(freq=52,amplitude=5000)"],
     ),
     "monthly-recurring": PresetConfig(
         start="2020-01-01",
@@ -124,8 +124,8 @@ PRESETS = {
         granularity="ME",
         output="mrr.csv",
         dimensions=["tier:basic,pro,enterprise"],
-        metrics=["mrr:LinearTrend(slope=5000)"],
-        anomalies=["mrr:ConceptDrift(target_mean=100000,target_std=5000,transition_window=6)"],
+        metrics=["mrr:LinearTrend(slope=30)"],
+        anomalies=["mrr:ConceptDrift(start_timestamp=2022-01-31,target_mean=100000,target_std=5000,transition_window=15552000)"],
     ),
 }
 

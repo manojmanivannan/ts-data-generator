@@ -14,6 +14,7 @@ Run locally::
 
 from __future__ import annotations
 
+import inspect
 import traceback
 from dataclasses import asdict
 from pathlib import Path
@@ -148,6 +149,17 @@ class PresetSummary(BaseModel):
 class PresetDetail(BaseModel):
     name: str
     config: dict[str, Any]
+
+
+class FunctionInfo(BaseModel):
+    name: str
+    signature: str
+    example: str | None = None
+
+
+class GranularityInfo(BaseModel):
+    value: str
+    label: str
 
 
 # ---------------------------------------------------------------------------
@@ -564,3 +576,80 @@ def get_preset(preset_name: str) -> PresetDetail:
         return PresetDetail(name=preset_name, config=asdict(preset))
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.get("/dimensions", response_model=list[FunctionInfo])
+def list_dimensions() -> list[FunctionInfo]:
+    """List available dimension generator functions."""
+    excluded = {"TypeVar", "Generator", "Iterable", "Tuple", "Union", "cycle"}
+    from ts_data_generator.utils import functions as dim_mod
+
+    funcs = [
+        name
+        for name in dir(dim_mod)
+        if callable(getattr(dim_mod, name)) and not name.startswith("_") and name not in excluded
+    ]
+    result = []
+    for name in sorted(funcs):
+        fn = getattr(dim_mod, name)
+        result.append(
+            FunctionInfo(
+                name=name,
+                signature=str(inspect.signature(fn)),
+                example=getattr(fn, "_example", None),
+            )
+        )
+    return result
+
+
+@app.get("/trends", response_model=list[FunctionInfo])
+def list_trends() -> list[FunctionInfo]:
+    """List available trend generator classes."""
+    names = _trend_registry.list_available()
+    result = []
+    for name in names:
+        cls = _trend_registry.get(name)
+        result.append(
+            FunctionInfo(
+                name=name,
+                signature=str(inspect.signature(cls.__init__)),
+                example=getattr(cls, "_example", None),
+            )
+        )
+    return result
+
+
+@app.get("/anomalies", response_model=list[FunctionInfo])
+def list_anomalies() -> list[FunctionInfo]:
+    """List available anomaly injector classes."""
+    names = _anomaly_registry.list_available()
+    result = []
+    for name in names:
+        cls = _anomaly_registry.get(name)
+        result.append(
+            FunctionInfo(
+                name=name,
+                signature=str(inspect.signature(cls.__init__)),
+                example=getattr(cls, "_example", None),
+            )
+        )
+    return result
+
+
+@app.get("/granularities", response_model=list[GranularityInfo])
+def list_granularities() -> list[GranularityInfo]:
+    """List valid granularity values for data generation."""
+    labels = {
+        "s": "One Second",
+        "min": "One Minute",
+        "5min": "Five Minutes",
+        "h": "Hourly",
+        "D": "Daily",
+        "W": "Weekly",
+        "ME": "Monthly",
+        "Y": "Yearly",
+    }
+    return [
+        GranularityInfo(value=g.value, label=labels.get(g.value, g.value))
+        for g in Granularity
+    ]
