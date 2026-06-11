@@ -465,6 +465,7 @@ def generate(request: GenerateRequest) -> GenerateResponse:
             )
 
         # Convert DataFrame to list of dicts with datetime index as a field
+        df.index.name = "datetime"
         records = df.reset_index().to_dict(orient="records")
         # Convert Timestamp values to ISO strings for JSON serialization
         for record in records:
@@ -480,7 +481,7 @@ def generate(request: GenerateRequest) -> GenerateResponse:
 
     return GenerateResponse(
         rows=len(df),
-        columns=list(df.columns),
+        columns=["datetime"] + list(df.columns),
         granularity=request.granularity,
         seed=request.seed,
         data=records,

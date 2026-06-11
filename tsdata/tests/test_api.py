@@ -168,9 +168,12 @@ class TestGenerate:
             },
         )
         assert resp.status_code == 200
-        first_row = resp.json()["data"][0]
-        # The DataFrame index (epoch/timestamp) should appear as a string
-        assert any(isinstance(v, str) for v in first_row.values())
+        data = resp.json()
+        assert "datetime" in data["columns"]
+        first_row = data["data"][0]
+        assert "datetime" in first_row
+        assert isinstance(first_row["datetime"], str)
+        assert "index" not in first_row
 
 
 # ---------------------------------------------------------------------------
