@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ts-data-generator</title>
+<link rel="icon" type="image/svg+xml" href="/logo.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#070b14;--surface:#0f1729;--elevated:#182240;--accent:#00e5a0;
+  --accent-dim:#00b37d;--accent-glow:rgba(0,229,160,.12);--text:#e2e8f0;
+  --text-sec:#8892a8;--text-muted:#4a5568;--border:#1e2a45;--error:#ff4d6a;
+  --warn:#ffb020;--radius:10px;--mono:'JetBrains Mono',monospace;
+  --sans:'DM Sans',system-ui,sans-serif;
+}
+html{font-size:16px;scroll-behavior:smooth}
+body{font-family:var(--sans);background:var(--bg);color:var(--text);min-height:100vh;
+  background-image:radial-gradient(circle at 1px 1px,rgba(0,229,160,.04) 1px,transparent 0);
+  background-size:32px 32px}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline}
+
+/* ── header ── */
+.hdr{position:sticky;top:0;z-index:50;backdrop-filter:blur(16px);
+  background:rgba(7,11,20,.85);border-bottom:1px solid var(--border);padding:.75rem 1.5rem;
+  display:flex;align-items:center;gap:.75rem;justify-content:space-between}
+.hdr-logo{display:flex;align-items:center;gap:.5rem;font-family:var(--mono);
+  font-weight:600;font-size:1.1rem;letter-spacing:-.02em}
+.hdr-logo-img{width:1.4rem;height:1.4rem;border-radius:3px;flex-shrink:0}
+.hdr-ver{font-family:var(--mono);font-size:.7rem;padding:.2rem .55rem;
+  border-radius:9999px;border:1px solid var(--accent-dim);color:var(--accent);
+  letter-spacing:.03em}
+.hdr-links{display:flex;gap:1rem;font-size:.85rem}
+.hdr-links a{color:var(--text-sec);transition:color .2s}
+.hdr-links a:hover{color:var(--accent);text-decoration:none}
+
+/* ── layout ── */
+.wrap{max-width:1100px;margin:0 auto;padding:1.5rem}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+  padding:1.5rem;margin-bottom:1.25rem;transition:border-color .25s}
+.card:hover{border-color:rgba(0,229,160,.25)}
+.card-title{font-family:var(--mono);font-size:.95rem;font-weight:600;
+  color:var(--accent);margin-bottom:1rem;display:flex;align-items:center;gap:.5rem}
+.card-title::before{content:'>';color:var(--accent-dim)}
+
+/* ── hero ── */
+.hero{text-align:center;padding:2.5rem 1rem 1rem}
+.hero h1{font-family:var(--mono);font-size:clamp(1.6rem,4vw,2.6rem);font-weight:700;
+  letter-spacing:-.04em;margin-bottom:.5rem}
+.hero h1 span{color:var(--accent)}
+.hero p{color:var(--text-sec);font-size:1rem;max-width:540px;margin:0 auto;line-height:1.6}
+
+/* ── endpoints ── */
+.ep-grid{display:grid;gap:.6rem}
+.ep{display:flex;align-items:center;gap:.75rem;padding:.7rem 1rem;
+  background:var(--elevated);border-radius:8px;font-family:var(--mono);font-size:.8rem;
+  transition:background .2s}
+.ep:hover{background:rgba(0,229,160,.07)}
+.ep .method{font-weight:700;min-width:3rem;text-align:center;padding:.15rem .4rem;
+  border-radius:4px;font-size:.7rem;letter-spacing:.04em}
+.ep .method.get{background:rgba(0,229,160,.15);color:var(--accent)}
+.ep .method.post{background:rgba(255,176,32,.15);color:var(--warn)}
+.ep .path{color:var(--text)}
+.ep .desc{color:var(--text-sec);margin-left:auto;font-family:var(--sans);font-size:.8rem}
+
+/* ── presets ── */
+.preset-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:.75rem}
+.preset-card{background:var(--elevated);border:1px solid var(--border);border-radius:8px;
+  padding:1rem;cursor:pointer;transition:all .25s}
+.preset-card:hover{border-color:var(--accent);transform:translateY(-2px);
+  box-shadow:0 4px 20px rgba(0,229,160,.1)}
+.preset-card.active{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.preset-name{font-family:var(--mono);font-weight:600;font-size:.9rem;margin-bottom:.35rem}
+.preset-meta{color:var(--text-sec);font-size:.75rem;line-height:1.5}
+.preset-meta span{display:inline-block;margin-right:.75rem}
+
+/* ── form ── */
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:1rem}
+@media(max-width:640px){.form-grid{grid-template-columns:1fr}}
+.field{display:flex;flex-direction:column;gap:.35rem}
+.field field label{font-family:var(--mono);font-size:.75rem;font-weight:500;color:var(--text-sec);
+  text-transform:uppercase;letter-spacing:.06em}
+.field input,.field select{background:var(--elevated);border:1px solid var(--border);
+  border-radius:6px;padding:.55rem .75rem;color:var(--text);font-family:var(--mono);
+  font-size:.85rem;outline:none;transition:border-color .2s}
+.field input:focus,.field select:focus{border-color:var(--accent)}
+.field select{cursor:pointer}
+.field input::placeholder{color:var(--text-muted)}
+.field .hint{font-size:.7rem;color:var(--text-muted);font-style:italic}
+.field.full{grid-column:1/-1}
+
+/* ── list fields (dimensions, metrics, anomalies) ── */
+.list-field{grid-column:1/-1}
+.list-field .entries{display:flex;flex-direction:column;gap:.5rem}
+.list-entry{display:flex;gap:.5rem;align-items:center}
+.list-entry input{flex:1;background:var(--elevated);border:1px solid var(--border);
+  border-radius:6px;padding:.55rem .75rem;color:var(--text);font-family:var(--mono);
+  font-size:.85rem;outline:none;transition:border-color .2s}
+.list-entry input:focus{border-color:var(--accent)}
+.list-entry input::placeholder{color:var(--text-muted)}
+.btn-remove{background:none;border:1px solid var(--border);color:var(--error);
+  width:2rem;height:2rem;border-radius:6px;cursor:pointer;font-size:1rem;
+  display:flex;align-items:center;justify-content:center;transition:all .2s;flex-shrink:0}
+.btn-remove:hover{background:rgba(255,77,106,.12);border-color:var(--error)}
+.btn-add{background:none;border:1px dashed var(--border);color:var(--text-sec);
+  padding:.4rem .75rem;border-radius:6px;cursor:pointer;font-size:.8rem;
+  font-family:var(--mono);transition:all .2s;margin-top:.25rem}
+.btn-add:hover{border-color:var(--accent);color:var(--accent)}
+
+/* ── buttons ── */
+.btn-gen{display:inline-flex;align-items:center;gap:.5rem;font-family:var(--mono);
+  font-weight:600;font-size:.9rem;padding:.65rem 1.5rem;border:none;border-radius:8px;
+  cursor:pointer;transition:all .25s;letter-spacing:.01em}
+.btn-gen.primary{background:var(--accent);color:var(--bg)}
+.btn-gen.primary:hover{background:var(--accent-dim);transform:translateY(-1px);
+  box-shadow:0 4px 16px rgba(0,229,160,.25)}
+.btn-gen.secondary{background:transparent;border:1px solid var(--border);color:var(--text-sec)}
+.btn-gen.secondary:hover{border-color:var(--accent);color:var(--accent)}
+.form-actions{display:flex;gap:.75rem;margin-top:1.25rem;align-items:center}
+.spinner{width:1rem;height:1rem;border:2px solid transparent;border-top-color:currentColor;
+  border-radius:50%;animation:spin .6s linear infinite;display:none}
+.loading .spinner{display:inline-block}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ── results ── */
+.results{overflow-x:auto}
+.results .meta{display:flex;justify-content:space-between;align-items:center;
+  margin-bottom:.75rem;flex-wrap:wrap;gap:.5rem}
+.results .meta .info{font-size:.8rem;color:var(--text-sec);font-family:var(--mono)}
+.table-wrap{overflow-x:auto;border-radius:8px;border:1px solid var(--border)}
+table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:.78rem}
+th{background:var(--elevated);color:var(--accent);font-weight:600;text-align:left;
+  padding:.6rem .75rem;white-space:nowrap;border-bottom:2px solid var(--border);
+  position:sticky;top:0}
+td{padding:.45rem .75rem;border-bottom:1px solid var(--border);white-space:nowrap;
+  color:var(--text-sec)}
+tr:hover td{background:rgba(0,229,160,.04);color:var(--text)}
+
+/* ── error ── */
+.error-box{background:rgba(255,77,106,.08);border:1px solid rgba(255,77,106,.3);
+  border-radius:8px;padding:1rem;font-family:var(--mono);font-size:.82rem;
+  color:var(--error);margin-top:1rem;display:none}
+.error-box.visible{display:block}
+
+/* ── toast ── */
+.toast{position:fixed;bottom:1.5rem;right:1.5rem;padding:.65rem 1.1rem;
+  border-radius:8px;font-family:var(--mono);font-size:.82rem;z-index:100;
+  opacity:0;transform:translateY(10px);transition:all .3s;pointer-events:none}
+.toast.visible{opacity:1;transform:translateY(0)}
+.toast.success{background:rgba(0,229,160,.15);border:1px solid var(--accent);color:var(--accent)}
+.toast.err{background:rgba(255,77,106,.15);border:1px solid var(--error);color:var(--error)}
+
+/* ── responsive ── */
+@media(max-width:640px){
+  .hdr{padding:.6rem 1rem}
+  .wrap{padding:1rem}
+  .hero{padding:1.5rem .5rem .5rem}
+  .preset-grid{grid-template-columns:1fr}
+  .ep .desc{display:none}
+}
+
+/* ── animations ── */
+@keyframes fadeUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+.card{animation:fadeUp .4s ease both}
+.card:nth-child(2){animation-delay:.05s}
+.card:nth-child(3){animation-delay:.1s}
+.card:nth-child(4){animation-delay:.15s}
+.card:nth-child(5){animation-delay:.2s}
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<header class="hdr">
+  <div class="hdr-logo">
+    <img src="/logo.svg" alt="tsdata" class="hdr-logo-img"> ts-data-generator
+    <span class="hdr-ver">v{{version}}</span>
+  </div>
+  <nav class="hdr-links">
+    <a href="#presets">Presets</a>
+    <a href="#generate">Generate</a>
+    <a href="https://manojmanivannan.github.io/ts-data-generator/" target="_blank">Docs</a>
+    <a href="/docs" target="_blank">API</a>
+  </nav>
+</header>
+
+<!-- Hero -->
+<section class="hero">
+  <h1>Synthetic <span>Time Series</span> Data</h1>
+  <p>Generate realistic time series data with trends, dimensions, anomalies &mdash; right from your browser.</p>
+</section>
+
+<div class="wrap">
+
+  <!-- Endpoints -->
+  <div class="card">
+    <div class="card-title">API Endpoints</div>
+    <div class="ep-grid">
+      <div class="ep"><span class="method post">POST</span><span class="path">/generate</span><span class="desc">Generate custom data</span></div>
+      <div class="ep"><span class="method post">POST</span><span class="path">/generate/preset/{name}</span><span class="desc">Generate from preset</span></div>
+      <div class="ep"><span class="method get">GET</span><span class="path">/presets</span><span class="desc">List all presets</span></div>
+      <div class="ep"><span class="method get">GET</span><span class="path">/presets/{name}</span><span class="desc">Get preset config</span></div>
+    </div>
+  </div>
+
+  <!-- Presets -->
+  <div class="card" id="presets">
+    <div class="card-title">Presets</div>
+    <div class="preset-grid" id="preset-grid">
+      <div style="color:var(--text-muted);font-size:.85rem">Loading&hellip;</div>
+    </div>
+  </div>
+
+  <!-- Generate -->
+  <div class="card" id="generate">
+    <div class="card-title">Custom Generate</div>
+    <form id="gen-form" autocomplete="off">
+      <div class="form-grid">
+        <div class="field">
+          <label for="f-start">Start</label>
+          <input id="f-start" type="text" name="start" placeholder="2024-01-01" value="2024-01-01">
+        </div>
+        <div class="field">
+          <label for="f-end">End</label>
+          <input id="f-end" type="text" name="end" placeholder="2024-12-31" value="2024-12-31">
+        </div>
+        <div class="field">
+          <label for="f-gran">Granularity</label>
+          <select id="f-gran" name="granularity">
+            <option value="s">s &mdash; second</option>
+            <option value="min">min &mdash; minute</option>
+            <option value="5min">5min &mdash; 5 minutes</option>
+            <option value="h" selected>h &mdash; hour</option>
+            <option value="D">D &mdash; day</option>
+            <option value="W">W &mdash; week</option>
+            <option value="ME">ME &mdash; month end</option>
+            <option value="Y">Y &mdash; year</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="f-seed">Seed</label>
+          <input id="f-seed" type="number" name="seed" placeholder="Random (optional)">
+        </div>
+
+        <!-- Dimensions -->
+        <div class="field list-field">
+          <label>Dimensions</label>
+          <div class="entries" id="dim-entries"></div>
+          <button type="button" class="btn-add" onclick="addEntry('dim-entries','product:random_choice:A,B,C')">+ add dimension</button>
+          <span class="hint">e.g. product:random_choice:A,B,C</span>
+        </div>
+
+        <!-- Metrics -->
+        <div class="field list-field">
+          <label>Metrics</label>
+          <div class="entries" id="met-entries"></div>
+          <button type="button" class="btn-add" onclick="addEntry('met-entries','sales:LinearTrend(slope=30)+WeekendTrend(weekend_effect=50)')">+ add metric</button>
+          <span class="hint">e.g. sales:LinearTrend(slope=30)+WeekendTrend(weekend_effect=50)</span>
+        </div>
+
+        <!-- Anomalies -->
+        <div class="field list-field">
+          <label>Anomalies</label>
+          <div class="entries" id="anom-entries"></div>
+          <button type="button" class="btn-add" onclick="addEntry('anom-entries','sales:PointAnomaly(probability=0.01,magnitude=5)')">+ add anomaly</button>
+          <span class="hint">e.g. sales:PointAnomaly(probability=0.01,magnitude=5)</span>
+        </div>
+      </div>
+
+      <div class="form-actions">
+        <button type="submit" class="btn-gen primary" id="btn-generate">
+          <span class="spinner"></span> Generate ▶
+        </button>
+        <button type="button" class="btn-gen secondary" onclick="clearResults()">Clear</button>
+      </div>
+    </form>
+    <div class="error-box" id="error-box"></div>
+  </div>
+
+  <!-- Results -->
+  <div class="card" id="results-card" style="display:none">
+    <div class="card-title">Results</div>
+    <div class="results">
+      <div class="meta">
+        <span class="info" id="results-info"></span>
+        <button class="btn-gen secondary" onclick="downloadCSV()" style="font-size:.75rem;padding:.4rem .8rem">⬇ CSV</button>
+      </div>
+      <div class="table-wrap" style="max-height:420px;overflow:auto">
+        <table id="results-table">
+          <thead id="results-head"></thead>
+          <tbody id="results-body"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ── Preset loading ──
+let presetsData = {};
+let lastResult = null;
+
+async function loadPresets() {
+  try {
+    const res = await fetch('/presets');
+    const data = await res.json();
+    presetsData = {};
+    const grid = document.getElementById('preset-grid');
+    grid.innerHTML = '';
+    data.forEach(p => {
+      presetsData[p.name] = p;
+      const card = document.createElement('div');
+      card.className = 'preset-card';
+      card.dataset.name = p.name;
+      card.innerHTML = `
+        <div class="preset-name">${p.name}</div>
+        <div class="preset-meta">
+          <span>${p.granularity}</span>
+          <span>${p.start} → ${p.end}</span>
+        </div>
+        <div class="preset-meta">${p.dimensions_count} dims · ${p.metrics_count} metrics</div>
+      `;
+      card.addEventListener('click', () => runPreset(p.name));
+      grid.appendChild(card);
+    });
+  } catch(e) {
+    document.getElementById('preset-grid').innerHTML =
+      '<div style="color:var(--error);font-size:.85rem">Failed to load presets</div>';
+  }
+}
+
+async function runPreset(name) {
+  // Highlight active card
+  document.querySelectorAll('.preset-card').forEach(c => c.classList.remove('active'));
+  document.querySelector(`.preset-card[data-name="${name}"]`)?.classList.add('active');
+
+  const btn = document.getElementById('btn-generate');
+  btn.classList.add('loading');
+  hideError();
+  try {
+    const res = await fetch(`/generate/preset/${name}`, { method: 'POST', headers: {'Content-Type':'application/json'} });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || JSON.stringify(data));
+    lastResult = data;
+    renderResults(data);
+    showToast('Preset generated', 'success');
+    document.getElementById('results-card').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } catch(e) {
+    showError(e.message);
+    showToast('Generation failed', 'err');
+  } finally {
+    btn.classList.remove('loading');
+  }
+}
+
+// ── Dynamic list entries ──
+function addEntry(containerId, placeholder, focus) {
+  const container = document.getElementById(containerId);
+  const div = document.createElement('div');
+  div.className = 'list-entry';
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.placeholder = placeholder;
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'btn-remove';
+  btn.textContent = '×';
+  btn.onclick = () => div.remove();
+  div.appendChild(input);
+  div.appendChild(btn);
+  container.appendChild(div);
+  if (focus !== false) input.focus();
+}
+
+// ── Form submission ──
+document.getElementById('gen-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const btn = document.getElementById('btn-generate');
+  btn.classList.add('loading');
+  hideError();
+
+  const body = {
+    start: document.getElementById('f-start').value,
+    end: document.getElementById('f-end').value,
+    granularity: document.getElementById('f-gran').value,
+    dimensions: [...document.querySelectorAll('#dim-entries input')].map(i => i.value).filter(Boolean),
+    metrics: [...document.querySelectorAll('#met-entries input')].map(i => i.value).filter(Boolean),
+    anomalies: [...document.querySelectorAll('#anom-entries input')].map(i => i.value).filter(Boolean),
+    seed: document.getElementById('f-seed').value ? parseInt(document.getElementById('f-seed').value) : null,
+  };
+
+  try {
+    const res = await fetch('/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      const msg = data.detail || data.error || JSON.stringify(data);
+      throw new Error(msg);
+    }
+    lastResult = data;
+    renderResults(data);
+    showToast(`${data.rows} rows generated`, 'success');
+    document.getElementById('results-card').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } catch(e) {
+    showError(e.message);
+    showToast('Generation failed', 'err');
+  } finally {
+    btn.classList.remove('loading');
+  }
+});
+
+// ── Render results table ──
+function renderResults(data) {
+  document.getElementById('results-card').style.display = '';
+  document.getElementById('results-info').textContent =
+    `${data.rows} rows · ${data.columns.length} columns · ${data.granularity} granularity` +
+    (data.seed != null ? ` · seed ${data.seed}` : '');
+
+  const head = document.getElementById('results-head');
+  const body = document.getElementById('results-body');
+  head.innerHTML = '<tr>' + data.columns.map(c => `<th>${escHtml(c)}</th>`).join('') + '</tr>';
+
+  // Limit displayed rows for performance
+  const maxRows = Math.min(data.data.length, 500);
+  const rows = data.data.slice(0, maxRows).map(row =>
+    '<tr>' + data.columns.map(c => `<td>${escHtml(String(row[c] ?? ''))}</td>`).join('') + '</tr>'
+  ).join('');
+  const truncated = data.data.length > 500
+    ? `<tr><td colspan="${data.columns.length}" style="text-align:center;color:var(--text-muted)">
+         Showing 500 of ${data.data.length} rows — download CSV for full data
+       </td></tr>` : '';
+  body.innerHTML = rows + truncated;
+}
+
+function escHtml(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+// ── CSV download ──
+function downloadCSV() {
+  if (!lastResult) return;
+  const cols = lastResult.columns;
+  const header = cols.join(',');
+  const rows = lastResult.data.map(r => cols.map(c => {
+    const v = r[c] ?? '';
+    return String(v).includes(',') ? `"${String(v).replace(/"/g, '""')}"` : v;
+  }).join(','));
+  const csv = header + '\n' + rows.join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `tsdata_${lastResult.granularity}_${Date.now()}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ── Error & toast helpers ──
+function showError(msg) {
+  const box = document.getElementById('error-box');
+  box.textContent = msg;
+  box.classList.add('visible');
+}
+function hideError() {
+  document.getElementById('error-box').classList.remove('visible');
+}
+function clearResults() {
+  document.getElementById('results-card').style.display = 'none';
+  lastResult = null;
+  hideError();
+}
+
+let toastTimer;
+function showToast(msg, type) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'toast ' + type + ' visible';
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('visible'), 2500);
+}
+
+// ── Init ──
+loadPresets();
+</script>
+</body>
+</html>

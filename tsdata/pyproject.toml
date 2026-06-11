@@ -1,0 +1,12 @@
+[project]
+name = "tsdata"
+version = "0.1.0"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi-cloud-cli>=0.20.0",
+    "fastapi[standard]>=0.136.3",
+    "ts-data-generator",
+]
+
+[tool.uv.sources]
+ts-data-generator = { workspace = true }
