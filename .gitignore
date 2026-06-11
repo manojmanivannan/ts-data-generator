@@ -40,3 +40,7 @@ env/
 # Jekyll / Ruby
 docs/Gemfile.lock
 docs/_site/
+
+# FastAPI Cloud
+.fastapicloud/
+
