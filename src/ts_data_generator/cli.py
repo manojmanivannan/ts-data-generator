@@ -162,6 +162,96 @@ PRESETS: dict[str, dict] = {
         ],
         "output": "scientific_mock_data.csv",
     },
+    "economics-cycle": {
+        "start": "2024-01-01",
+        "end": "2025-12-31",
+        "granularity": "D",
+        "dimensions": [
+            "country:random_choice:US,DE,IN,BR,JP",
+            "sector:random_choice:manufacturing,services,energy,technology",
+            "policy_regime:ordered_choice:tightening,neutral,easing",
+        ],
+        "metrics": [
+            "gdp_index:LinearTrend(offset=100,slope=0.02)+SinusoidalTrend(amplitude=2.5,freq=365)+ARNoiseTrend(decay=0.65,noise_std=0.35)",
+            "inflation_rate:SinusoidalTrend(amplitude=0.8,freq=180)+ARNoiseTrend(decay=0.75,noise_std=0.2)",
+            "unemployment_rate:LinearTrend(offset=6.5,slope=-0.01)+SinusoidalTrend(amplitude=0.5,freq=365)+ARNoiseTrend(decay=0.7,noise_std=0.15)",
+        ],
+        "anomalies": [
+            "gdp_index:PointAnomaly(probability=0.003,mode=additive,magnitude=-6.0)",
+            "inflation_rate:PointAnomaly(probability=0.004,mode=additive,magnitude=2.0)",
+        ],
+        "output": "economics_cycle.csv",
+    },
+    "sociology-mobility": {
+        "start": "2025-01-01",
+        "end": "2025-06-30",
+        "granularity": "D",
+        "dimensions": [
+            "age_group:ordered_choice:18-24,25-34,35-49,50-64,65+",
+            "region:random_choice:urban,suburban,rural",
+            "education_level:random_choice:high_school,bachelors,masters,doctorate",
+            "respondent_batch:random_int:1,50",
+        ],
+        "metrics": [
+            "mobility_score:MarkovTrend(states=[low,mid,high],values=[35,55,75],stickiness=0.92,noise_std=2.0)+LinearTrend(offset=0,slope=0.01)",
+            "trust_index:SinusoidalTrend(amplitude=4,freq=30)+ARNoiseTrend(decay=0.8,noise_std=1.2)",
+            "participation_rate:LinearTrend(offset=58,slope=0.01)+WeekendTrend(weekend_effect=-3,direction=down)+ARNoiseTrend(decay=0.75,noise_std=0.8)",
+        ],
+        "anomalies": [
+            "trust_index:MissingData(mode=burst,burst_probability=0.01,min_length=2,max_length=5)",
+        ],
+        "output": "sociology_mobility.csv",
+    },
+    "electronics-reliability": {
+        "start": "2025-03-01T00:00:00",
+        "end": "2025-03-08T00:00:00",
+        "granularity": "5min",
+        "dimensions": [
+            "chip_id:auto_generate_name:chip",
+            "assembly_line:ordered_choice:Line_A,Line_B,Line_C,Line_D",
+            "component_family:random_choice:power,rf,digital,sensor,analog",
+            "test_station:random_choice:ICT1,ICT2,FCT1,FCT2,BURNIN",
+            "lot_number:random_int:1000,1300",
+            "reference_voltage:random_float:3.0,3.6",
+            "qa_mode:constant:production",
+        ],
+        "metrics": [
+            "voltage_drift:LinearTrend(offset=3.3,slope=-0.0003)+ARNoiseTrend(decay=0.85,noise_std=0.015)",
+            "temperature_c:SinusoidalTrend(amplitude=3,freq=1)+ARNoiseTrend(decay=0.7,noise_std=0.4)",
+            "defect_ppm:MarkovTrend(states=[normal,warn,critical],values=[120,550,1800],stickiness=0.96,noise_std=40)+WeekendTrend(weekend_effect=-70,direction=down)",
+            "throughput_units:LinearTrend(offset=850,slope=0.03)+SinusoidalTrend(amplitude=40,freq=1)+ARNoiseTrend(decay=0.6,noise_std=12)",
+            "supplier_shock_index:StockTrend(amplitude=20,direction=up,noise_level=0.2)",
+            "holiday_pressure_index:HolidayTrend(effect=120,pre_window=1,post_window=1,direction=up,dates=[2025-03-03,2025-03-06])",
+        ],
+        "anomalies": [
+            "defect_ppm:PointAnomaly(probability=0.006,mode=additive,magnitude=1200)",
+            "throughput_units:MissingData(mode=random,probability=0.004)",
+            "voltage_drift:PointAnomaly(probability=0.003,mode=replacement,magnitude=2.8)",
+            "temperature_c:MissingData(mode=burst,burst_probability=0.008,min_length=2,max_length=5)",
+            "supplier_shock_index:ConceptDrift(start_timestamp=2025-03-03T12:00:00,target_mean=40,target_std=4,transition_window=3600,hold_duration=21600,restore=true)+ConceptDrift(start_timestamp=2025-03-05T18:00:00,target_mean=-10,target_std=3,transition_window=1800,hold_duration=14400,restore=false)",
+        ],
+        "output": "electronics_reliability.csv",
+    },
+    "epidemiology-wave": {
+        "start": "2024-09-01",
+        "end": "2025-03-31",
+        "granularity": "D",
+        "dimensions": [
+            "region:random_choice:North,South,East,West",
+            "age_band:ordered_choice:0-17,18-39,40-64,65+",
+            "pathogen_variant:ordered_choice:A,B,C",
+        ],
+        "metrics": [
+            "incidence_rate:SinusoidalTrend(amplitude=25,freq=60)+LinearTrend(offset=40,slope=-0.02)+ARNoiseTrend(decay=0.7,noise_std=4)",
+            "hospitalization_rate:LinearTrend(offset=8,slope=-0.01)+SinusoidalTrend(amplitude=3,freq=60)+ARNoiseTrend(decay=0.75,noise_std=0.7)",
+            "testing_volume:SinusoidalTrend(amplitude=200,freq=14)+WeekendTrend(weekend_effect=-140,direction=down)+ARNoiseTrend(decay=0.65,noise_std=25)",
+        ],
+        "anomalies": [
+            "incidence_rate:PointAnomaly(probability=0.006,mode=additive,magnitude=35)",
+            "testing_volume:MissingData(mode=burst,burst_probability=0.008,min_length=1,max_length=3)",
+        ],
+        "output": "epidemiology_wave.csv",
+    },
 }
 
 

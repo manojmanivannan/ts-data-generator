@@ -224,7 +224,18 @@ class TestGenerateFromPreset:
 
     def test_all_presets_are_generatable(self, client):
         """Every named preset should produce data without error."""
-        for name in ["daily-sales", "hourly-metrics", "minute-stock", "weekly-revenue", "monthly-recurring"]:
+        for name in [
+            "daily-sales",
+            "hourly-metrics",
+            "minute-stock",
+            "weekly-revenue",
+            "monthly-recurring",
+            "scientific-mock",
+            "economics-cycle",
+            "sociology-mobility",
+            "electronics-reliability",
+            "epidemiology-wave",
+        ]:
             resp = client.post(f"/generate/preset/{name}")
             assert resp.status_code == 200, f"Preset {name} failed: {resp.text}"
 

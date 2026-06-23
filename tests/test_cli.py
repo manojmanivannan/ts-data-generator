@@ -184,6 +184,8 @@ class TestPresets:
         assert "daily-sales" in result.output
         assert "hourly-metrics" in result.output
         assert "minute-stock" in result.output
+        assert "economics-cycle" in result.output
+        assert "electronics-reliability" in result.output
 
     def test_preset_daily_sales(self, runner, temp_output):
         """Test daily-sales preset"""
@@ -230,6 +232,16 @@ class TestPresets:
         result = runner.invoke(main, [
             "generate",
             "--preset", "monthly-recurring",
+            "--output", temp_output
+        ])
+        assert result.exit_code == 0, f"Error: {result.output}"
+        assert Path(temp_output).exists()
+
+    def test_preset_economics_cycle(self, runner, temp_output):
+        """Test economics-cycle preset"""
+        result = runner.invoke(main, [
+            "generate",
+            "--preset", "economics-cycle",
             "--output", temp_output
         ])
         assert result.exit_code == 0, f"Error: {result.output}"

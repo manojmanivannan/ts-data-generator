@@ -62,3 +62,53 @@ def test_apply_config_overrides():
     assert "id=uuid" not in result.dimensions # Overrides replace
     assert result.metrics == ["value:LinearTrend(slope=1)"] # Empty tuple means no override
     assert result.anomalies == ["point(magnitude=10)"]
+
+
+def test_electronics_reliability_preset_uses_all_dimension_and_trend_features():
+    from ts_data_generator.schema.parser import load_preset
+
+    config = load_preset("electronics-reliability")
+
+    expected_dimension_functions = [
+        "auto_generate_name",
+        "ordered_choice",
+        "random_choice",
+        "random_int",
+        "random_float",
+        "constant",
+    ]
+    expected_trends = [
+        "LinearTrend",
+        "SinusoidalTrend",
+        "WeekendTrend",
+        "HolidayTrend",
+        "ARNoiseTrend",
+        "MarkovTrend",
+        "StockTrend",
+    ]
+    expected_anomalies = [
+        "PointAnomaly",
+        "MissingData",
+        "ConceptDrift",
+    ]
+
+    dimensions_blob = " ".join(config.dimensions)
+    metrics_blob = " ".join(config.metrics)
+    anomalies_blob = " ".join(config.anomalies)
+
+    for func_name in expected_dimension_functions:
+        assert f":{func_name}:" in dimensions_blob
+
+    for trend_name in expected_trends:
+        assert trend_name in metrics_blob
+
+    for anomaly_name in expected_anomalies:
+        assert anomaly_name in anomalies_blob
+
+    # Cover key anomaly feature variants expressible in DSL
+    assert "mode=additive" in anomalies_blob
+    assert "mode=replacement" in anomalies_blob
+    assert "mode=random" in anomalies_blob
+    assert "mode=burst" in anomalies_blob
+    assert "restore=true" in anomalies_blob
+    assert "restore=false" in anomalies_blob
