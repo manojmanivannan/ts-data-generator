@@ -127,6 +127,31 @@ PRESETS = {
         metrics=["mrr:LinearTrend(slope=30)"],
         anomalies=["mrr:ConceptDrift(start_timestamp=2022-01-31,target_mean=100000,target_std=5000,transition_window=15552000)"],
     ),
+    "scientific-mock": PresetConfig(
+        start="2025-01-01T00:00:00",
+        end="2025-01-07T00:00:00",
+        granularity="5min",
+        output="scientific_mock_data.csv",
+        dimensions=[
+            "experiment_id:auto_generate_name:exp_",
+            "sensor_type:random_choice:temperature,pressure,radiation,voltage",
+            "lab_location:ordered_choice:Site_A,Site_B,Site_C",
+            "batch_number:random_int:1,100",
+            "calibration_factor:random_float:0.9,1.1",
+        ],
+        metrics=[
+            "temperature:LinearTrend(offset=25,slope=0.1)+SinusoidalTrend(amplitude=5,freq=1)+ARNoiseTrend(decay=0.8,noise_std=0.5)",
+            "pressure:LinearTrend(offset=1013,slope=-1)+ARNoiseTrend(decay=0.9,noise_std=2)+WeekendTrend(weekend_effect=-10,direction=down)",
+            "radiation_level:MarkovTrend(states=[safe,elevated,danger],values=[0.1,1.5,5.0],stickiness=0.95,noise_std=0.1)+LinearTrend(offset=0,slope=0.01)",
+            "voltage:SinusoidalTrend(amplitude=2,freq=0.5)+ARNoiseTrend(decay=0.5,noise_std=0.2)+StockTrend(amplitude=5.0,direction=up,noise_level=0.1)",
+            "equipment_load:WeekendTrend(weekend_effect=-20,direction=down)+LinearTrend(offset=80,slope=0)+ARNoiseTrend(decay=0.7,noise_std=5)+SinusoidalTrend(amplitude=10,freq=1)",
+        ],
+        anomalies=[
+            "temperature:PointAnomaly(probability=0.01,magnitude=15)+MissingData(mode=burst,burst_probability=0.005,min_length=3,max_length=10)",
+            "pressure:PointAnomaly(probability=0.005,mode=replacement,magnitude=0.0)",
+            "radiation_level:PointAnomaly(probability=0.01,mode=additive,magnitude=10.0)",
+        ],
+    ),
 }
 
 
