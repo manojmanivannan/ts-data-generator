@@ -24,6 +24,20 @@ def test_parse_trend_spec_returns_dataclass():
     assert result.name == "linear"
     assert result.kwargs == {"slope": 2.5}
 
+
+def test_parse_trend_spec_with_bracket_lists():
+    from ts_data_generator.schema.parser import parse_trend_spec
+
+    spec = "MarkovTrend(states=[safe,elevated,danger],values=[0.1,1.5,5.0],stickiness=0.95,noise_std=0.1)"
+    result = parse_trend_spec(spec)
+
+    assert isinstance(result, TrendSpec)
+    assert result.name == "MarkovTrend"
+    assert result.kwargs["states"] == ["safe", "elevated", "danger"]
+    assert result.kwargs["values"] == [0.1, 1.5, 5.0]
+    assert result.kwargs["stickiness"] == 0.95
+    assert result.kwargs["noise_std"] == 0.1
+
 def test_load_preset():
     from ts_data_generator.schema.parser import load_preset
     

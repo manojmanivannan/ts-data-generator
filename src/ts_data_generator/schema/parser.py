@@ -5,8 +5,16 @@ from ts_data_generator.schema.types import AnomalySpec, DimensionSpec, PresetCon
 
 
 def _parse_value(value: str) -> int | float | str | bool | list[Any]:
+    value = value.strip()
+
     if value.lower() in ("true", "false"):
         return value.lower() == "true"
+
+    if value.startswith("[") and value.endswith("]"):
+        inner = value[1:-1]
+        if not inner.strip():
+            return []
+        return [_parse_value(v) for v in _split_bracket_aware(inner)]
 
     try:
         if "." in value:
@@ -19,6 +27,31 @@ def _parse_value(value: str) -> int | float | str | bool | list[Any]:
         return [v.strip() for v in value.split(",")]
 
     return value
+
+
+def _split_bracket_aware(text: str, sep: str = ",") -> list[str]:
+    """Split by separator while ignoring separators inside brackets."""
+    parts: list[str] = []
+    depth = 0
+    current: list[str] = []
+
+    for ch in text:
+        if ch == "[":
+            depth += 1
+            current.append(ch)
+        elif ch == "]":
+            depth = max(0, depth - 1)
+            current.append(ch)
+        elif ch == sep and depth == 0:
+            parts.append("".join(current).strip())
+            current = []
+        else:
+            current.append(ch)
+
+    if current:
+        parts.append("".join(current).strip())
+
+    return parts
 
 
 def parse_dimension_spec(spec: str) -> DimensionSpec:
@@ -51,7 +84,7 @@ def parse_dimension_spec(spec: str) -> DimensionSpec:
 
     args: tuple[Any, ...] = ()
     if args_str:
-        args_list = [arg.strip() for arg in args_str.split(",")]
+        args_list = _split_bracket_aware(args_str)
         parsed_args = [_parse_value(arg) for arg in args_list]
         args = tuple(parsed_args)
 
@@ -68,8 +101,7 @@ def parse_trend_spec(spec: str) -> TrendSpec:
 
     kwargs: dict[str, Any] = {}
     if kwargs_str:
-        # Extremely basic parser - actual parser needs bracket awareness
-        kv_pairs = [pair.strip() for pair in kwargs_str.split(",") if pair.strip()]
+        kv_pairs = [pair for pair in _split_bracket_aware(kwargs_str) if pair]
         for pair in kv_pairs:
             if "=" not in pair:
                 continue  # Ignore malformed for now

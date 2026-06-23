@@ -142,6 +142,26 @@ class TestGenerate:
         )
         assert resp.status_code == 400
 
+    def test_generate_with_random_int_dimension(self, client):
+        """Dimension functions that require multiple args should be unpacked correctly."""
+        resp = client.post(
+            "/generate",
+            json={
+                "start": "2024-01-01",
+                "end": "2024-01-02",
+                "granularity": "h",
+                "dimensions": ["batch_number:random_int:1,100"],
+                "metrics": ["value:LinearTrend(slope=1)"],
+                "seed": 42,
+            },
+        )
+        assert resp.status_code == 200, resp.text
+        data = resp.json()
+        assert data["rows"] > 0
+        first_row = data["data"][0]
+        assert isinstance(first_row["batch_number"], int)
+        assert 1 <= first_row["batch_number"] <= 100
+
     def test_generate_invalid_anomaly(self, client):
         resp = client.post(
             "/generate",
