@@ -85,6 +85,11 @@ def random_int(start: int, end: int, rng: RNGProtocol | None = None) -> Generato
     Example:
         CLI shorthand: ``name:random_int:1,100``
     """
+    if isinstance(start, list):
+        start = start[0]
+    if isinstance(end, list):
+        end = end[0]
+
     while True:
         if rng is not None:
             yield int(rng.integers(start, end + 1))
@@ -111,9 +116,14 @@ def random_float(
     Example:
         CLI shorthand: ``name:random_float:0.0,1.0``
     """
+    if isinstance(start, list):
+        start = start[0]
+    if isinstance(end, list):
+        end = end[0]
+
     while True:
         if rng is not None:
-            yield float(rng.uniform(start, end))
+            yield rng.uniform(start, end)
         else:
             yield random.uniform(start, end)
 

@@ -142,6 +142,26 @@ class TestGenerate:
         )
         assert resp.status_code == 400
 
+    def test_generate_with_random_int_dimension(self, client):
+        """Dimension functions that require multiple args should be unpacked correctly."""
+        resp = client.post(
+            "/generate",
+            json={
+                "start": "2024-01-01",
+                "end": "2024-01-02",
+                "granularity": "h",
+                "dimensions": ["batch_number:random_int:1,100"],
+                "metrics": ["value:LinearTrend(slope=1)"],
+                "seed": 42,
+            },
+        )
+        assert resp.status_code == 200, resp.text
+        data = resp.json()
+        assert data["rows"] > 0
+        first_row = data["data"][0]
+        assert isinstance(first_row["batch_number"], int)
+        assert 1 <= first_row["batch_number"] <= 100
+
     def test_generate_invalid_anomaly(self, client):
         resp = client.post(
             "/generate",
@@ -183,7 +203,7 @@ class TestGenerate:
 
 class TestGenerateFromPreset:
     def test_generate_from_preset(self, client):
-        resp = client.post("/generate/preset/daily-sales")
+        resp = client.post("/generate/preset/minute-stock")
         assert resp.status_code == 200
         data = resp.json()
         assert data["rows"] > 0
@@ -191,7 +211,7 @@ class TestGenerateFromPreset:
 
     def test_generate_from_preset_with_overrides(self, client):
         resp = client.post(
-            "/generate/preset/daily-sales",
+            "/generate/preset/minute-stock",
             json={"seed": 42},
         )
         assert resp.status_code == 200
@@ -204,7 +224,16 @@ class TestGenerateFromPreset:
 
     def test_all_presets_are_generatable(self, client):
         """Every named preset should produce data without error."""
-        for name in ["daily-sales", "hourly-metrics", "minute-stock", "weekly-revenue", "monthly-recurring"]:
+        for name in [
+            "minute-stock",
+            "weekly-revenue",
+            "monthly-recurring",
+            "scientific-mock",
+            "economics-cycle",
+            "sociology-mobility",
+            "electronics-reliability",
+            "epidemiology-wave",
+        ]:
             resp = client.post(f"/generate/preset/{name}")
             assert resp.status_code == 200, f"Preset {name} failed: {resp.text}"
 
@@ -225,10 +254,10 @@ class TestPresets:
         assert all("granularity" in p for p in presets)
 
     def test_get_preset_detail(self, client):
-        resp = client.get("/presets/daily-sales")
+        resp = client.get("/presets/minute-stock")
         assert resp.status_code == 200
         detail = resp.json()
-        assert detail["name"] == "daily-sales"
+        assert detail["name"] == "minute-stock"
         assert "config" in detail
         assert "start" in detail["config"]
 

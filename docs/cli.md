@@ -138,14 +138,6 @@ $ tsdata presets
 ```
 Available presets:
 
-  daily-sales
-    Start: 2024-01-01, End: 2024-01-31, Granularity: D
-    Dimensions: 2, Metrics: 1
-    Output: daily_sales.csv
-  hourly-metrics
-    Start: 2024-01-01, End: 2024-01-02, Granularity: h
-    Dimensions: 1, Metrics: 2
-    Output: hourly_metrics.csv
   minute-stock
     Start: 2024-01-01, End: 2024-01-02, Granularity: 5min
     Dimensions: 1, Metrics: 1
@@ -162,22 +154,22 @@ Available presets:
 
 To see exact config details of a preset:
 ```bash
-$ tsdata presets daily-sales
+$ tsdata presets minute-stock
 ```
 *Expected Output:*
 ```
-Preset: daily-sales
+Preset: minute-stock
 
   Start: 2024-01-01
-  End: 2024-01-31
-  Granularity: D
-  Dimensions: product:A,B,C,D, region:X,Y,Z
-  Metrics: sales:LinearTrend(slope=30)+WeekendTrend(weekend_effect=100)
-  Output: daily_sales.csv
+  End: 2024-01-02
+  Granularity: 5min
+  Dimensions: symbol:random_choice:API,GOOG,MSFT
+  Metrics: price:StockTrend(amplitude=5,direction=up,noise_level=0.01)
+  Output: minute_stock.csv
 
-Usage: tsdata generate --preset daily-sales --output <output.csv>
+Usage: tsdata generate --preset minute-stock --output <output.csv>
 Or override specific values:
-  tsdata generate --preset daily-sales --start 2024-02-01 --output mydata.csv
+  tsdata generate --preset minute-stock --start 2024-02-01 --output mydata.csv
 ```
 
 > [!NOTE]

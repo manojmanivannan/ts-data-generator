@@ -327,7 +327,7 @@ async function loadPresets() {
         </div>
         <div class="preset-meta">${p.dimensions_count} dims · ${p.metrics_count} metrics</div>
       `;
-      card.addEventListener('click', () => runPreset(p.name));
+      card.addEventListener('click', () => applyPresetToForm(p.name));
       grid.appendChild(card);
     });
   } catch(e) {
@@ -336,38 +336,49 @@ async function loadPresets() {
   }
 }
 
-async function runPreset(name) {
+async function applyPresetToForm(name) {
   // Highlight active card
   document.querySelectorAll('.preset-card').forEach(c => c.classList.remove('active'));
   document.querySelector(`.preset-card[data-name="${name}"]`)?.classList.add('active');
 
-  const btn = document.getElementById('btn-generate');
-  btn.classList.add('loading');
   hideError();
   try {
-    const res = await fetch(`/generate/preset/${name}`, { method: 'POST', headers: {'Content-Type':'application/json'} });
+    const res = await fetch(`/presets/${encodeURIComponent(name)}`);
     const data = await res.json();
     if (!res.ok) throw new Error(data.detail || JSON.stringify(data));
-    lastResult = data;
-    renderResults(data);
-    showToast('Preset generated', 'success');
-    document.getElementById('results-card').scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+    const cfg = data.config || {};
+    document.getElementById('f-start').value = cfg.start || '';
+    document.getElementById('f-end').value = cfg.end || '';
+    document.getElementById('f-gran').value = cfg.granularity || 'h';
+    document.getElementById('f-seed').value = cfg.seed != null ? cfg.seed : '';
+
+    setEntries('dim-entries', cfg.dimensions || [], 'product:random_choice:A,B,C');
+    setEntries('met-entries', cfg.metrics || [], 'sales:LinearTrend(slope=30)+WeekendTrend(weekend_effect=50)');
+    setEntries('anom-entries', cfg.anomalies || [], 'sales:PointAnomaly(probability=0.01,magnitude=5)');
+
+    showToast('Preset loaded into custom form', 'success');
+    document.getElementById('generate').scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+    // Auto-generate once hydrated so users get immediate output and can tweak further.
+    await generateFromForm();
   } catch(e) {
     showError(e.message);
-    showToast('Generation failed', 'err');
-  } finally {
-    btn.classList.remove('loading');
+    showToast('Failed to load preset', 'err');
   }
 }
 
 // ── Dynamic list entries ──
-function addEntry(containerId, placeholder, focus) {
+function addEntry(containerId, placeholder, focus, initialValue) {
   const container = document.getElementById(containerId);
   const div = document.createElement('div');
   div.className = 'list-entry';
   const input = document.createElement('input');
   input.type = 'text';
   input.placeholder = placeholder;
+  if (initialValue !== undefined && initialValue !== null) {
+    input.value = String(initialValue);
+  }
   const btn = document.createElement('button');
   btn.type = 'button';
   btn.className = 'btn-remove';
@@ -379,9 +390,21 @@ function addEntry(containerId, placeholder, focus) {
   if (focus !== false) input.focus();
 }
 
-// ── Form submission ──
-document.getElementById('gen-form').addEventListener('submit', async (e) => {
-  e.preventDefault();
+function setEntries(containerId, values, placeholder) {
+  const container = document.getElementById(containerId);
+  container.innerHTML = '';
+
+  if (!Array.isArray(values) || values.length === 0) {
+    addEntry(containerId, placeholder, false);
+    return;
+  }
+
+  values.forEach((value) => {
+    addEntry(containerId, placeholder, false, value);
+  });
+}
+
+async function generateFromForm() {
   const btn = document.getElementById('btn-generate');
   btn.classList.add('loading');
   hideError();
@@ -417,6 +440,12 @@ document.getElementById('gen-form').addEventListener('submit', async (e) => {
   } finally {
     btn.classList.remove('loading');
   }
+}
+
+// ── Form submission ──
+document.getElementById('gen-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  await generateFromForm();
 });
 
 // ── Render results table ──

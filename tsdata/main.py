@@ -304,18 +304,19 @@ def _build_datagen(request: GenerateRequest) -> DataGen:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
         try:
-            if isinstance(parsed.args, (tuple, list)) and len(parsed.args) > 1:
-                dg.add_dimension(parsed.name, dim_fn(parsed.args))
-            elif isinstance(parsed.args, (tuple, list)) and len(parsed.args) == 1:
-                dg.add_dimension(parsed.name, dim_fn(parsed.args[0]))
-            else:
-                dg.add_dimension(parsed.name, dim_fn(*parsed.args))
+            # Mirror CLI behavior: first try single-argument call for iterable-style
+            # dimension functions (e.g. random_choice), then retry as expanded args
+            # for functions like random_int/random_float.
+            dg.add_dimension(parsed.name, dim_fn(parsed.args))
         except TypeError as exc:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Invalid parameters for dimension '{parsed.name}' "
-                f"with function '{parsed.function_name}': {parsed.args}",
-            ) from exc
+            try:
+                dg.add_dimension(parsed.name, dim_fn(*parsed.args))
+            except TypeError as inner_exc:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid parameters for dimension '{parsed.name}' "
+                    f"with function '{parsed.function_name}': {parsed.args}",
+                ) from inner_exc
 
     # --- Metrics (collect trends + anomalies keyed by metric name) ---
     metrics_data: dict[str, dict[str, list]] = {}
@@ -495,8 +496,9 @@ def generate_from_preset(
 ) -> GenerateResponse:
     """Generate data from a named preset with optional overrides.
 
-    Available presets: daily-sales, hourly-metrics, minute-stock,
-    weekly-revenue, monthly-recurring.
+    Available presets include minute-stock, weekly-revenue,
+    monthly-recurring, scientific-mock, economics-cycle,
+    sociology-mobility, electronics-reliability, and epidemiology-wave.
     """
     if preset_name not in PRESETS:
         raise HTTPException(
