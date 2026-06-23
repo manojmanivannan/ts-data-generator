@@ -44,7 +44,7 @@ def test_load_preset():
     config = load_preset("minute-stock")
     assert isinstance(config, PresetConfig)
     assert "ticker:AAPL,MSFT,GOOGL" in config.dimensions
-    assert "price:StockTrend(noise_level=0.01)" in config.metrics
+    assert any("StockTrend(amplitude=10.0,direction=up,noise_level=0.01)" in m for m in config.metrics)
 
 def test_apply_config_overrides():
     from ts_data_generator.schema.parser import apply_config_overrides
