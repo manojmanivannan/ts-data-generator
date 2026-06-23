@@ -117,22 +117,6 @@ def parse_anomaly_spec(spec: str) -> AnomalySpec:
 
 
 PRESETS = {
-    "daily-sales": PresetConfig(
-        start="2024-01-01",
-        end="2024-01-31",
-        granularity="D",
-        output="daily_sales.csv",
-        dimensions=["product:A,B,C,D", "region:X,Y,Z"],
-        metrics=["sales:LinearTrend(slope=30)+WeekendTrend(weekend_effect=100)"],
-    ),
-    "hourly-metrics": PresetConfig(
-        start="2024-01-01",
-        end="2024-01-07",
-        granularity="h",
-        output="hourly_metrics.csv",
-        dimensions=["server:web1,web2,db1,db2", "metric:cpu,memory,disk"],
-        metrics=["value:SinusoidalTrend(freq=24,amplitude=10)+LinearTrend(slope=0.1)"],
-    ),
     "minute-stock": PresetConfig(
         start="2024-01-01 09:30:00",
         end="2024-01-01 16:00:00",

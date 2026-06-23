@@ -496,8 +496,9 @@ def generate_from_preset(
 ) -> GenerateResponse:
     """Generate data from a named preset with optional overrides.
 
-    Available presets: daily-sales, hourly-metrics, minute-stock,
-    weekly-revenue, monthly-recurring.
+    Available presets include minute-stock, weekly-revenue,
+    monthly-recurring, scientific-mock, economics-cycle,
+    sociology-mobility, electronics-reliability, and epidemiology-wave.
     """
     if preset_name not in PRESETS:
         raise HTTPException(

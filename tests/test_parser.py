@@ -41,10 +41,10 @@ def test_parse_trend_spec_with_bracket_lists():
 def test_load_preset():
     from ts_data_generator.schema.parser import load_preset
     
-    config = load_preset("daily-sales")
+    config = load_preset("minute-stock")
     assert isinstance(config, PresetConfig)
-    assert "product:A,B,C,D" in config.dimensions
-    assert "sales:LinearTrend(slope=30)+WeekendTrend(weekend_effect=100)" in config.metrics
+    assert "ticker:AAPL,MSFT,GOOGL" in config.dimensions
+    assert "price:StockTrend(noise_level=0.01)" in config.metrics
 
 def test_apply_config_overrides():
     from ts_data_generator.schema.parser import apply_config_overrides

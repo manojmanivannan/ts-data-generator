@@ -94,25 +94,6 @@ class GeneratorConfig(BaseModel):
 # ---------------------------------------------------------------------------
 
 PRESETS: dict[str, dict] = {
-    "daily-sales": {
-        "start": "2024-01-01",
-        "end": "2024-01-31",
-        "granularity": "D",
-        "dimensions": ["product:A,B,C,D", "region:X,Y,Z"],
-        "metrics": ["sales:LinearTrend(slope=30)+WeekendTrend(weekend_effect=100)"],
-        "output": "daily_sales.csv",
-    },
-    "hourly-metrics": {
-        "start": "2024-01-01",
-        "end": "2024-01-02",
-        "granularity": "h",
-        "dimensions": ["sensor:random_choice:S1,S2,S3"],
-        "metrics": [
-            "temperature:LinearTrend(slope=30)",
-            "humidity:SinusoidalTrend(amplitude=20,freq=24)",
-        ],
-        "output": "hourly_metrics.csv",
-    },
     "minute-stock": {
         "start": "2024-01-01",
         "end": "2024-01-02",
@@ -814,7 +795,7 @@ def presets(preset_name: str | None) -> None:
 
     \b
         tsdata presets              # List all presets
-        tsdata presets daily-sales  # Show details for daily-sales preset
+        tsdata presets minute-stock # Show details for minute-stock preset
     """
     if preset_name:
         if preset_name not in PRESETS:
@@ -845,7 +826,7 @@ def presets(preset_name: str | None) -> None:
             click.echo(f"    Output: {cfg['output']}")
             click.echo()
         click.echo("Use 'tsdata presets <name>' for detailed info on a preset.")
-        click.echo("Example: tsdata presets daily-sales")
+        click.echo("Example: tsdata presets minute-stock")
 
 
 if __name__ == "__main__":

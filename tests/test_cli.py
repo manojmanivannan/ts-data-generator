@@ -181,31 +181,9 @@ class TestPresets:
         """Test listing presets"""
         result = runner.invoke(main, ["presets"])
         assert result.exit_code == 0
-        assert "daily-sales" in result.output
-        assert "hourly-metrics" in result.output
         assert "minute-stock" in result.output
         assert "economics-cycle" in result.output
         assert "electronics-reliability" in result.output
-
-    def test_preset_daily_sales(self, runner, temp_output):
-        """Test daily-sales preset"""
-        result = runner.invoke(main, [
-            "generate",
-            "--preset", "daily-sales",
-            "--output", temp_output
-        ])
-        assert result.exit_code == 0, f"Error: {result.output}"
-        assert Path(temp_output).exists()
-
-    def test_preset_hourly_metrics(self, runner, temp_output):
-        """Test hourly-metrics preset"""
-        result = runner.invoke(main, [
-            "generate",
-            "--preset", "hourly-metrics",
-            "--output", temp_output
-        ])
-        assert result.exit_code == 0, f"Error: {result.output}"
-        assert Path(temp_output).exists()
 
     def test_preset_minute_stock(self, runner, temp_output):
         """Test minute-stock preset"""
@@ -251,7 +229,7 @@ class TestPresets:
         """Test preset with CLI override"""
         result = runner.invoke(main, [
             "generate",
-            "--preset", "daily-sales",
+            "--preset", "minute-stock",
             "--output", temp_output,
             "--start", "2024-06-01",
             "--end", "2024-06-05"

@@ -203,7 +203,7 @@ class TestGenerate:
 
 class TestGenerateFromPreset:
     def test_generate_from_preset(self, client):
-        resp = client.post("/generate/preset/daily-sales")
+        resp = client.post("/generate/preset/minute-stock")
         assert resp.status_code == 200
         data = resp.json()
         assert data["rows"] > 0
@@ -211,7 +211,7 @@ class TestGenerateFromPreset:
 
     def test_generate_from_preset_with_overrides(self, client):
         resp = client.post(
-            "/generate/preset/daily-sales",
+            "/generate/preset/minute-stock",
             json={"seed": 42},
         )
         assert resp.status_code == 200
@@ -225,8 +225,6 @@ class TestGenerateFromPreset:
     def test_all_presets_are_generatable(self, client):
         """Every named preset should produce data without error."""
         for name in [
-            "daily-sales",
-            "hourly-metrics",
             "minute-stock",
             "weekly-revenue",
             "monthly-recurring",
@@ -256,10 +254,10 @@ class TestPresets:
         assert all("granularity" in p for p in presets)
 
     def test_get_preset_detail(self, client):
-        resp = client.get("/presets/daily-sales")
+        resp = client.get("/presets/minute-stock")
         assert resp.status_code == 200
         detail = resp.json()
-        assert detail["name"] == "daily-sales"
+        assert detail["name"] == "minute-stock"
         assert "config" in detail
         assert "start" in detail["config"]
 
