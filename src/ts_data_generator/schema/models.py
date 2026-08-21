@@ -30,10 +30,14 @@ class MetricResult(NamedTuple):
     Attributes:
         signal: DataFrame with anomalies applied (trends + anomalies).
         baseline: DataFrame with trends only (no anomalies).
+        labels: DataFrame with a single boolean ``<name>_anomaly`` column
+            marking each point where the signal deviates from the clean
+            baseline. Empty when the metric has no anomalies.
     """
 
     signal: pd.DataFrame
     baseline: pd.DataFrame
+    labels: pd.DataFrame
 
 
 class Granularity(Enum):
@@ -132,7 +136,9 @@ class Metrics:
             rng: RNG instance passed through to each trend and anomaly.
 
         Returns:
-            MetricResult with .signal (trends + anomalies) and .baseline (trends only).
+            MetricResult with .signal (trends + anomalies), .baseline (trends
+            only), and .labels (boolean ``<name>_anomaly`` ground truth, empty
+            when this metric has no anomalies).
         """
         data = np.zeros(len(timestamps))
         for trend in self._trends:
@@ -142,7 +148,37 @@ class Metrics:
             data = anomaly.intervene(data, timestamps, rng=rng)
         signal_df = pd.DataFrame(data, columns=[self._name], index=timestamps)
         self._data = signal_df
-        return MetricResult(signal=signal_df, baseline=baseline_df)
+
+        labels_df = self._build_anomaly_labels(baseline_df, signal_df, timestamps)
+        return MetricResult(signal=signal_df, baseline=baseline_df, labels=labels_df)
+
+    def _build_anomaly_labels(
+        self,
+        baseline_df: pd.DataFrame,
+        signal_df: pd.DataFrame,
+        timestamps: pd.DatetimeIndex,
+    ) -> pd.DataFrame:
+        """Build the boolean ``<name>_anomaly`` ground-truth label column.
+
+        A point is labeled ``True`` when the signal deviates from the clean
+        baseline. The comparison is NaN-aware (``equal_nan=False``) so points
+        injected with ``NaN`` by ``MissingData`` are flagged, while clean points
+        are not. The column is only produced when this metric has anomalies;
+        otherwise an empty DataFrame is returned so no label column is emitted.
+
+        The label is stored as ``bool`` dtype, which keeps it out of the
+        normalizer and the plotter (both select ``number`` columns only).
+        """
+        if not self._anomalies:
+            return pd.DataFrame(index=timestamps)
+        baseline = baseline_df[self._name].to_numpy()
+        signal = signal_df[self._name].to_numpy()
+        mask = ~np.isclose(signal, baseline, equal_nan=False, atol=1e-9, rtol=1e-9)
+        return pd.DataFrame(
+            mask.astype(bool),
+            columns=[f"{self._name}_anomaly"],
+            index=timestamps,
+        )
 
     def __repr__(self) -> str:
         return str(self.to_json())

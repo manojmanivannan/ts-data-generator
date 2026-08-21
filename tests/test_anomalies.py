@@ -6,10 +6,12 @@ import pytest
 
 from ts_data_generator import DataGen
 from ts_data_generator.anomalies.base import Anomaly
+from ts_data_generator.anomalies.drift import ConceptDrift, DriftSegment
 from ts_data_generator.anomalies.missing import MissingData
 from ts_data_generator.anomalies.point import PointAnomaly
 from ts_data_generator.random import DefaultRNG, SeedableRNG
 from ts_data_generator.schema.models import Granularity, Metrics
+from ts_data_generator.utils.functions import random_choice
 from ts_data_generator.utils.trends import LinearTrend
 
 
@@ -994,3 +996,331 @@ class TestConceptDriftMultiSegment:
         result2 = cd.intervene(base, timestamps, rng=rng2)
 
         assert np.array_equal(result1, result2)
+
+
+# ---------------------------------------------------------------------------
+# Auto-derived boolean anomaly-label column
+# ---------------------------------------------------------------------------
+
+def _expected_mask(signal: np.ndarray, baseline: np.ndarray) -> np.ndarray:
+    """Replicate the core label derivation for test assertions."""
+    return ~np.isclose(signal, baseline, equal_nan=False, atol=1e-9, rtol=1e-9)
+
+
+class TestMetricResultLabels:
+    def test_with_anomalies_returns_bool_label_column(self):
+        n = 500
+        timestamps = pd.date_range("2024-01-01", periods=n, freq="min")
+        trend = LinearTrend(offset=10, noise_level=0)
+        pa = PointAnomaly(probability=0.1, magnitude=5, mode="additive")
+        m = Metrics(name="test", trends={trend}, anomalies=[pa])
+
+        result = m.generate(timestamps, rng=SeedableRNG(42))
+
+        assert not result.labels.empty
+        assert "test_anomaly" in result.labels.columns
+        assert result.labels["test_anomaly"].dtype == bool
+
+    def test_without_anomalies_returns_empty_labels(self):
+        n = 100
+        timestamps = pd.date_range("2024-01-01", periods=n, freq="min")
+        m = Metrics(name="test", trends={LinearTrend(offset=10, noise_level=0)})
+
+        result = m.generate(timestamps, rng=DefaultRNG())
+
+        assert result.labels.empty
+        assert "test_anomaly" not in result.labels.columns
+
+    def test_label_true_exactly_where_signal_differs_from_baseline(self):
+        n = 1000
+        timestamps = pd.date_range("2024-01-01", periods=n, freq="min")
+        trend = LinearTrend(offset=10, noise_level=0)
+        pa = PointAnomaly(probability=0.1, magnitude=5, mode="additive")
+        m = Metrics(name="test", trends={trend}, anomalies=[pa])
+
+        result = m.generate(timestamps, rng=SeedableRNG(42))
+
+        signal = result.signal["test"].to_numpy()
+        baseline = result.baseline["test"].to_numpy()
+        label = result.labels["test_anomaly"].to_numpy()
+
+        expected = _expected_mask(signal, baseline)
+        assert np.array_equal(label, expected)
+        assert int(label.sum()) == int(expected.sum())
+        assert int(label.sum()) > 0  # at least some anomalies flagged
+
+
+class TestPointAnomalyLabels:
+    def test_additive_label_marks_changed_points(self):
+        n = 1000
+        timestamps = pd.date_range("2024-01-01", periods=n, freq="min")
+        trend = LinearTrend(offset=10, noise_level=0)
+        pa = PointAnomaly(probability=0.1, magnitude=5, mode="additive")
+        m = Metrics(name="m", trends={trend}, anomalies=[pa])
+
+        result = m.generate(timestamps, rng=SeedableRNG(42))
+        signal = result.signal["m"].to_numpy()
+        baseline = result.baseline["m"].to_numpy()
+        label = result.labels["m_anomaly"].to_numpy()
+
+        assert label.dtype == bool
+        # True exactly where the value changed (10 -> 15)
+        changed = signal != baseline
+        assert np.array_equal(label, changed)
+        assert int(label.sum()) == int(changed.sum())
+
+    def test_replacement_label_marks_changed_points(self):
+        n = 1000
+        timestamps = pd.date_range("2024-01-01", periods=n, freq="min")
+        trend = LinearTrend(offset=10, noise_level=0)
+        pa = PointAnomaly(probability=0.1, magnitude=999, mode="replacement")
+        m = Metrics(name="m", trends={trend}, anomalies=[pa])
+
+        result = m.generate(timestamps, rng=SeedableRNG(42))
+        signal = result.signal["m"].to_numpy()
+        baseline = result.baseline["m"].to_numpy()
+        label = result.labels["m_anomaly"].to_numpy()
+
+        assert label.dtype == bool
+        changed = signal != baseline
+        assert np.array_equal(label, changed)
+
+
+class TestMissingDataLabels:
+    def test_random_mode_label_marks_nan_positions(self):
+        n = 2000
+        timestamps = pd.date_range("2024-01-01", periods=n, freq="min")
+        trend = LinearTrend(offset=10, noise_level=0)
+        md = MissingData(mode="random", probability=0.05)
+        m = Metrics(name="m", trends={trend}, anomalies=[md])
+
+        result = m.generate(timestamps, rng=SeedableRNG(42))
+        signal = result.signal["m"].to_numpy()
+        label = result.labels["m_anomaly"].to_numpy()
+
+        nan_mask = np.isnan(signal)
+        # Every NaN is labeled True
+        assert np.all(label[nan_mask])
+        # Non-NaN positions are False (MissingData only injects NaN, nothing else)
+        assert not np.any(label[~nan_mask])
+        assert int(label.sum()) == int(nan_mask.sum())
+
+    def test_patterned_mode_label_marks_scheduled_timestamps(self):
+        n = 100
+        timestamps = pd.date_range("2024-01-01", periods=n, freq="h")
+
+        def schedule(ts):
+            return ts.hour % 2 == 0  # even hours
+
+        trend = LinearTrend(offset=10, noise_level=0)
+        md = MissingData(mode="patterned", schedule=schedule)
+        m = Metrics(name="m", trends={trend}, anomalies=[md])
+
+        result = m.generate(timestamps, rng=DefaultRNG())
+        label = result.labels["m_anomaly"].to_numpy()
+
+        expected = np.array([schedule(ts) for ts in timestamps])
+        assert np.array_equal(label, expected)
+
+
+class TestConceptDriftLabels:
+    def test_restore_labels_drift_window_clean_outside(self):
+        n = 300
+        base_val = 20.0
+        timestamps = pd.date_range("2024-01-01", periods=n, freq="min")
+
+        # start=50, tw=20 (50-69), hold=100 (70-169), restore tw=20 (170-189), baseline 190+
+        seg = DriftSegment(
+            start_timestamp="2024-01-01 00:50:00",
+            transition_window=1200,
+            target_mean=80.0,
+            target_std=0.0,
+            hold_duration=6000,
+            restore=True,
+        )
+        trend = LinearTrend(offset=base_val, noise_level=0)
+        m = Metrics(name="m", trends={trend}, anomalies=[ConceptDrift(segments=[seg])])
+
+        result = m.generate(timestamps, rng=SeedableRNG(42))
+        label = result.labels["m_anomaly"].to_numpy()
+
+        # Before drift: clean baseline -> all False
+        assert not np.any(label[:50])
+        # Hold region: replaced with target (80 != 20) -> all True
+        assert np.all(label[70:170])
+        # After restore completes: back to baseline -> all False
+        assert not np.any(label[190:])
+        # Transition + restore regions contain anomalies (not all False)
+        assert np.any(label[50:190])
+
+    def test_no_restore_labels_hold_then_clean_after(self):
+        n = 100
+        timestamps = pd.date_range("2024-01-01", periods=n, freq="min")
+
+        # start=10, tw=5 (10-14), hold=20 (15-34), no restore, baseline 35+
+        seg = DriftSegment(
+            start_timestamp="2024-01-01 00:10:00",
+            transition_window=300,
+            target_mean=99.0,
+            target_std=0.0,
+            hold_duration=1200,
+            restore=False,
+        )
+        trend = LinearTrend(offset=0.0, noise_level=0)
+        m = Metrics(name="m", trends={trend}, anomalies=[ConceptDrift(segments=[seg])])
+
+        result = m.generate(timestamps, rng=SeedableRNG(42))
+        label = result.labels["m_anomaly"].to_numpy()
+
+        # Before drift: clean -> False
+        assert not np.any(label[:10])
+        # Hold region: target 99 != 0 -> True
+        assert np.all(label[15:35])
+        # After segment: back to baseline -> False
+        assert not np.any(label[35:])
+        # Transition has some True
+        assert np.any(label[10:15])
+
+
+class TestStackedAnomalyLabels:
+    def test_stacked_labels_are_union_of_masks(self):
+        n = 2000
+        timestamps = pd.date_range("2024-01-01", periods=n, freq="min")
+        trend = LinearTrend(offset=10, noise_level=0)
+
+        pa = PointAnomaly(probability=0.1, magnitude=100, mode="replacement")
+        md = MissingData(mode="random", probability=0.1)
+        m = Metrics(name="m", trends={trend}, anomalies=[pa, md])
+
+        result = m.generate(timestamps, rng=SeedableRNG(42))
+        signal = result.signal["m"].to_numpy()
+        baseline = result.baseline["m"].to_numpy()
+        label = result.labels["m_anomaly"].to_numpy()
+
+        # Union: True wherever either anomaly touched (derived from the diff)
+        expected = _expected_mask(signal, baseline)
+        assert np.array_equal(label, expected)
+        # Union should be at least as large as each individual contribution
+        nan_mask = np.isnan(signal)
+        assert int(label.sum()) >= int(nan_mask.sum())
+
+
+class TestDataGenAnomalyLabelColumn:
+    def test_label_column_present_only_for_anomalous_metrics(self):
+        dg = DataGen(
+            start_datetime="2024-01-01",
+            end_datetime="2024-01-03",
+            granularity=Granularity.HOURLY,
+            seed=42,
+        )
+        dg.add_metric(
+            "cpu",
+            {LinearTrend(offset=10, noise_level=0)},
+            anomalies=[PointAnomaly(probability=0.5, magnitude=5, mode="additive")],
+        )
+        dg.add_metric("clean", {LinearTrend(offset=10, noise_level=0)})
+
+        assert "cpu_anomaly" in dg.data.columns
+        assert "clean_anomaly" not in dg.data.columns
+
+    def test_label_column_is_bool_dtype(self):
+        dg = DataGen(
+            start_datetime="2024-01-01",
+            end_datetime="2024-01-03",
+            granularity=Granularity.HOURLY,
+            seed=42,
+        )
+        dg.add_metric(
+            "cpu",
+            {LinearTrend(offset=10, noise_level=0)},
+            anomalies=[PointAnomaly(probability=0.5, magnitude=5, mode="additive")],
+        )
+        assert dg.data["cpu_anomaly"].dtype == bool
+
+    def test_label_column_positioned_right_after_metric(self):
+        dg = DataGen(
+            start_datetime="2024-01-01",
+            end_datetime="2024-01-03",
+            granularity=Granularity.HOURLY,
+            seed=42,
+        )
+        dg.add_metric(
+            "cpu",
+            {LinearTrend(offset=10, noise_level=0)},
+            anomalies=[PointAnomaly(probability=0.5, magnitude=5, mode="additive")],
+        )
+        cols = list(dg.data.columns)
+        assert "cpu" in cols
+        assert "cpu_anomaly" in cols
+        assert cols.index("cpu_anomaly") == cols.index("cpu") + 1
+
+    def test_same_seed_produces_identical_label_columns(self):
+        def build():
+            dg = DataGen(
+                start_datetime="2024-01-01",
+                end_datetime="2024-01-02",
+                granularity=Granularity.HOURLY,
+                seed=42,
+            )
+            dg.add_metric(
+                "cpu",
+                {LinearTrend(offset=10, noise_level=0)},
+                anomalies=[PointAnomaly(probability=0.3, magnitude=5, mode="additive")],
+            )
+            return dg.data["cpu_anomaly"].to_numpy()
+
+        assert np.array_equal(build(), build())
+
+
+class TestAnomalyLabelAggregation:
+    def test_label_survives_aggregation_as_or(self):
+        dg = DataGen(
+            start_datetime="2024-01-01",
+            end_datetime="2024-01-03",
+            granularity=Granularity.HOURLY,
+            seed=42,
+        )
+        dg.add_dimension("region", random_choice(["US", "EU"]))
+        dg.add_metric(
+            "cpu",
+            {LinearTrend(offset=10, noise_level=0)},
+            anomalies=[PointAnomaly(probability=0.3, magnitude=5, mode="additive")],
+        )
+
+        raw = dg.data
+        agg = dg.aggregate("D")
+
+        assert "cpu_anomaly" in agg.columns
+        assert agg["cpu_anomaly"].dtype == bool
+        # OR semantics: aggregated True count cannot exceed raw True count
+        assert int(agg["cpu_anomaly"].sum()) <= int(raw["cpu_anomaly"].sum())
+
+        # OR semantics, exactly: a (region, day) group is True iff any raw row
+        # in that group is True.
+        raw_reset = raw.reset_index().rename(columns={"index": "ts"})
+        raw_reset["day"] = raw_reset["ts"].dt.floor("D")
+        manual_any = raw_reset.groupby(["region", "day"])["cpu_anomaly"].any()
+        assert int(agg["cpu_anomaly"].sum()) == int(manual_any.sum())
+
+
+class TestAnomalyLabelNormalization:
+    def test_normalizer_skips_bool_label_column(self):
+        dg = DataGen(
+            start_datetime="2024-01-01",
+            end_datetime="2024-01-03",
+            granularity=Granularity.HOURLY,
+            seed=42,
+        )
+        dg.add_metric(
+            "cpu",
+            {LinearTrend(offset=10, noise_level=0)},
+            anomalies=[PointAnomaly(probability=0.3, magnitude=5, mode="additive")],
+        )
+
+        true_count_before = int(dg.data["cpu_anomaly"].sum())
+        dg.normalize("min-max")
+
+        # Label untouched: still bool, same values
+        assert dg.data["cpu_anomaly"].dtype == bool
+        assert set(dg.data["cpu_anomaly"].unique()).issubset({True, False})
+        assert int(dg.data["cpu_anomaly"].sum()) == true_count_before

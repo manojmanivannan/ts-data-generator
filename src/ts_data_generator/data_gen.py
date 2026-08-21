@@ -547,6 +547,8 @@ class DataGen:
                 result = metric.generate(timestamps, rng=self._rng)
                 self._baselines[metric.name] = result.baseline
                 df = pd.concat([df, result.signal], axis=1)
+                if not result.labels.empty:
+                    df = pd.concat([df, result.labels], axis=1)
         return df
 
     def _build_dimensions(
@@ -576,7 +578,13 @@ class DataGen:
             chain.from_iterable(s.split(",") for s in self.multi_items.keys())
         )
 
-        column_order = ["epoch"] + dimension_names + metric_names + multi_item_names
+        column_order: list[str] = ["epoch", *dimension_names]
+        for name in metric_names:
+            column_order.append(name)
+            label_col = f"{name}_anomaly"
+            if label_col in data.columns:
+                column_order.append(label_col)
+        column_order.extend(multi_item_names)
         available = [col for col in column_order if col in data.columns]
         return data.reindex(columns=available)
 
