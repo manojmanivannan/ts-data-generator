@@ -180,3 +180,49 @@ tsdata generate \
   --anomalies "cpu_usage:PointAnomaly(probability=0.015,magnitude=(30,50))+MissingData(mode=burst,burst_probability=0.01)" \
   --output cpu_telemetry.csv
 ```
+
+---
+
+## 🏷️ Auto-Labeled Output for ML
+
+Any metric that has anomalies configured automatically emits a **boolean ground-truth label column** alongside the metric. This turns your generated data into a ready-to-train labeled-anomaly dataset: you can compare the clean baseline against the contaminated stream to get perfect, point-level labels for benchmarking anomaly-detection models — no manual labeling required.
+
+For a metric named `cpu_usage`, the generator adds a `cpu_usage_anomaly` boolean column where a `True` marks a data point that an anomaly actually changed. A point is labeled `True` when the contaminated signal differs from the clean baseline. The comparison is NaN-aware, so `MissingData` gaps (injected `NaN`s) are flagged `True` just like `PointAnomaly` spikes.
+
+Key behaviors:
+
+*   **Naming:** The label column is always `<metric_name>_anomaly` (e.g. `cpu_usage` → `cpu_usage_anomaly`).
+*   **All anomaly types covered:** `PointAnomaly` (additive and replacement), `MissingData` (random/burst/patterned), and `ConceptDrift`. For drift, the entire drift window — transition in, hold, and restore — is labeled `True`, because every point in that regime deviates from the clean baseline.
+*   **Appears only when needed:** The label column is created only for metrics that actually have anomalies configured. Metrics with no anomalies get no label column.
+*   **Safe with normalize & plot:** The column is `bool` dtype, so `normalize()` and `plot()` — which only operate on numeric columns — skip it automatically. The labels are never rescaled or plotted.
+*   **Survives aggregation:** When you call `dg.aggregate(...)`, the label column is aggregated as a boolean OR (`max`): a coarser resample window is labeled `True` if any point within it was anomalous.
+*   **Automatic in CSV/CLI/presets:** No extra flag or config is needed. Every `tsdata generate` command (and every preset) that declares `--anomalies` automatically gains the matching `_anomaly` columns in its output CSV.
+
+```python
+from ts_data_generator import DataGen
+from ts_data_generator.utils.trends import LinearTrend
+from ts_data_generator.anomalies import PointAnomaly, MissingData
+
+dg = DataGen(seed=42)
+dg.start_datetime = "2024-01-01"
+dg.end_datetime = "2024-01-02"
+dg.to_granularity("5min")
+
+dg.add_metric(
+    name="cpu_usage",
+    trends={LinearTrend(offset=30.0, slope=0.1)},
+    anomalies=[
+        PointAnomaly(probability=0.05, mode="additive", magnitude=(10.0, 15.0)),
+        MissingData(mode="burst", burst_probability=0.01, min_length=2, max_length=4),
+    ],
+)
+
+# dg.data now includes a boolean `cpu_usage_anomaly` column — your ground-truth labels
+print(dg.data[["cpu_usage", "cpu_usage_anomaly"]].head())
+print(f"{dg.data['cpu_usage_anomaly'].sum()} labeled anomalies")
+```
+
+```bash
+# CLI: the cpu_usage_anomaly column is added to the CSV automatically — no extra flag needed
+tsdata generate --anomalies "cpu_usage:PointAnomaly(probability=0.05,magnitude=(10,15))" ...
+```

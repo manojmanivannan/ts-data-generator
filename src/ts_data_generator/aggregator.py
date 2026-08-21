@@ -61,6 +61,13 @@ def aggregate_dataframe(
         name: metric.aggregation_type.value for name, metric in metrics.items()
     }
 
+    # Auto-derived anomaly-label columns aggregate as a boolean OR (``max``):
+    # if any point in a resample window was anomalous, label the window True.
+    for name in metrics:
+        label_col = f"{name}_anomaly"
+        if label_col in data.columns:
+            agg_dict[label_col] = "max"
+
     group_keys = list(dimensions.keys())
 
     for key, multi_item in multi_items.items():
