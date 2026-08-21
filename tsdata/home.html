@@ -905,6 +905,27 @@
       });
     }
 
+    // Default the Graphic Walker explorer to its "Data" tab. The store is
+    // handed to us via `storeRef` but only assigned in a post-mount effect, so
+    // poll until it appears, call setSegmentKey("data"), then stop. Each
+    // (re)mount gets a fresh store, so this re-applies on every renderViz().
+    let dataTabTimer = null;
+    function defaultToDataTab(storeRef) {
+      if (dataTabTimer) clearInterval(dataTabTimer);
+      const started = Date.now();
+      dataTabTimer = setInterval(() => {
+        const st = storeRef.current;
+        if (st && typeof st.setSegmentKey === 'function') {
+          st.setSegmentKey('data');
+          clearInterval(dataTabTimer);
+          dataTabTimer = null;
+        } else if (Date.now() - started > 5000) { // give up after 5s
+          clearInterval(dataTabTimer);
+          dataTabTimer = null;
+        }
+      }, 50);
+    }
+
     async function renderViz() {
       if (!lastResult) return;
       const el = document.getElementById('gw');
@@ -917,16 +938,23 @@
       try {
         const mod = await loadGW();
         el.innerHTML = ''; // clear any prior mount / placeholder
+        // Graphic Walker defaults its explorer to the "Visualization" tab
+        // (segmentKey = "vis"). Pass a storeRef so we can reach the store and
+        // switch it to the "Data" tab ("data") once it attaches — the store is
+        // assigned to the ref in a post-mount effect, so we poll briefly.
+        const storeRef = { current: null };
         mod.embedGraphicWalker(el, {
           data: lastResult.data,
           fields,
           appearance: document.documentElement.dataset.theme === 'light' ? 'light' : 'dark',
           hideProfiling: true,
+          storeRef,
           defaultConfig: {
             config: { defaultAggregated: false }, // "Aggregation" off by default
             layout: { size: { mode: "full" } },    // "Layout Mode" prefilled to "Container"
           },
         });
+        defaultToDataTab(storeRef);
       } catch (e) {
         el.innerHTML = `<div class="gw-msg">Visualization failed to load: ${escHtml(e.message || String(e))}</div>`;
       }
