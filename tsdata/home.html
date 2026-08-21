@@ -33,9 +33,27 @@
       --border: #1e2a45;
       --error: #ff4d6a;
       --warn: #ffb020;
+      --hdr-bg: rgba(7, 11, 20, .85);
       --radius: 10px;
       --mono: 'JetBrains Mono', monospace;
       --sans: 'DM Sans', system-ui, sans-serif;
+    }
+
+    /* Light theme — opt in via [data-theme="light"] on <html>. */
+    :root[data-theme="light"] {
+      --bg: #f6f8fa;
+      --surface: #ffffff;
+      --elevated: #eef1f6;
+      --accent: #009e6e;
+      --accent-dim: #007a55;
+      --accent-glow: rgba(0, 158, 110, .10);
+      --text: #1a2233;
+      --text-sec: #5a6478;
+      --text-muted: #98a2b3;
+      --border: #dde3ec;
+      --error: #d92d4a;
+      --warn: #b8780a;
+      --hdr-bg: rgba(246, 248, 250, .85);
     }
 
     html {
@@ -67,7 +85,7 @@
       top: 0;
       z-index: 50;
       backdrop-filter: blur(16px);
-      background: rgba(7, 11, 20, .85);
+      background: var(--hdr-bg);
       border-bottom: 1px solid var(--border);
       padding: .75rem 1.5rem;
       display: flex;
@@ -117,6 +135,29 @@
     .hdr-links a:hover {
       color: var(--accent);
       text-decoration: none
+    }
+
+    /* ── theme toggle ── */
+    .theme-toggle {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 1.85rem;
+      height: 1.85rem;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--elevated);
+      color: var(--text-sec);
+      cursor: pointer;
+      font-size: 1rem;
+      line-height: 1;
+      transition: all .2s;
+      margin-left: .5rem
+    }
+
+    .theme-toggle:hover {
+      border-color: var(--accent);
+      color: var(--accent)
     }
 
     /* ── layout ── */
@@ -681,6 +722,16 @@
       animation-delay: .2s
     }
   </style>
+  <!-- Apply saved/system theme before first paint to avoid a flash. -->
+  <script>
+    (function () {
+      var t = localStorage.getItem('tsdata-theme');
+      if (t !== 'light' && t !== 'dark') {
+        t = (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) ? 'light' : 'dark';
+      }
+      document.documentElement.dataset.theme = t;
+    })();
+  </script>
 </head>
 
 <body>
@@ -696,6 +747,7 @@
       <a href="#generate">Generate</a>
       <a href="https://manojmanivannan.github.io/ts-data-generator/" target="_blank">Docs</a>
       <a href="/docs" target="_blank">API</a>
+      <button id="theme-toggle" class="theme-toggle" type="button" title="Toggle light/dark theme" aria-label="Toggle theme"></button>
     </nav>
   </header>
 
@@ -868,9 +920,12 @@
         mod.embedGraphicWalker(el, {
           data: lastResult.data,
           fields,
-          appearance: "dark",
+          appearance: document.documentElement.dataset.theme === 'light' ? 'light' : 'dark',
           hideProfiling: true,
-          defaultConfig: { layout: { mode: "full" } }, // "Layout Mode" prefilled to "Container"
+          defaultConfig: {
+            config: { defaultAggregated: false }, // "Aggregation" off by default
+            layout: { size: { mode: "full" } },    // "Layout Mode" prefilled to "Container"
+          },
         });
       } catch (e) {
         el.innerHTML = `<div class="gw-msg">Visualization failed to load: ${escHtml(e.message || String(e))}</div>`;
@@ -1114,7 +1169,37 @@
       toastTimer = setTimeout(() => el.classList.remove('visible'), 2500);
     }
 
+    // ── Theme (light/dark) ──
+    // Preference persists in localStorage; falls back to the system setting,
+    // then to dark (the original palette). Graphic Walker's `appearance` is
+    // re-applied on every theme switch (it's read at mount time), so toggling
+    // re-mounts the viz to match.
+    function setTheme(t) {
+      document.documentElement.dataset.theme = t;
+      localStorage.setItem('tsdata-theme', t);
+      const btn = document.getElementById('theme-toggle');
+      if (btn) btn.textContent = t === 'light' ? '☾' : '☀';
+      if (lastResult) renderViz(); // re-mount with the matching appearance
+    }
+
+    function toggleTheme() {
+      setTheme(document.documentElement.dataset.theme === 'light' ? 'dark' : 'light');
+    }
+
+    function initTheme() {
+      const saved = localStorage.getItem('tsdata-theme');
+      if (saved === 'light' || saved === 'dark') {
+        setTheme(saved);
+      } else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) {
+        setTheme('light');
+      } else {
+        setTheme('dark');
+      }
+    }
+
     // ── Init ──
+    initTheme();
+    document.getElementById('theme-toggle').addEventListener('click', toggleTheme);
     loadPresets();
     loadGW().catch(() => { }); // warm the Graphic Walker CDN cache in the background
   </script>
