@@ -36,3 +36,4 @@ class PresetConfig:
     dimensions: list[str] = field(default_factory=list)
     metrics: list[str] = field(default_factory=list)
     anomalies: list[str] = field(default_factory=list)
+    expand_dimensions: bool = False

@@ -933,3 +933,220 @@ class TestShowSampleConfig:
         assert result.exit_code == 0
         # Should not contain the "Generated" message that data generation produces
         assert "Generated" not in result.output
+
+
+class TestExpandDimensionsFlag:
+    """Tests for the --expand-dimensions CLI flag (#55)."""
+
+    @pytest.fixture
+    def runner(self):
+        return CliRunner()
+
+    @pytest.fixture
+    def temp_output(self, runner):
+        with tempfile.NamedTemporaryFile(suffix=".csv", delete=False) as f:
+            yield f.name
+        Path(f.name).unlink(missing_ok=True)
+
+    @staticmethod
+    def _row_count(path: str) -> int:
+        """Data rows in a generated CSV (excludes the single header row)."""
+        content = Path(path).read_text()
+        return len(content.strip().splitlines()) - 1
+
+    # 4 daily timestamps x one random_choice dim with 3 values.
+    BASE = [
+        "generate",
+        "--start", "2019-01-01",
+        "--end", "2019-01-04",
+        "--granularity", "D",
+        "--dims", "product:random_choice:A,B,C",
+        "--mets", "sales:LinearTrend(slope=1)",
+    ]
+
+    def _config(self, temp_output: str, expand: bool | None = None) -> str:
+        config = {
+            "start": "2019-01-01",
+            "end": "2019-01-04",
+            "granularity": "D",
+            "dimensions": ["product:random_choice:A,B,C"],
+            "metrics": ["sales:LinearTrend(slope=1)"],
+            "output": temp_output,
+        }
+        if expand is not None:
+            config["expand_dimensions"] = expand
+        f = tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False)
+        json.dump(config, f)
+        f.flush()
+        f.close()
+        return f.name
+
+    def test_flag_appears_in_help(self, runner):
+        result = runner.invoke(main, ["generate", "--help"])
+        assert result.exit_code == 0
+        assert "--expand-dimensions" in result.output
+        assert "--no-expand-dimensions" in result.output
+
+    def test_flag_off_by_default(self, runner, temp_output):
+        result = runner.invoke(main, self.BASE + ["--output", temp_output])
+        assert result.exit_code == 0, f"Error: {result.output}"
+        assert self._row_count(temp_output) == 4  # one row per timestamp
+
+    def test_flag_on_expands_rows(self, runner, temp_output):
+        result = runner.invoke(main, self.BASE + ["--expand-dimensions", "--output", temp_output])
+        assert result.exit_code == 0, f"Error: {result.output}"
+        assert self._row_count(temp_output) == 12  # 4 timestamps x 3 products
+
+    def test_no_expand_flag_explicit_off(self, runner, temp_output):
+        result = runner.invoke(
+            main, self.BASE + ["--no-expand-dimensions", "--output", temp_output]
+        )
+        assert result.exit_code == 0, f"Error: {result.output}"
+        assert self._row_count(temp_output) == 4
+
+    def test_config_file_expand_true(self, runner, temp_output):
+        path = self._config(temp_output, expand=True)
+        try:
+            result = runner.invoke(main, ["generate", "--config", path])
+            assert result.exit_code == 0, f"Error: {result.output}"
+            assert self._row_count(temp_output) == 12
+        finally:
+            Path(path).unlink(missing_ok=True)
+
+    def test_config_false_no_flag_not_expanded(self, runner, temp_output):
+        path = self._config(temp_output, expand=False)
+        try:
+            result = runner.invoke(main, ["generate", "--config", path])
+            assert result.exit_code == 0, f"Error: {result.output}"
+            assert self._row_count(temp_output) == 4
+        finally:
+            Path(path).unlink(missing_ok=True)
+
+    def test_cli_flag_overrides_config_true(self, runner, temp_output):
+        # config says false, CLI flag says true -> expanded (CLI > config).
+        path = self._config(temp_output, expand=False)
+        try:
+            result = runner.invoke(main, ["generate", "--config", path, "--expand-dimensions"])
+            assert result.exit_code == 0, f"Error: {result.output}"
+            assert self._row_count(temp_output) == 12
+        finally:
+            Path(path).unlink(missing_ok=True)
+
+    def test_cli_flag_overrides_config_false(self, runner, temp_output):
+        # config says true, CLI flag says false -> not expanded (CLI > config).
+        path = self._config(temp_output, expand=True)
+        try:
+            result = runner.invoke(main, ["generate", "--config", path, "--no-expand-dimensions"])
+            assert result.exit_code == 0, f"Error: {result.output}"
+            assert self._row_count(temp_output) == 4
+        finally:
+            Path(path).unlink(missing_ok=True)
+
+    def test_config_expand_overrides_preset(self, runner, temp_output):
+        # Both --config (expand=True) and --preset given: config's expand value wins
+        # over the preset's False. Asserted as a ratio so it holds regardless of the
+        # pre-existing config/preset date+granularity interaction.
+        path_off = self._config(temp_output, expand=False)
+        temp_on = temp_output + ".on.csv"
+        path_on = self._config(temp_on, expand=True)
+        try:
+            r_off = runner.invoke(
+                main,
+                ["generate", "--config", path_off, "--preset", "weekly-revenue",
+                 "--output", temp_output],
+            )
+            assert r_off.exit_code == 0, f"Error: {r_off.output}"
+            off = self._row_count(temp_output)
+
+            r_on = runner.invoke(
+                main,
+                ["generate", "--config", path_on, "--preset", "weekly-revenue",
+                 "--output", temp_on],
+            )
+            assert r_on.exit_code == 0, f"Error: {r_on.output}"
+            on = self._row_count(temp_on)
+            # config's product dim has 3 values -> expansion triples the rows.
+            assert on == off * 3
+        finally:
+            Path(path_off).unlink(missing_ok=True)
+            Path(path_on).unlink(missing_ok=True)
+            Path(temp_on).unlink(missing_ok=True)
+
+    def test_preset_default_not_expanded_flag_expands(self, runner, temp_output):
+        # weekly-revenue preset has one enumerable dim (ordered_choice, 3 values)
+        # and carries expand_dimensions=False. Without the flag: not expanded.
+        result_off = runner.invoke(
+            main, ["generate", "--preset", "weekly-revenue", "--output", temp_output]
+        )
+        assert result_off.exit_code == 0, f"Error: {result_off.output}"
+        off_rows = self._row_count(temp_output)
+
+        temp_on = temp_output + ".on.csv"
+        result_on = runner.invoke(
+            main,
+            ["generate", "--preset", "weekly-revenue", "--expand-dimensions", "--output", temp_on],
+        )
+        assert result_on.exit_code == 0, f"Error: {result_on.output}"
+        on_rows = self._row_count(temp_on)
+        Path(temp_on).unlink(missing_ok=True)
+
+        # 3 department values -> expanded rows = off rows x 3 (preset default is false).
+        assert on_rows == off_rows * 3
+
+    def test_non_enumerable_dim_with_flag_errors(self, runner, temp_output):
+        result = runner.invoke(
+            main,
+            [
+                "generate",
+                "--start", "2019-01-01",
+                "--end", "2019-01-02",
+                "--granularity", "D",
+                "--dims", "port:random_int:1,100",
+                "--mets", "sales:LinearTrend(slope=1)",
+                "--expand-dimensions",
+                "--output", temp_output,
+            ],
+        )
+        assert result.exit_code != 0
+        # The clear ExpandError surfaces as the CLI's exception.
+        from ts_data_generator.exceptions import ExpandError
+
+        assert isinstance(result.exception, ExpandError)
+        assert "cannot be expanded" in str(result.exception)
+
+    def test_cli_presets_all_carry_false(self):
+        for name, cfg in PRESETS.items():
+            assert cfg.get("expand_dimensions") is False, name
+
+    def test_parser_presets_all_carry_false(self):
+        from ts_data_generator.schema.parser import PRESETS as PARSER_PRESETS
+
+        for name, cfg in PARSER_PRESETS.items():
+            assert cfg.expand_dimensions is False, name
+
+    def test_generator_config_default_false(self):
+        from ts_data_generator.cli import GeneratorConfig
+
+        gc = GeneratorConfig(
+            start="2019-01-01", end="2019-01-02", granularity="D", output="x.csv"
+        )
+        assert gc.expand_dimensions is False
+
+    def test_generator_config_accepts_true(self):
+        from ts_data_generator.cli import GeneratorConfig
+
+        gc = GeneratorConfig(
+            start="2019-01-01",
+            end="2019-01-02",
+            granularity="D",
+            output="x.csv",
+            expand_dimensions=True,
+        )
+        assert gc.expand_dimensions is True
+
+    def test_sample_config_carries_field(self, runner):
+        result = runner.invoke(main, ["generate", "--show-sample-config"])
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert "expand_dimensions" in data
+        assert data["expand_dimensions"] is False

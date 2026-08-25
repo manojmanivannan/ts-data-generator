@@ -3,6 +3,7 @@
     "end": "2024-01-30",
     "granularity": "h",
     "seed": 42,
+    "expand_dimensions": false,
     "output": "output.csv",
     "dimensions": [
         "product:random_choice:Laptop,Phone,Tablet,Watch",

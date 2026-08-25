@@ -78,6 +78,11 @@ class GeneratorConfig(BaseModel):
     metrics: list[str] = Field(default_factory=list, description="Metric specs")
     anomalies: list[str] = Field(default_factory=list, description="Anomaly specs")
     seed: int | None = Field(default=None, description="Random seed")
+    expand_dimensions: bool = Field(
+        default=False,
+        description="Emit one row per (timestamp x Cartesian product of enumerable "
+        "dimensions' distinct values), each combination carrying its own series",
+    )
     output: str = Field(..., description="Output CSV file path")
 
     @field_validator("granularity")
@@ -102,6 +107,7 @@ PRESETS: dict[str, dict] = {
         "metrics": ["price:LinearTrend(offset=100,slope=0.2)+MarkovTrend(states=[bear,neutral,bull],values=[10,50,120],stickiness=0.98,noise_std=2.0)+StockTrend(amplitude=10.0,direction=up,noise_level=0.01)"],
         "anomalies": ["price:PointAnomaly(probability=0.05,magnitude=5.0,mode=additive)"],
         "output": "minute_stock.csv",
+        "expand_dimensions": False,
     },
     "weekly-revenue": {
         "start": "2020-01-01",
@@ -110,6 +116,7 @@ PRESETS: dict[str, dict] = {
         "dimensions": ["department:ordered_choice:electronics,clothing,home"],
         "metrics": ["revenue:LinearTrend(offset=10000,slope=10)+SinusoidalTrend(freq=365,amplitude=2000)+MarkovTrend(states=[low,normal,promo],values=[0,2000,8000],stickiness=0.85,noise_std=100)+ARNoiseTrend(decay=0.98,noise_std=50)"],
         "output": "weekly_revenue.csv",
+        "expand_dimensions": False,
     },
     "monthly-recurring": {
         "start": "2018-01-01",
@@ -119,6 +126,7 @@ PRESETS: dict[str, dict] = {
         "metrics": ["mrr:LinearTrend(offset=50000,slope=10)+MarkovTrend(states=[slow,normal,fast],values=[1000,5000,15000],stickiness=0.9,noise_std=500)+ARNoiseTrend(decay=0.85,noise_std=1000)"],
         "anomalies": ["mrr:ConceptDrift(start_timestamp=2022-01-31,target_mean=100000,target_std=5000,transition_window=15552000)"],
         "output": "monthly_mrr.csv",
+        "expand_dimensions": False,
     },
     "scientific-mock": {
         "start": "2025-01-01T00:00:00",
@@ -144,6 +152,7 @@ PRESETS: dict[str, dict] = {
             "radiation_level:PointAnomaly(probability=0.01,mode=additive,magnitude=10.0)",
         ],
         "output": "scientific_mock_data.csv",
+        "expand_dimensions": False,
     },
     "economics-cycle": {
         "start": "2024-01-01",
@@ -164,6 +173,7 @@ PRESETS: dict[str, dict] = {
             "inflation_rate:PointAnomaly(probability=0.004,mode=additive,magnitude=2.0)",
         ],
         "output": "economics_cycle.csv",
+        "expand_dimensions": False,
     },
     "sociology-mobility": {
         "start": "2023-01-01",
@@ -184,6 +194,7 @@ PRESETS: dict[str, dict] = {
             "trust_index:MissingData(mode=burst,burst_probability=0.01,min_length=2,max_length=5)",
         ],
         "output": "sociology_mobility.csv",
+        "expand_dimensions": False,
     },
     "electronics-reliability": {
         "start": "2025-03-01T00:00:00",
@@ -214,6 +225,7 @@ PRESETS: dict[str, dict] = {
             "supplier_shock_index:ConceptDrift(start_timestamp=2025-03-03T12:00:00,target_mean=40,target_std=4,transition_window=3600,hold_duration=21600,restore=true)+ConceptDrift(start_timestamp=2025-03-05T18:00:00,target_mean=15,target_std=3,transition_window=1800,hold_duration=14400,restore=false)",
         ],
         "output": "electronics_reliability.csv",
+        "expand_dimensions": False,
     },
     "epidemiology-wave": {
         "start": "2023-01-01",
@@ -237,6 +249,7 @@ PRESETS: dict[str, dict] = {
             "testing_volume:MissingData(mode=burst,burst_probability=0.008,min_length=1,max_length=3)",
         ],
         "output": "epidemiology_wave.csv",
+        "expand_dimensions": False,
     },
 }
 
@@ -484,6 +497,13 @@ def main():
     help="Random seed for deterministic generation",
 )
 @click.option(
+    "--expand-dimensions/--no-expand-dimensions",
+    "expand_dimensions",
+    default=None,
+    help="Emit one row per (timestamp x product of enumerable dimensions' values). "
+    "Falls through to config > preset > false when absent.",
+)
+@click.option(
     "--config",
     type=click.Path(exists=True, path_type=Path),
     help="JSON config file. Use 'tsdata generate --help' for config schema",
@@ -508,6 +528,7 @@ def generate(
     anomalies: tuple[str, ...],
     output: str | None,
     seed: int | None,
+    expand_dimensions: bool | None,
     config: Path | None,
     preset: str | None,
     show_sample_config: bool,
@@ -609,6 +630,7 @@ def generate(
             "sales:PointAnomaly(probability=0.01,magnitude=5)+MissingData(probability=0.05)"
           ],
           "seed": 42,
+          "expand_dimensions": false,
           "output": "data.csv"
         }
     """
@@ -646,9 +668,23 @@ def generate(
         output = config_data.get("output")
         if not seed:
             seed = config_data.get("seed")
+        # `is None` (not `not seed`-style truthiness) because False is a meaningful
+        # explicit value for --no-expand-dimensions and must not fall through.
+        if expand_dimensions is None:
+            expand_dimensions = config_data.get("expand_dimensions", False)
         if not anomalies:
             config_anomalies = config_data.get("anomalies", [])
             anomalies = tuple(config_anomalies)
+
+    # expand_dimensions fall-through: CLI flag > config > preset > False. A present
+    # config already resolved the field above (config overrides preset, consistent
+    # with how config overrides every other preset field); this only runs when no
+    # config was given, so the preset's value (always False per #49) is the default.
+    if expand_dimensions is None:
+        if preset:
+            expand_dimensions = PRESETS[preset].get("expand_dimensions", False)
+        else:
+            expand_dimensions = False
 
     dims_str = _normalize_to_string(dims)
     mets_str = _normalize_to_string(mets)
@@ -657,7 +693,7 @@ def generate(
         click.echo(main.get_command(main, "generate").get_help(click.get_current_context()))
         return
 
-    data_gen = DataGen(seed=seed)
+    data_gen = DataGen(seed=seed, expand_dimensions=expand_dimensions)
     data_gen.start_datetime = start
     data_gen.end_datetime = end
     data_gen.to_granularity(granularity)
