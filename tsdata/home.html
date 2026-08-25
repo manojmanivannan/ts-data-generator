@@ -837,7 +837,12 @@
               <input id="f-expand" type="checkbox" name="expand_dimensions">
               <span>One row per timestamp &times; dimension value</span>
             </label>
-            <span class="hint">Global toggle. Per-dimension, append <code>,expand=true|false</code> to a dimension spec</span>
+            <span class="hint">Global toggle. Per-dimension, append <code>,expand=true|false</code></span>
+          </div>
+          <div class="field">
+            <label for="f-scale-variance">Scale variance</label>
+            <input id="f-scale-variance" type="number" name="scale_variance" step="0.05" min="0" placeholder="0.0 (disabled)">
+            <span class="hint">Stochastic variance &sigma; across dimension combinations in expand mode (e.g. <code>0.3</code>)</span>
           </div>
 
           <!-- Dimensions -->
@@ -846,7 +851,7 @@
             <div class="entries" id="dim-entries"></div>
             <button type="button" class="btn-add" onclick="addEntry('dim-entries','product:random_choice:A,B,C')">+ add
               dimension</button>
-            <span class="hint">e.g. <code>product:random_choice:A,B,C</code> or <code>region=random_choice(US,EU),expand=true|false</code></span>
+            <span class="hint">e.g. <code>product:random_choice:A,B,C</code> or <code>region=random_choice(US,EU),weights={US:5,EU:2}</code></span>
           </div>
 
           <!-- Metrics -->
@@ -1033,6 +1038,7 @@
         document.getElementById('f-gran').value = cfg.granularity || 'h';
         document.getElementById('f-seed').value = cfg.seed != null ? cfg.seed : '';
         document.getElementById('f-expand').checked = cfg.expand_dimensions === true;
+        document.getElementById('f-scale-variance').value = cfg.scale_variance != null ? cfg.scale_variance : '';
 
         setEntries('dim-entries', cfg.dimensions || [], 'product:random_choice:A,B,C');
         setEntries('met-entries', cfg.metrics || [], 'sales:LinearTrend(slope=30)+WeekendTrend(weekend_effect=50)');
@@ -1090,6 +1096,7 @@
       btn.classList.add('loading');
       hideError();
 
+      const scaleVarInput = document.getElementById('f-scale-variance').value;
       const body = {
         start: document.getElementById('f-start').value,
         end: document.getElementById('f-end').value,
@@ -1099,6 +1106,7 @@
         anomalies: [...document.querySelectorAll('#anom-entries input')].map(i => i.value).filter(Boolean),
         seed: document.getElementById('f-seed').value ? parseInt(document.getElementById('f-seed').value) : null,
         expand_dimensions: document.getElementById('f-expand').checked,
+        scale_variance: scaleVarInput ? parseFloat(scaleVarInput) : 0.0,
       };
 
       try {
