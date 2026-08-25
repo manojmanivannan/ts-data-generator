@@ -59,6 +59,28 @@ def test_parse_dimension_spec_expand_strips_modifier_from_args():
     result = parse_dimension_spec("region=random_choice(east,west),expand=true")
     assert result.args == ("east", "west")
 
+
+def test_parse_dimension_spec_weights_parsing():
+    from ts_data_generator.schema.parser import parse_dimension_spec
+
+    result = parse_dimension_spec("region=random_choice(US,EU),weights={US:5.0,EU:2.0}")
+    assert result.name == "region"
+    assert result.function_name == "random_choice"
+    assert result.args == ("US", "EU")
+    assert result.weights == {"US": 5.0, "EU": 2.0}
+
+
+def test_parse_dimension_spec_weights_and_expand_combined():
+    from ts_data_generator.schema.parser import parse_dimension_spec
+
+    result1 = parse_dimension_spec("region=random_choice(US,EU),weights={US:5,EU:2},expand=true")
+    assert result1.expand is True
+    assert result1.weights == {"US": 5.0, "EU": 2.0}
+
+    result2 = parse_dimension_spec("region=random_choice(US,EU),expand=false,weights={US:10,EU:1}")
+    assert result2.expand is False
+    assert result2.weights == {"US": 10.0, "EU": 1.0}
+
 def test_parse_trend_spec_returns_dataclass():
     from ts_data_generator.schema.parser import parse_trend_spec
     

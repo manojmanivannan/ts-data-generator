@@ -112,6 +112,10 @@ class GenerateRequest(BaseModel):
             "regenerated metric series"
         ),
     )
+    scale_variance: float = Field(
+        default=0.0,
+        description="Standard deviation for log-normal scaling across dimension combinations in expand mode",
+    )
 
     @field_validator("granularity")
     @classmethod
@@ -149,6 +153,10 @@ class PresetGenerateRequest(BaseModel):
         default=None,
         description="Override preset expand_dimensions (null = use preset default)",
     )
+    scale_variance: float | None = Field(
+        default=None,
+        description="Override preset scale_variance (null = use preset default)",
+    )
 
 
 class PresetSummary(BaseModel):
@@ -159,6 +167,7 @@ class PresetSummary(BaseModel):
     dimensions_count: int
     metrics_count: int
     expand_dimensions: bool
+    scale_variance: float = 0.0
 
 
 class PresetDetail(BaseModel):
@@ -302,16 +311,20 @@ def _add_dimension(dg: DataGen, parsed: DimensionSpec, dim_fn: Any) -> None:
     ``HTTPException``. An :class:`ExpandError` raised by ``dg.add_dimension``
     when the dimension is non-enumerable under ``expand_dimensions`` propagates
     untouched for ``_build_datagen`` to map to a 400. The per-dim ``expand``
-    override (#57) is forwarded to ``add_dimension``.
+    and ``weights`` overrides are forwarded to ``add_dimension``.
     """
     try:
         # Mirror CLI behavior: first try single-argument call for iterable-style
         # dimension functions (e.g. random_choice), then retry as expanded args
         # for functions like random_int/random_float.
-        dg.add_dimension(parsed.name, dim_fn(parsed.args), expand=parsed.expand)
+        dg.add_dimension(
+            parsed.name, dim_fn(parsed.args), expand=parsed.expand, weights=parsed.weights
+        )
     except TypeError:
         try:
-            dg.add_dimension(parsed.name, dim_fn(*parsed.args), expand=parsed.expand)
+            dg.add_dimension(
+                parsed.name, dim_fn(*parsed.args), expand=parsed.expand, weights=parsed.weights
+            )
         except TypeError as inner_exc:
             raise HTTPException(
                 status_code=400,
@@ -326,7 +339,11 @@ def _build_datagen(request: GenerateRequest) -> DataGen:
     Mirrors the CLI ``generate`` command logic but raises
     :class:`HTTPException` on validation or registry errors.
     """
-    dg = DataGen(seed=request.seed, expand_dimensions=request.expand_dimensions)
+    dg = DataGen(
+        seed=request.seed,
+        expand_dimensions=request.expand_dimensions,
+        scale_variance=request.scale_variance,
+    )
     dg.start_datetime = request.start
     dg.end_datetime = request.end
     dg.to_granularity(request.granularity)
@@ -558,6 +575,11 @@ def generate_from_preset(
                 if overrides and overrides.expand_dimensions is not None
                 else preset.expand_dimensions
             ),
+            scale_variance=(
+                overrides.scale_variance
+                if overrides and overrides.scale_variance is not None
+                else getattr(preset, "scale_variance", 0.0)
+            ),
         )
     except PydanticValidationError as exc:
         # ValidationError from pydantic - return 422 with details
@@ -598,6 +620,7 @@ def list_presets() -> list[PresetSummary]:
                     dimensions_count=len(preset.dimensions),
                     metrics_count=len(preset.metrics),
                     expand_dimensions=preset.expand_dimensions,
+                    scale_variance=getattr(preset, "scale_variance", 0.0),
                 )
             )
         return summaries

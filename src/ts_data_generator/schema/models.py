@@ -128,12 +128,18 @@ class Metrics:
         """The ordered list of anomaly injectors applied after trends."""
         return self._anomalies
 
-    def generate(self, timestamps: pd.DatetimeIndex, rng: RNGProtocol) -> MetricResult:
+    def generate(
+        self,
+        timestamps: pd.DatetimeIndex,
+        rng: RNGProtocol,
+        scale: float = 1.0,
+    ) -> MetricResult:
         """Generate metric values for the given timestamps.
 
         Args:
             timestamps: DatetimeIndex of time points.
             rng: RNG instance passed through to each trend and anomaly.
+            scale: Scale multiplier applied to clean baseline trends.
 
         Returns:
             MetricResult with .signal (trends + anomalies), .baseline (trends
@@ -143,6 +149,7 @@ class Metrics:
         data = np.zeros(len(timestamps))
         for trend in self._trends:
             data += trend.generate(timestamps, rng=rng)
+        data = data * scale
         baseline_df = pd.DataFrame(data.copy(), columns=[self._name], index=timestamps)
         for anomaly in self._anomalies:
             data = anomaly.intervene(data, timestamps, rng=rng)
@@ -198,9 +205,11 @@ class Dimensions:
     Args:
         name: Name of the dimension column.
         function: An infinite generator that produces values for each time step.
+        expand: Per-dimension expansion override for ``expand_dimensions``.
+        weights: Optional mapping of dimension values to scale multipliers.
 
     Example:
-        >>> d = Dimensions(name="region", function=random_choice(["US", "EU"]))
+        >>> d = Dimensions(name="region", function=random_choice(["US", "EU"]), weights={"US": 5.0, "EU": 2.0})
     """
 
     def __init__(
@@ -208,10 +217,12 @@ class Dimensions:
         name: str | list[str],
         function: int | str | float | Generator,
         expand: bool | None = None,
+        weights: dict[Any, float] | None = None,
     ) -> None:
         self._name = name
         self._function = function
         self._expand = expand
+        self._weights = weights
         self._data: pd.DataFrame | None = None
 
     @property
@@ -233,6 +244,11 @@ class Dimensions:
         one-value-per-timestamp within each series instead). See decision #52.
         """
         return self._expand
+
+    @property
+    def weights(self) -> dict[Any, float] | None:
+        """Per-value scale weights for multivariate dimension expansion."""
+        return self._weights
 
     @property
     def function(self) -> int | str | float | Generator:
@@ -291,6 +307,8 @@ class MultiItems:
         function: Generator that yields tuples of values matching len(names).
         aggregation_type: Optional list of aggregation methods for resampling.
             If provided, the items are treated as metrics during aggregation.
+        expand: Per-dimension expansion override for ``expand_dimensions``.
+        weights: Optional mapping of linked tuple values to scale multipliers.
 
     Example:
         >>> def linked_gen():
@@ -305,12 +323,14 @@ class MultiItems:
         function: int | str | float | Generator,
         aggregation_type: list[AggregationType | str] | None = None,
         expand: bool | None = None,
+        weights: dict[tuple[Any, ...] | Any, float] | None = None,
     ) -> None:
         self._names = names
         self._function = function
         self._data: pd.DataFrame | None = None
         self._aggregation_type = aggregation_type
         self._expand = expand
+        self._weights = weights
 
     @property
     def data(self) -> pd.DataFrame | None:
@@ -325,6 +345,11 @@ class MultiItems:
     def expand(self) -> bool | None:
         """Per-dimension expansion override for ``expand_dimensions``."""
         return self._expand
+
+    @property
+    def weights(self) -> dict[tuple[Any, ...] | Any, float] | None:
+        """Per-tuple scale weights for multivariate dimension expansion."""
+        return self._weights
 
     @property
     def function(self) -> int | str | float | Generator:

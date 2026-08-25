@@ -44,6 +44,7 @@ import hashlib
 from itertools import product
 from typing import Any
 
+import numpy as np
 import pandas as pd
 
 from ts_data_generator.carriers import DimensionCarrier
@@ -73,6 +74,35 @@ def combination_seed(base_seed: int, combination: list[tuple[str, Any]]) -> int:
     payload = repr((base_seed, sorted(combination, key=lambda kv: kv[0])))
     digest = hashlib.sha256(payload.encode("utf-8")).hexdigest()
     return int(digest, 16) % (2**32)
+
+
+def compute_combination_scale(
+    combo_pairs: list[tuple[str, Any]],
+    dimensions: dict[str, Dimensions],
+    linked_dims: dict[str, MultiItems],
+    rng: SeedableRNG,
+    scale_variance: float = 0.0,
+) -> float:
+    """Compute the effective scale factor for a combination of expanding dimensions.
+
+    Combines explicit weights defined on Dimensions / MultiItems multiplicatively,
+    and applies a stochastic scale multiplier if scale_variance > 0.
+    """
+    scale = 1.0
+    for key, val in combo_pairs:
+        if key in dimensions:
+            dim = dimensions[key]
+            if dim.weights and val in dim.weights:
+                scale *= float(dim.weights[val])
+        elif key in linked_dims:
+            mi = linked_dims[key]
+            if mi.weights and val in mi.weights:
+                scale *= float(mi.weights[val])
+
+    if scale_variance > 0.0:
+        scale *= float(np.exp(rng.normal(0, scale_variance)))
+
+    return scale
 
 
 def resolve_expand(dimension: Dimensions | MultiItems, global_expand: bool) -> bool:
@@ -135,6 +165,7 @@ def build_expanded_dataframe(
     base_seed: int,
     global_expand: bool = True,
     multi_items: dict[str, MultiItems] | None = None,
+    scale_variance: float = 0.0,
 ) -> pd.DataFrame:
     """Build the expanded DataFrame: one row per (timestamp x combination).
 
@@ -162,6 +193,8 @@ def build_expanded_dataframe(
         multi_items: Optional mapping of comma-joined names to ``MultiItems``
             instance. Linked dimensions join dimension expansion; linked metrics
             regenerate once per combination.
+        scale_variance: Standard deviation for stochastic log-normal scaling
+            across unique combinations (0.0 = disabled).
 
     Returns:
         A DataFrame indexed by timestamp with dimension columns, metric signal
@@ -219,13 +252,16 @@ def build_expanded_dataframe(
         combo_pairs = list(zip(expanding_keys, combo_values, strict=True))
         seed = combination_seed(base_seed, combo_pairs)
         rng = SeedableRNG(seed)
+        combo_scale = compute_combination_scale(
+            combo_pairs, dimensions, linked_dims, rng, scale_variance=scale_variance
+        )
 
         combo_df = pd.DataFrame(index=timestamps)
         combo_df["_ts"] = timestamps
 
         # 1. Regular metrics
         for metric in metrics.values():
-            result = metric.generate(timestamps, rng=rng)
+            result = metric.generate(timestamps, rng=rng, scale=combo_scale)
             combo_df = pd.concat([combo_df, result.signal], axis=1)
             if not result.labels.empty:
                 combo_df = pd.concat([combo_df, result.labels], axis=1)
@@ -233,6 +269,11 @@ def build_expanded_dataframe(
         # 2. Linked metrics (regenerate once per combination)
         for mi in linked_metrics.values():
             generated = mi.generate(timestamps, rng=rng)
+            if combo_scale != 1.0:
+                num_cols = generated.select_dtypes(include="number").columns
+                if not num_cols.empty:
+                    generated = generated.copy()
+                    generated[num_cols] = generated[num_cols] * combo_scale
             combo_df = pd.concat([combo_df, generated], axis=1)
 
         # 3. Expanding dimensions (broadcast fixed combination value)

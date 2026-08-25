@@ -1211,41 +1211,126 @@ class TestExpandDimensionsFlag:
 
 
 class TestParseDimensionSpecExpand:
-    """Unit tests for the CLI ``_parse_dimension_spec`` per-dim expand (#57)."""
+    """Unit tests for the CLI ``_parse_dimension_spec`` per-dim expand (#57) and weights."""
 
     def test_modern_form_expand_true(self):
         from ts_data_generator.cli import _parse_dimension_spec
 
-        name, func_name, values, expand = _parse_dimension_spec(
+        name, func_name, values, expand, weights = _parse_dimension_spec(
             "region=random_choice(US,EU),expand=true"
         )
         assert name == "region"
         assert func_name == "random_choice"
         assert expand is True
+        assert weights is None
 
     def test_modern_form_expand_false(self):
         from ts_data_generator.cli import _parse_dimension_spec
 
-        _, _, _, expand = _parse_dimension_spec("port=random_int(1,100),expand=false")
+        _, _, _, expand, _ = _parse_dimension_spec("port=random_int(1,100),expand=false")
         assert expand is False
 
     def test_modern_form_default_none(self):
         from ts_data_generator.cli import _parse_dimension_spec
 
-        _, _, _, expand = _parse_dimension_spec("region=random_choice(US,EU)")
+        _, _, _, expand, weights = _parse_dimension_spec("region=random_choice(US,EU)")
         assert expand is None
+        assert weights is None
 
     def test_legacy_colon_form_no_expand_support(self):
         from ts_data_generator.cli import _parse_dimension_spec
 
-        _, _, _, expand = _parse_dimension_spec("region:random_choice:US,EU")
+        _, _, _, expand, weights = _parse_dimension_spec("region:random_choice:US,EU")
         assert expand is None
+        assert weights is None
 
     def test_modern_form_modifier_not_leaked_into_values(self):
         from ts_data_generator.cli import _parse_dimension_spec
 
-        _, _, values, expand = _parse_dimension_spec(
+        _, _, values, expand, _ = _parse_dimension_spec(
             "region=random_choice(US,EU),expand=true"
         )
         assert expand is True
         assert "expand" not in [str(v) for v in values]
+
+    def test_modern_form_weights_parsing(self):
+        from ts_data_generator.cli import _parse_dimension_spec
+
+        name, func_name, values, expand, weights = _parse_dimension_spec(
+            "region=random_choice(US,EU),weights={US:5.0,EU:2.0}"
+        )
+        assert name == "region"
+        assert func_name == "random_choice"
+        assert values == ("US", "EU")
+        assert weights == {"US": 5.0, "EU": 2.0}
+
+    def test_modern_form_weights_and_expand_combined(self):
+        from ts_data_generator.cli import _parse_dimension_spec
+
+        _, _, _, expand, weights = _parse_dimension_spec(
+            "region=random_choice(US,EU),weights={US:5,EU:2},expand=true"
+        )
+        assert expand is True
+        assert weights == {"US": 5.0, "EU": 2.0}
+
+
+class TestCLIDimensionScaling:
+    """CLI integration tests for weights and scale-variance."""
+
+    @pytest.fixture
+    def runner(self):
+        return CliRunner()
+
+    @pytest.fixture
+    def temp_output(self):
+        with tempfile.NamedTemporaryFile(suffix=".csv", delete=False) as f:
+            yield f.name
+        Path(f.name).unlink(missing_ok=True)
+
+    def test_cli_explicit_weights(self, runner, temp_output):
+        import pandas as pd
+
+        result = runner.invoke(
+            main,
+            [
+                "generate",
+                "--start", "2024-01-01",
+                "--end", "2024-01-02",
+                "--granularity", "D",
+                "--dims", "region=ordered_choice(US,EU),weights={US:5.0,EU:2.0}",
+                "--mets", "sales:LinearTrend(offset=10,slope=0,noise_level=0)",
+                "--expand-dimensions",
+                "--seed", "42",
+                "--output", temp_output,
+            ],
+        )
+        assert result.exit_code == 0, f"Error: {result.output}"
+        df = pd.read_csv(temp_output)
+        us_sales = df[df["region"] == "US"]["sales"].to_numpy()
+        eu_sales = df[df["region"] == "EU"]["sales"].to_numpy()
+        assert (us_sales == 50.0).all()
+        assert (eu_sales == 20.0).all()
+
+    def test_cli_scale_variance(self, runner, temp_output):
+        import pandas as pd
+
+        result = runner.invoke(
+            main,
+            [
+                "generate",
+                "--start", "2024-01-01",
+                "--end", "2024-01-02",
+                "--granularity", "D",
+                "--dims", "region=ordered_choice(US,EU)",
+                "--mets", "sales:LinearTrend(offset=100,slope=0,noise_level=0)",
+                "--expand-dimensions",
+                "--scale-variance", "0.5",
+                "--seed", "42",
+                "--output", temp_output,
+            ],
+        )
+        assert result.exit_code == 0, f"Error: {result.output}"
+        df = pd.read_csv(temp_output)
+        us_sales = df[df["region"] == "US"]["sales"].to_numpy()
+        eu_sales = df[df["region"] == "EU"]["sales"].to_numpy()
+        assert us_sales[0] != eu_sales[0]

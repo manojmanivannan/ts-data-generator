@@ -1,13 +1,11 @@
-"""CLI module for ts-data-generator.
-
-Provides the ``tsdata`` command-line interface via Click.
-"""
+from __future__ import annotations
 
 import inspect
 import json
 import logging
 import re
 from pathlib import Path
+from typing import Any
 
 import click
 from pydantic import BaseModel, Field, field_validator
@@ -82,6 +80,10 @@ class GeneratorConfig(BaseModel):
         default=False,
         description="Emit one row per (timestamp x Cartesian product of enumerable "
         "dimensions' distinct values), each combination carrying its own series",
+    )
+    scale_variance: float = Field(
+        default=0.0,
+        description="Standard deviation for log-normal scaling across dimension combinations in expand mode",
     )
     output: str = Field(..., description="Output CSV file path")
 
@@ -276,20 +278,35 @@ def _parse_value(value: str) -> int | float | str | bool | list:
     return value
 
 
-def _parse_dimension_spec(spec: str) -> tuple[str, str, tuple | list, bool | None]:
+def _parse_weights_dict(raw: str) -> dict[Any, float]:
+    weights = {}
+    for item in _split_bracket_aware(raw):
+        if ":" in item:
+            k, v = item.split(":", 1)
+            parsed_k = _parse_value(k.strip())
+            weights[parsed_k] = float(_parse_value(v.strip()))
+        elif "=" in item:
+            k, v = item.split("=", 1)
+            parsed_k = _parse_value(k.strip())
+            weights[parsed_k] = float(_parse_value(v.strip()))
+    return weights
+
+
+def _parse_dimension_spec(
+    spec: str,
+) -> tuple[str, str, tuple | list, bool | None, dict[Any, float] | None]:
     """Parse a dimension specification string.
 
     Formats:
       - Legacy colon: ``name:function:values`` (e.g. ``"product:random_choice:A,B,C"``)
         or ``name:values`` (defaults to ``random_choice``). Per-dim expand
         control is unsupported here (``expand`` is always ``None``).
-      - Modern string-spec: ``name=function(args),expand=true|false`` (e.g.
-        ``"region=random_choice(US,EU),expand=true"``). The trailing
-        ```,expand=...`` override (#57) is optional; ``None`` inherits the global
-        flag.
+      - Modern string-spec: ``name=function(args),expand=true|false,weights={...}`` (e.g.
+        ``"region=random_choice(US,EU),expand=true,weights={US:5,EU:2}"``). The trailing
+        modifiers are optional; ``None`` inherits defaults.
 
     Returns:
-        Tuple of (name, function_name, values, expand).
+        Tuple of (name, function_name, values, expand, weights).
     """
     # Legacy colon form — no `=` present, no per-dim expand support (#57).
     if ":" in spec and "=" not in spec:
@@ -309,7 +326,7 @@ def _parse_dimension_spec(spec: str) -> tuple[str, str, tuple | list, bool | Non
         else:
             parsed = value_list
 
-        return name, function_name, parsed, None
+        return name, function_name, parsed, None, None
 
     if "=" not in spec:
         raise click.BadParameter(
@@ -319,14 +336,27 @@ def _parse_dimension_spec(spec: str) -> tuple[str, str, tuple | list, bool | Non
 
     name, func_part = spec.split("=", 1)
 
-    # Per-dimension expand override (#57): trailing top-level `,expand=true|false`
-    # after the closing paren. Stripped off before the function spec is parsed so
-    # it is not leaked into the values.
     expand: bool | None = None
-    expand_match = re.search(r",expand=(true|false)\s*$", func_part, re.IGNORECASE)
-    if expand_match:
-        expand = expand_match.group(1).lower() == "true"
-        func_part = func_part[: expand_match.start()]
+    weights: dict[Any, float] | None = None
+
+    changed = True
+    while changed:
+        changed = False
+        expand_match = re.search(r",expand=(true|false)\s*$", func_part, re.IGNORECASE)
+        if expand_match:
+            expand = expand_match.group(1).lower() == "true"
+            func_part = func_part[: expand_match.start()]
+            changed = True
+            continue
+
+        weights_match = re.search(r",weights=\{([^}]*)\}\s*$", func_part, re.IGNORECASE)
+        if weights_match:
+            raw_weights = weights_match.group(1).strip()
+            if raw_weights:
+                weights = _parse_weights_dict(raw_weights)
+            func_part = func_part[: weights_match.start()]
+            changed = True
+            continue
 
     match = re.match(r"(\w+)(?:\((.*)\))?", func_part.strip())
     if not match:
@@ -341,7 +371,7 @@ def _parse_dimension_spec(spec: str) -> tuple[str, str, tuple | list, bool | Non
     else:
         parsed = ()
 
-    return name.strip(), function_name, parsed, expand
+    return name.strip(), function_name, parsed, expand, weights
 
 
 def _split_bracket_aware(text: str, sep: str = VALUE_SEPARATOR) -> list[str]:
@@ -542,6 +572,12 @@ def main():
     "Falls through to config > preset > false when absent.",
 )
 @click.option(
+    "--scale-variance",
+    type=float,
+    default=None,
+    help="Standard deviation for log-normal scaling across dimension combinations in expand mode (0.0 = disabled)",
+)
+@click.option(
     "--config",
     type=click.Path(exists=True, path_type=Path),
     help="JSON config file. Use 'tsdata generate --help' for config schema",
@@ -567,6 +603,7 @@ def generate(
     output: str | None,
     seed: int | None,
     expand_dimensions: bool | None,
+    scale_variance: float | None,
     config: Path | None,
     preset: str | None,
     show_sample_config: bool,
@@ -710,6 +747,8 @@ def generate(
         # explicit value for --no-expand-dimensions and must not fall through.
         if expand_dimensions is None:
             expand_dimensions = config_data.get("expand_dimensions", False)
+        if scale_variance is None:
+            scale_variance = config_data.get("scale_variance", 0.0)
         if not anomalies:
             config_anomalies = config_data.get("anomalies", [])
             anomalies = tuple(config_anomalies)
@@ -724,6 +763,12 @@ def generate(
         else:
             expand_dimensions = False
 
+    if scale_variance is None:
+        if preset:
+            scale_variance = PRESETS[preset].get("scale_variance", 0.0)
+        else:
+            scale_variance = 0.0
+
     dims_str = _normalize_to_string(dims)
     mets_str = _normalize_to_string(mets)
 
@@ -731,20 +776,24 @@ def generate(
         click.echo(main.get_command(main, "generate").get_help(click.get_current_context()))
         return
 
-    data_gen = DataGen(seed=seed, expand_dimensions=expand_dimensions)
+    data_gen = DataGen(
+        seed=seed,
+        expand_dimensions=expand_dimensions,
+        scale_variance=scale_variance,
+    )
     data_gen.start_datetime = start
     data_gen.end_datetime = end
     data_gen.to_granularity(granularity)
 
     for dimension in dims_str.split(DIM_SEPARATOR):
-        dim_name, func_name, values, expand = _parse_dimension_spec(dimension)
+        dim_name, func_name, values, expand, weights = _parse_dimension_spec(dimension)
         dim_fn = _get_dimension_function(func_name)
 
         try:
-            data_gen.add_dimension(dim_name, dim_fn(values), expand=expand)
+            data_gen.add_dimension(dim_name, dim_fn(values), expand=expand, weights=weights)
         except TypeError:
             try:
-                data_gen.add_dimension(dim_name, dim_fn(*values), expand=expand)
+                data_gen.add_dimension(dim_name, dim_fn(*values), expand=expand, weights=weights)
             except TypeError as exc:
                 raise click.BadParameter(
                     f"Invalid parameters for dimension {dim_name!r} "

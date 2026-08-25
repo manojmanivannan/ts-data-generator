@@ -126,6 +126,7 @@ class DataGen:
         granularity: Granularity = Granularity.FIVE_MIN,
         seed: int | None = None,
         expand_dimensions: bool = False,
+        scale_variance: float = 0.0,
     ) -> None:
         self._dimensions = dimensions or []
         self._metrics = metrics or []
@@ -138,6 +139,7 @@ class DataGen:
         self._pending_regeneration = False
         self._rng: RNGProtocol = SeedableRNG(seed) if seed is not None else DefaultRNG()
         self._expand_dimensions = expand_dimensions
+        self._scale_variance = float(scale_variance)
 
         self.data: pd.DataFrame = pd.DataFrame()
         self._baselines: dict[str, pd.DataFrame] = {}
@@ -250,6 +252,21 @@ class DataGen:
         self._expand_dimensions = bool(value)
         self._request_regeneration()
 
+    @property
+    def scale_variance(self) -> float:
+        """Standard deviation for stochastic log-normal metric scaling across dimension combinations.
+
+        When > 0 and ``expand_dimensions`` is active, each unique combination slice
+        is scaled by a deterministic factor sampled from LogNormal(0, scale_variance).
+        Defaults to 0.0 (disabled).
+        """
+        return self._scale_variance
+
+    @scale_variance.setter
+    def scale_variance(self, value: float) -> None:
+        self._scale_variance = float(value)
+        self._request_regeneration()
+
     def _should_expand(self) -> bool:
         """Whether generation should take the expansion path.
 
@@ -343,9 +360,10 @@ class DataGen:
     def add_dimension(
         self,
         name: str,
-        function: int | float | str | list[Any] | Generator[Any, None, None],
+        function: int | float | str | list[Any] | dict[Any, float] | Generator[Any, None, None],
         domain: list[Any] | None = None,
         expand: bool | None = None,
+        weights: dict[Any, float] | None = None,
     ) -> None:
         """Add a new dimension column.
 
@@ -356,8 +374,9 @@ class DataGen:
 
         Args:
             name: Unique column name for the dimension.
-            function: An infinite generator (carrier or plain), or a static
-                value (int, float, str, list) which is converted to a carrier.
+            function: An infinite generator (carrier or plain), a static
+                value (int, float, str, list), or a dict of ``{value: weight}``
+                which is converted to a carrier with explicit weights.
             domain: Explicit value domain for an opaque custom/pre-built
                 generator whose domain the engine cannot see structurally (the
                 ``domain=`` escape hatch). Cannot be supplied to a carrier that
@@ -370,6 +389,8 @@ class DataGen:
                 product — it regenerates one-value-per-timestamp within each
                 series instead, and a non-enumerable dim marked ``expand=False``
                 is excluded from the product without raising ``ExpandError``.
+            weights: Optional dictionary mapping dimension values to scale multipliers
+                for multivariate dimension expansion.
 
         Raises:
             DimensionError: If a dimension with this name already exists.
@@ -377,10 +398,16 @@ class DataGen:
                 is misused (supplied to a carrier, or to a non-expandable
                 range/auto-name generator).
         """
+        if isinstance(function, dict):
+            if not function:
+                raise ValidationError("Dimension values dict must not be empty.")
+            weights = weights or dict(function)
+            function = list(function.keys())
+
         if not isinstance(function, (int, float, str, list, Generator)):
             raise ValidationError(
                 f"Function of dimension {name!r} must be int, float, str, "
-                f"list, or a generator object."
+                f"list, dict, or a generator object."
             )
 
         if isinstance(function, (int, float, str)):
@@ -393,7 +420,7 @@ class DataGen:
 
         function = self._apply_domain(name, function, domain)
 
-        dimension = Dimensions(name=name, function=function, expand=expand)
+        dimension = Dimensions(name=name, function=function, expand=expand, weights=weights)
 
         if dimension in self._dimensions:
             raise DimensionError(f"Dimension with name {dimension.name!r} already exists.")
@@ -530,6 +557,7 @@ class DataGen:
         aggregation_type: list[AggregationType | str] | None = None,
         domain: list[Any] | None = None,
         expand: bool | None = None,
+        weights: dict[tuple[Any, ...] | Any, float] | None = None,
     ) -> None:
         """Add a group of linked columns generated from a single function.
 
@@ -549,6 +577,8 @@ class DataGen:
                 flag; ``True`` forces this linked dimension into the Cartesian
                 product even when the global flag is off; ``False`` opts it out
                 of the product (regenerating within-series).
+            weights: Optional dictionary mapping linked tuple values to scale multipliers
+                for multivariate dimension expansion.
 
         Raises:
             MultiItemError: If any name overlaps with existing multi-items.
@@ -584,6 +614,7 @@ class DataGen:
             function=function,
             aggregation_type=aggregation_type,
             expand=expand,
+            weights=weights,
         )
 
         name_set = set(names)
@@ -784,6 +815,7 @@ class DataGen:
             base_seed=base_seed,
             global_expand=self._expand_dimensions,
             multi_items=self.multi_items,
+            scale_variance=self._scale_variance,
         )
 
         if "epoch" not in data.columns:

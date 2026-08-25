@@ -48,7 +48,7 @@ Dimensions represent the **contextual axes** of your time series data (e.g., `st
 *   **Single-Stream vs. Cartesian Product Expansion**:
     *   *Default (Single-Stream)*: Generates one row per timestamp, with each dimension advancing concurrently alongside the metrics.
     *   *Multivariate Expansion (`expand_dimensions=True`)*: Emits one row per *(timestamp × Cartesian product of expanding dimensions)*. Each combination carries an independently regenerated, reproducible metric series derived from a deterministic per-combination seed.
-*   **Per-Dimension Control**: Individual dimensions can opt in (`expand=True`) or opt out (`expand=False`) of the Cartesian product. Non-expanding dimensions regenerate within each combination series instead of blowing up the product.
+*   **Multi-Series Metric Scaling**: Scale metric baselines differently across combinations using explicit dimension weights (`weights={"US": 5.0, "EU": 2.0}`) or stochastic auto-scaling (`scale_variance=0.5`). Multipliers compose multiplicatively across dimensions while preserving ground-truth anomaly labels.
 *   **Linked Dimensions & Metrics (`add_multi_items`)**: Correlated dimension tuples expand as an atomic compound key, while linked metrics regenerate independently per combination with column correlation intact.
 
 [Learn more about Dimension Generators]({{ site.baseurl }}/dimensions){: .btn .btn-outline }
