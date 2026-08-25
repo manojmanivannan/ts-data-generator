@@ -207,9 +207,11 @@ class Dimensions:
         self,
         name: str | list[str],
         function: int | str | float | Generator,
+        expand: bool | None = None,
     ) -> None:
         self._name = name
         self._function = function
+        self._expand = expand
         self._data: pd.DataFrame | None = None
 
     @property
@@ -220,6 +222,17 @@ class Dimensions:
     def name(self) -> str | list[str]:
         """The name(s) of this dimension."""
         return self._name
+
+    @property
+    def expand(self) -> bool | None:
+        """Per-dimension expansion override for ``expand_dimensions``.
+
+        ``None`` (default) inherits the global ``expand_dimensions`` flag;
+        ``True`` forces this dimension into the Cartesian product even when the
+        global flag is off; ``False`` opts it out of the product (it regenerates
+        one-value-per-timestamp within each series instead). See decision #52.
+        """
+        return self._expand
 
     @property
     def function(self) -> int | str | float | Generator:

@@ -13,6 +13,7 @@ class DimensionSpec:
     name: str
     function_name: str
     args: tuple[Any, ...] | list[Any] = field(default_factory=tuple)
+    expand: bool | None = None
 
 
 @dataclass

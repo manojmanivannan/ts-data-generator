@@ -1150,3 +1150,102 @@ class TestExpandDimensionsFlag:
         data = json.loads(result.output)
         assert "expand_dimensions" in data
         assert data["expand_dimensions"] is False
+
+    # -- per-dimension expand control via modern string-spec (#57) ---------
+
+    def test_per_dim_expand_false_opts_out(self, runner, temp_output):
+        # Modern `name=fn(args),expand=false` form: region opts out of the
+        # product, so with the global flag on only env expands -> 3 x 2 = 6 rows
+        # (not 3 x 2 x 2 = 12).
+        result = runner.invoke(
+            main,
+            [
+                "generate",
+                "--start", "2024-01-01",
+                "--end", "2024-01-03",
+                "--granularity", "D",
+                "--dims", "region=random_choice(US,EU),expand=false;env=ordered_choice(prod,dev)",
+                "--mets", "sales:LinearTrend(offset=10)",
+                "--expand-dimensions",
+                "--output", temp_output,
+            ],
+        )
+        assert result.exit_code == 0, f"Error: {result.output}"
+        assert self._row_count(temp_output) == 6
+
+    def test_per_dim_expand_true_forces_expansion_when_global_off(self, runner, temp_output):
+        # `expand=true` forces region into the product even without --expand-dimensions.
+        result = runner.invoke(
+            main,
+            [
+                "generate",
+                "--start", "2024-01-01",
+                "--end", "2024-01-03",
+                "--granularity", "D",
+                "--dims", "region=random_choice(US,EU),expand=true",
+                "--mets", "sales:LinearTrend(offset=10)",
+                "--output", temp_output,
+            ],
+        )
+        assert result.exit_code == 0, f"Error: {result.output}"
+        assert self._row_count(temp_output) == 6  # 3 timestamps x 2 regions
+
+    def test_per_dim_expand_false_escape_hatch_for_non_enumerable(self, runner, temp_output):
+        # A non-enumerable dim marked expand=false is excluded from the product
+        # and does NOT error with the global flag on.
+        result = runner.invoke(
+            main,
+            [
+                "generate",
+                "--start", "2024-01-01",
+                "--end", "2024-01-03",
+                "--granularity", "D",
+                "--dims", "port=random_int(1,100),expand=false;region=random_choice(US,EU)",
+                "--mets", "sales:LinearTrend(offset=10)",
+                "--expand-dimensions",
+                "--output", temp_output,
+            ],
+        )
+        assert result.exit_code == 0, f"Error: {result.output}"
+        assert self._row_count(temp_output) == 6  # 3 x 2 regions; port within-series
+
+
+class TestParseDimensionSpecExpand:
+    """Unit tests for the CLI ``_parse_dimension_spec`` per-dim expand (#57)."""
+
+    def test_modern_form_expand_true(self):
+        from ts_data_generator.cli import _parse_dimension_spec
+
+        name, func_name, values, expand = _parse_dimension_spec(
+            "region=random_choice(US,EU),expand=true"
+        )
+        assert name == "region"
+        assert func_name == "random_choice"
+        assert expand is True
+
+    def test_modern_form_expand_false(self):
+        from ts_data_generator.cli import _parse_dimension_spec
+
+        _, _, _, expand = _parse_dimension_spec("port=random_int(1,100),expand=false")
+        assert expand is False
+
+    def test_modern_form_default_none(self):
+        from ts_data_generator.cli import _parse_dimension_spec
+
+        _, _, _, expand = _parse_dimension_spec("region=random_choice(US,EU)")
+        assert expand is None
+
+    def test_legacy_colon_form_no_expand_support(self):
+        from ts_data_generator.cli import _parse_dimension_spec
+
+        _, _, _, expand = _parse_dimension_spec("region:random_choice:US,EU")
+        assert expand is None
+
+    def test_modern_form_modifier_not_leaked_into_values(self):
+        from ts_data_generator.cli import _parse_dimension_spec
+
+        _, _, values, expand = _parse_dimension_spec(
+            "region=random_choice(US,EU),expand=true"
+        )
+        assert expand is True
+        assert "expand" not in [str(v) for v in values]

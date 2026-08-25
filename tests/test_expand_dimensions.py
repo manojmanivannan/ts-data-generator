@@ -506,3 +506,164 @@ class TestExpandDimensionsProperty:
         on_rows = len(dg.data)
         assert off_rows == 3  # one per timestamp
         assert on_rows == 6  # 3 x 2
+
+
+# ---------------------------------------------------------------------------
+# Per-dimension expand control (#57) — inherit / override / escape hatch
+# ---------------------------------------------------------------------------
+
+
+def _counter_gen():
+    """A stateful opaque generator: yields 1, 2, 3, ... — no carried domain.
+
+    Used to assert non-expanding dimensions regenerate one-value-per-timestamp
+    *within* each series and advance *across* combos (varying independently),
+    deterministically.
+    """
+
+    def gen():
+        i = 0
+        while True:
+            i += 1
+            yield i
+
+    return gen()
+
+
+class TestPerDimensionExpand:
+    """``add_dimension(..., expand=None|True|False)`` resolves against the global
+    flag: ``None`` inherits, ``True``/``False`` overrides (#57, decision #52)."""
+
+    def test_expand_none_inherits_global_on(self) -> None:
+        # expand=None (default) + global on -> expanding (unchanged #54 behavior).
+        dg = DataGen(
+            start_datetime="2024-01-01",
+            end_datetime="2024-01-03",
+            granularity=Granularity.DAILY,
+            seed=42,
+            expand_dimensions=True,
+        )
+        dg.add_dimension("region", random_choice(["US", "EU"]))  # expand=None
+        dg.add_metric("sales", {LinearTrend(offset=10, noise_level=0)})
+        assert len(dg.data) == 6  # 3 timestamps x 2 regions
+
+    def test_expand_true_forces_expansion_when_global_off(self) -> None:
+        # expand=True overrides a False global flag -> forces expansion.
+        dg = DataGen(
+            start_datetime="2024-01-01",
+            end_datetime="2024-01-03",
+            granularity=Granularity.DAILY,
+            seed=42,
+            expand_dimensions=False,
+        )
+        dg.add_dimension("region", random_choice(["US", "EU"]), expand=True)
+        dg.add_metric("sales", {LinearTrend(offset=10, noise_level=0)})
+        assert len(dg.data) == 6  # expanded even though the global flag is off
+
+    def test_expand_false_on_enumerable_opts_out(self) -> None:
+        # expand=False on an enumerable dim opts it out of the product; it becomes
+        # a within-series field instead of a broadcast combo key.
+        dg = DataGen(
+            start_datetime="2024-01-01",
+            end_datetime="2024-01-03",
+            granularity=Granularity.DAILY,
+            seed=42,
+            expand_dimensions=True,
+        )
+        dg.add_dimension("region", random_choice(["US", "EU"]), expand=False)
+        dg.add_dimension("env", ordered_choice(["prod", "dev"]))  # expanding
+        dg.add_metric("sales", {LinearTrend(offset=10, noise_level=0)})
+        df = dg.data
+        # Only env expands: 3 timestamps x 2 envs = 6 rows (region is within-series).
+        assert len(df) == 6
+        # region is NOT a broadcast combo key: it varies within each env combo.
+        for _, group in df.groupby("env"):
+            assert len(group) == 3
+            assert group["env"].nunique() == 1
+
+    def test_expand_false_escape_hatch_on_non_enumerable(self) -> None:
+        # expand=False on a non-enumerable dim excludes it from the product and
+        # does NOT error, even with the global flag on (#57 sharpens spec #5).
+        dg = DataGen(
+            start_datetime="2024-01-01",
+            end_datetime="2024-01-03",
+            granularity=Granularity.DAILY,
+            seed=1,
+            expand_dimensions=True,
+        )
+        dg.add_dimension("port", random_int(1, 100), expand=False)  # no error
+        dg.add_dimension("region", random_choice(["US", "EU"]))  # expanding
+        dg.add_metric("sales", {LinearTrend(offset=10, noise_level=0)})
+        df = dg.data
+        # 3 timestamps x 2 regions = 6 rows; port regenerated within each series.
+        assert len(df) == 6
+        assert "port" in df.columns
+
+    def test_error_fires_only_for_actually_expanding_non_enumerable(self) -> None:
+        # A non-enumerable dim that inherits expansion (expand=None, global on)
+        # IS actually expanding -> raises. The escape hatch above is what avoids it.
+        dg = DataGen(
+            start_datetime="2024-01-01",
+            end_datetime="2024-01-03",
+            granularity=Granularity.DAILY,
+            seed=1,
+            expand_dimensions=True,
+        )
+        with pytest.raises(ExpandError, match="port"):
+            dg.add_dimension("port", random_int(1, 100))  # expand=None -> inherit True
+
+    def test_non_expanding_dim_varies_within_series_across_combos(self) -> None:
+        # A non-expanding dimension regenerates one-value-per-timestamp within each
+        # series and varies independently across combos (a categorical within-series
+        # field, not a broadcast) — Shape 1 in the #52 decision.
+        dg = DataGen(
+            start_datetime="2024-01-01",
+            end_datetime="2024-01-03",
+            granularity=Granularity.DAILY,
+            seed=42,
+            expand_dimensions=True,
+        )
+        dg.add_dimension("region", random_choice(["US", "EU"]))  # expanding
+        dg.add_dimension("seq", _counter_gen(), expand=False)  # within-series
+        dg.add_metric("sales", {LinearTrend(offset=10, noise_level=0)})
+        df = dg.data
+        assert len(df) == 6  # 3 timestamps x 2 regions
+        # The counter advanced across combos: each combo is strictly increasing
+        # within its series, the two combos are disjoint, and the union is six
+        # consecutive integers (the counter yields one value per timestamp per
+        # combo, advancing across combos — robust to how many regenerations ran).
+        seq_values = set(df["seq"])
+        assert len(seq_values) == 6
+        assert max(seq_values) - min(seq_values) == 5
+        for _, group in df.groupby("region"):
+            assert list(group.sort_index()["seq"]) == sorted(group["seq"])
+        us = set(df[df["region"] == "US"]["seq"])
+        eu = set(df[df["region"] == "EU"]["seq"])
+        assert us.isdisjoint(eu)
+
+    def test_all_dims_opt_out_falls_back_to_one_row_per_timestamp(self) -> None:
+        # Global on but every dim expand=False -> nothing expands -> normal path.
+        dg = DataGen(
+            start_datetime="2024-01-01",
+            end_datetime="2024-01-03",
+            granularity=Granularity.DAILY,
+            seed=42,
+            expand_dimensions=True,
+        )
+        dg.add_dimension("region", random_choice(["US", "EU"]), expand=False)
+        dg.add_metric("sales", {LinearTrend(offset=10, noise_level=0)})
+        assert len(dg.data) == 3  # one row per timestamp, no expansion
+
+    def test_dimension_exposes_expand_attribute(self) -> None:
+        dg = DataGen(
+            start_datetime="2024-01-01",
+            end_datetime="2024-01-03",
+            granularity=Granularity.DAILY,
+            seed=42,
+        )
+        dg.add_dimension("a", random_choice(["x", "y"]))
+        dg.add_dimension("b", random_choice(["x", "y"]), expand=False)
+        dg.add_dimension("c", random_choice(["x", "y"]), expand=True)
+        assert dg.dimensions["a"].expand is None
+        assert dg.dimensions["b"].expand is False
+        assert dg.dimensions["c"].expand is True

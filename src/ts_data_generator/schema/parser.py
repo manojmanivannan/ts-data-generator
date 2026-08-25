@@ -55,7 +55,8 @@ def _split_bracket_aware(text: str, sep: str = ",") -> list[str]:
 
 
 def parse_dimension_spec(spec: str) -> DimensionSpec:
-    # Support for legacy shorthand format: name:function:values or name:values
+    # Support for legacy shorthand format: name:function:values or name:values.
+    # The legacy colon form does not support per-dim expand control (#57).
     if ":" in spec and "=" not in spec:
         parts = spec.split(":", 2)
         if len(parts) == 2:
@@ -75,6 +76,16 @@ def parse_dimension_spec(spec: str) -> DimensionSpec:
 
     name, func_part = spec.split("=", 1)
 
+    # Per-dimension expand override (#57): a trailing top-level
+    # `,expand=true|false` after the closing paren. Only the modern `name=fn(...)`
+    # form supports it; stripped off before the function spec is parsed so it is
+    # not leaked into the args.
+    expand: bool | None = None
+    expand_match = re.search(r",expand=(true|false)\s*$", func_part, re.IGNORECASE)
+    if expand_match:
+        expand = expand_match.group(1).lower() == "true"
+        func_part = func_part[: expand_match.start()]
+
     match = re.match(r"(\w+)(?:\((.*)\))?", func_part)
     if not match:
         raise ValueError(f"Invalid function format: {func_part}")
@@ -88,7 +99,9 @@ def parse_dimension_spec(spec: str) -> DimensionSpec:
         parsed_args = [_parse_value(arg) for arg in args_list]
         args = tuple(parsed_args)
 
-    return DimensionSpec(name=name.strip(), function_name=func_name.strip(), args=args)
+    return DimensionSpec(
+        name=name.strip(), function_name=func_name.strip(), args=args, expand=expand
+    )
 
 
 def parse_trend_spec(spec: str) -> TrendSpec:

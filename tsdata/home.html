@@ -837,7 +837,7 @@
               <input id="f-expand" type="checkbox" name="expand_dimensions">
               <span>One row per timestamp &times; dimension value</span>
             </label>
-            <span class="hint">Cartesian-product rows; enumerable dims only</span>
+            <span class="hint">Global toggle. Per-dimension, append <code>,expand=true|false</code> to a dimension spec</span>
           </div>
 
           <!-- Dimensions -->
@@ -846,7 +846,7 @@
             <div class="entries" id="dim-entries"></div>
             <button type="button" class="btn-add" onclick="addEntry('dim-entries','product:random_choice:A,B,C')">+ add
               dimension</button>
-            <span class="hint">e.g. product:random_choice:A,B,C</span>
+            <span class="hint">e.g. <code>product:random_choice:A,B,C</code> or <code>region=random_choice(US,EU),expand=true|false</code></span>
           </div>
 
           <!-- Metrics -->

@@ -82,9 +82,14 @@ class DataGen:
             *(timestamp x Cartesian product of all enumerable dimensions'
             distinct values)*, each combination carrying its own independently
             regenerated, reproducible metric series. Defaults to ``False``
-            (one row per timestamp). Non-enumerable dimensions raise
-            :class:`~ts_data_generator.exceptions.ExpandError`; multi-item
-            composition is not yet supported (see #58).
+            (one row per timestamp). Per-dimension ``expand`` overrides on
+            ``add_dimension`` make this flag an overridable default (#57):
+            ``expand=True`` forces a dimension into the product, ``expand=False``
+            opts it out (regenerating within-series). A non-enumerable dimension
+            that is actually expanding raises
+            :class:`~ts_data_generator.exceptions.ExpandError`; ``expand=False``
+            is the escape hatch. Multi-item composition is not yet supported
+            (see #58).
 
     Example:
         >>> dg = DataGen(
@@ -229,6 +234,19 @@ class DataGen:
         self._expand_dimensions = bool(value)
         self._request_regeneration()
 
+    def _should_expand(self) -> bool:
+        """Whether generation should take the expansion path.
+
+        The global flag on always selects the expansion path (per-dim
+        ``expand=False`` opts a dimension out of the *product*, not out of the
+        path); with the global flag off, the path runs only when some dimension
+        explicitly forces expansion via ``expand=True`` (#57). Pure flag logic —
+        no domain resolution, so it never raises ``ExpandError``.
+        """
+        if self._expand_dimensions:
+            return True
+        return any(d.expand is True for d in self._dimensions)
+
     # ------------------------------------------------------------------
     # Datetime properties
     # ------------------------------------------------------------------
@@ -306,6 +324,7 @@ class DataGen:
         name: str,
         function: int | float | str | list[Any] | Generator[Any, None, None],
         domain: list[Any] | None = None,
+        expand: bool | None = None,
     ) -> None:
         """Add a new dimension column.
 
@@ -323,6 +342,13 @@ class DataGen:
                 ``domain=`` escape hatch). Cannot be supplied to a carrier that
                 already carries a domain, and cannot override the non-expandable
                 range / auto-name rejection.
+            expand: Per-dimension expansion override for ``expand_dimensions``
+                (#57, decision #52). ``None`` (default) inherits the global
+                flag; ``True`` forces this dimension into the Cartesian product
+                even when the global flag is off; ``False`` opts it out of the
+                product — it regenerates one-value-per-timestamp within each
+                series instead, and a non-enumerable dim marked ``expand=False``
+                is excluded from the product without raising ``ExpandError``.
 
         Raises:
             DimensionError: If a dimension with this name already exists.
@@ -346,7 +372,7 @@ class DataGen:
 
         function = self._apply_domain(name, function, domain)
 
-        dimension = Dimensions(name=name, function=function)
+        dimension = Dimensions(name=name, function=function, expand=expand)
 
         if dimension in self._dimensions:
             raise DimensionError(f"Dimension with name {dimension.name!r} already exists.")
@@ -496,7 +522,7 @@ class DataGen:
             ConfigurationError: If ``expand_dimensions`` is on (multi-item
                 composition with expansion is deferred to #58).
         """
-        if self._expand_dimensions:
+        if self._should_expand():
             raise ConfigurationError(
                 "expand_dimensions does not yet support multi_items "
                 "(linked metrics/dimensions composition is tracked in #58). "
@@ -595,7 +621,7 @@ class DataGen:
 
         self._timestamps = new_timestamps
 
-        if self._expand_dimensions:
+        if self._should_expand():
             self.data = self._generate_expanded_data(new_timestamps)
             self._state = PipelineState.GENERATED
             return self.data
@@ -634,9 +660,12 @@ class DataGen:
     def _generate_expanded_data(self, timestamps: pd.DatetimeIndex) -> pd.DataFrame:
         """Build the expanded DataFrame: one row per (timestamp x combination).
 
-        With ``expand_dimensions`` on, every enumerable dimension participates in
-        a Cartesian product; each combination carries its own independently
-        regenerated metric series seeded per combination. Dimensions stay
+        The Cartesian product runs over *expanding* dimensions only — those whose
+        per-dim ``expand`` override (falling back to the global flag) is true and
+        which carry an enumerable domain; each combination carries its own
+        independently regenerated metric series seeded per combination.
+        Non-expanding dimensions regenerate one-value-per-timestamp within each
+        series instead of being broadcast (#57). Expanding dimensions stay
         groupby keys, so aggregation holds unchanged (verified by the #48
         prototype). Multi-item composition is deferred to #58 and raises here.
 
@@ -657,8 +686,10 @@ class DataGen:
         Raises:
             ConfigurationError: If multi-items are present (composition is
                 deferred to #58).
-            ExpandError: If any dimension is non-enumerable (numeric range /
-                auto-generated name / opaque generator without ``domain=``).
+            ExpandError: If a dimension that is actually expanding is
+                non-enumerable (numeric range / auto-generated name / opaque
+                generator without ``domain=``). ``expand=False`` opts a
+                non-enumerable dimension out instead of erroring.
         """
         if self._multi_items:
             raise ConfigurationError(
@@ -677,6 +708,7 @@ class DataGen:
             metrics=self.metrics,
             timestamps=timestamps,
             base_seed=base_seed,
+            global_expand=self._expand_dimensions,
         )
 
         if "epoch" not in data.columns:

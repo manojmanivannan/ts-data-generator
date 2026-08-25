@@ -276,34 +276,72 @@ def _parse_value(value: str) -> int | float | str | bool | list:
     return value
 
 
-def _parse_dimension_spec(spec: str) -> tuple[str, str, tuple | list]:
+def _parse_dimension_spec(spec: str) -> tuple[str, str, tuple | list, bool | None]:
     """Parse a dimension specification string.
 
     Formats:
-      - ``name:function:values`` (e.g. ``"product:random_choice:A,B,C"``)
-      - ``name:values`` (defaults to ``random_choice``)
+      - Legacy colon: ``name:function:values`` (e.g. ``"product:random_choice:A,B,C"``)
+        or ``name:values`` (defaults to ``random_choice``). Per-dim expand
+        control is unsupported here (``expand`` is always ``None``).
+      - Modern string-spec: ``name=function(args),expand=true|false`` (e.g.
+        ``"region=random_choice(US,EU),expand=true"``). The trailing
+        ```,expand=...`` override (#57) is optional; ``None`` inherits the global
+        flag.
 
     Returns:
-        Tuple of (name, function_name, values).
+        Tuple of (name, function_name, values, expand).
     """
-    parts = spec.split(":", 2)
+    # Legacy colon form — no `=` present, no per-dim expand support (#57).
+    if ":" in spec and "=" not in spec:
+        parts = spec.split(":", 2)
+        if len(parts) == 2:
+            name, values = parts
+            function_name = DEFAULT_DIMENSION_FUNCTION
+        else:
+            name, function_name, values = parts
 
-    if len(parts) == 2:
-        name, values = parts
-        function_name = DEFAULT_DIMENSION_FUNCTION
-    else:
-        name, function_name, values = parts
+        value_list = values.split(VALUE_SEPARATOR)
+        if all(v.lstrip("-").replace(".", "", 1).isdigit() for v in value_list if v):
+            parsed = tuple(
+                (int(v) if v.isdigit() or (v.startswith("-") and v[1:].isdigit()) else float(v))
+                for v in value_list
+            )
+        else:
+            parsed = value_list
 
-    value_list = values.split(VALUE_SEPARATOR)
-    if all(v.lstrip("-").replace(".", "", 1).isdigit() for v in value_list if v):
-        parsed = tuple(
-            (int(v) if v.isdigit() or (v.startswith("-") and v[1:].isdigit()) else float(v))
-            for v in value_list
+        return name, function_name, parsed, None
+
+    if "=" not in spec:
+        raise click.BadParameter(
+            f"Invalid dimension spec: {spec}. "
+            f"Expected 'name:function:values' or 'name=function(args),expand=true|false'"
         )
-    else:
-        parsed = value_list
 
-    return name, function_name, parsed
+    name, func_part = spec.split("=", 1)
+
+    # Per-dimension expand override (#57): trailing top-level `,expand=true|false`
+    # after the closing paren. Stripped off before the function spec is parsed so
+    # it is not leaked into the values.
+    expand: bool | None = None
+    expand_match = re.search(r",expand=(true|false)\s*$", func_part, re.IGNORECASE)
+    if expand_match:
+        expand = expand_match.group(1).lower() == "true"
+        func_part = func_part[: expand_match.start()]
+
+    match = re.match(r"(\w+)(?:\((.*)\))?", func_part.strip())
+    if not match:
+        raise click.BadParameter(f"Invalid function format: {func_part}")
+
+    function_name = match.group(1)
+    args_str = match.group(2)
+
+    parsed: tuple | list
+    if args_str:
+        parsed = tuple(_parse_value(arg) for arg in _split_bracket_aware(args_str))
+    else:
+        parsed = ()
+
+    return name.strip(), function_name, parsed, expand
 
 
 def _split_bracket_aware(text: str, sep: str = VALUE_SEPARATOR) -> list[str]:
@@ -699,14 +737,14 @@ def generate(
     data_gen.to_granularity(granularity)
 
     for dimension in dims_str.split(DIM_SEPARATOR):
-        dim_name, func_name, values = _parse_dimension_spec(dimension)
+        dim_name, func_name, values, expand = _parse_dimension_spec(dimension)
         dim_fn = _get_dimension_function(func_name)
 
         try:
-            data_gen.add_dimension(dim_name, dim_fn(values))
+            data_gen.add_dimension(dim_name, dim_fn(values), expand=expand)
         except TypeError:
             try:
-                data_gen.add_dimension(dim_name, dim_fn(*values))
+                data_gen.add_dimension(dim_name, dim_fn(*values), expand=expand)
             except TypeError as exc:
                 raise click.BadParameter(
                     f"Invalid parameters for dimension {dim_name!r} "

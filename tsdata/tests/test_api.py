@@ -36,6 +36,16 @@ class TestHomeAndHealth:
         assert 'id="f-expand"' in resp.text
         assert 'name="expand_dimensions"' in resp.text
 
+    def test_home_page_dimension_hint_mentions_per_dim_expand(self, client):
+        """The dimension-field hint documents the ,expand=true|false modifier (#57).
+
+        No new UI control is added — the modifier is typed into the existing
+        dimension field; the #56 checkbox remains the global toggle.
+        """
+        resp = client.get("/")
+        assert resp.status_code == 200
+        assert ",expand=true|false" in resp.text
+
 
 # ---------------------------------------------------------------------------
 # POST /generate
@@ -267,6 +277,62 @@ class TestExpandDimensions:
         resp = client.post("/generate", json=body)
         assert resp.status_code == 400
         assert "port" in resp.json()["detail"]
+
+    # -- per-dimension expand control via modern string-spec (#57) ----------
+
+    def test_per_dim_expand_false_opts_out(self, client):
+        # Modern `name=fn(args),expand=false`: region opts out of the product,
+        # so with the global flag on only env expands -> 3 x 2 = 6 rows.
+        body = {
+            "start": "2024-01-01",
+            "end": "2024-01-03",
+            "granularity": "D",
+            "dimensions": [
+                "region=random_choice(US,EU),expand=false",
+                "env=ordered_choice(prod,dev)",
+            ],
+            "metrics": ["sales:LinearTrend(offset=10)"],
+            "seed": 42,
+            "expand_dimensions": True,
+        }
+        resp = client.post("/generate", json=body)
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["rows"] == 6
+
+    def test_per_dim_expand_true_forces_expansion_when_global_off(self, client):
+        # `expand=true` forces region into the product even with the flag off.
+        body = {
+            "start": "2024-01-01",
+            "end": "2024-01-03",
+            "granularity": "D",
+            "dimensions": ["region=random_choice(US,EU),expand=true"],
+            "metrics": ["sales:LinearTrend(offset=10)"],
+            "seed": 42,
+            "expand_dimensions": False,
+        }
+        resp = client.post("/generate", json=body)
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["rows"] == 6  # 3 timestamps x 2 regions
+
+    def test_per_dim_expand_false_escape_hatch_for_non_enumerable(self, client):
+        # A non-enumerable dim marked expand=false is excluded from the product
+        # and does NOT error with the global flag on.
+        body = {
+            "start": "2024-01-01",
+            "end": "2024-01-03",
+            "granularity": "D",
+            "dimensions": [
+                "port=random_int(1,100),expand=false",
+                "region=random_choice(US,EU)",
+            ],
+            "metrics": ["sales:LinearTrend(offset=10)"],
+            "seed": 42,
+            "expand_dimensions": True,
+        }
+        resp = client.post("/generate", json=body)
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["rows"] == 6  # 3 x 2 regions; port within-series
+        assert "port" in resp.json()["columns"]
 
 
 # ---------------------------------------------------------------------------

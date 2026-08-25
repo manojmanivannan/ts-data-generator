@@ -135,6 +135,40 @@ Output:
 2024-01-01 03:00:00  1704078000  production  node_01   East             2     0.189741          d_1   batch_val_9
 2024-01-01 04:00:00  1704081600  production  node_02  North             4     0.138835          d_1  batch_val_12
 ```
+
+---
+
+## 🧮 Per-dimension expansion control (`expand=`)
+
+When `expand_dimensions` is on, the engine emits one row per *(timestamp × Cartesian product of every enumerable dimension's distinct values)*, each combination carrying its own regenerated metric series. The global flag is an **overridable default**: each dimension's `expand=` argument controls whether it participates.
+
+*   `expand=None` (default) — inherits the global `expand_dimensions` flag.
+*   `expand=True` — forces this dimension into the product **even when the global flag is off**.
+*   `expand=False` — opts this dimension **out** of the product. It instead regenerates one-value-per-timestamp *within* each series, varying independently across combinations (a categorical within-series field, not a broadcast).
+
+`expand=False` is also the **escape hatch** for non-enumerable dimensions (`random_int`, `random_float`, `auto_generate_name`, or an opaque generator without `domain=`): marked `expand=False`, a non-enumerable dimension is excluded from the product and does **not** raise `ExpandError`, even with the global flag on. The error fires only for a dimension that is *actually expanding*.
+
+```python
+dg = DataGen(start_datetime="2024-01-01", end_datetime="2024-01-03",
+             granularity="D", seed=42, expand_dimensions=True)
+
+dg.add_dimension("region", random_choice(["US", "EU"]))               # expands (inherits)
+dg.add_dimension("port", random_int(1, 100), expand=False)            # opts out, no error
+dg.add_dimension("env", ordered_choice(["prod", "dev"]), expand=True) # forces expansion
+dg.add_metric("sales", {LinearTrend(offset=10)})
+# Rows = 3 timestamps × 2 regions × 2 envs = 12; `port` varies within each series.
+```
+
+### String-spec syntax
+
+In the CLI `--dims` and the web API `dimensions` field, the modern `name=function(args)` form gains a trailing `,expand=true|false` after the closing paren. The legacy `name:function:values` colon form does not support per-dim control.
+
+```
+tsdata generate --expand-dimensions \
+  --dims "region=random_choice(US,EU);port=random_int(1,100),expand=false;env=ordered_choice(prod,dev),expand=true" \
+  --mets "sales:LinearTrend(offset=10)" --start 2024-01-01 --end 2024-01-03 --granularity D --output data.csv
+```
+
 ---
 
 ## 🔗 Advanced: Linked Dimensions (Multi-Items)

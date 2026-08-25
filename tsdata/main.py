@@ -301,16 +301,17 @@ def _add_dimension(dg: DataGen, parsed: DimensionSpec, dim_fn: Any) -> None:
     Translates a ``TypeError`` from a bad parameter count into a 400
     ``HTTPException``. An :class:`ExpandError` raised by ``dg.add_dimension``
     when the dimension is non-enumerable under ``expand_dimensions`` propagates
-    untouched for ``_build_datagen`` to map to a 400.
+    untouched for ``_build_datagen`` to map to a 400. The per-dim ``expand``
+    override (#57) is forwarded to ``add_dimension``.
     """
     try:
         # Mirror CLI behavior: first try single-argument call for iterable-style
         # dimension functions (e.g. random_choice), then retry as expanded args
         # for functions like random_int/random_float.
-        dg.add_dimension(parsed.name, dim_fn(parsed.args))
+        dg.add_dimension(parsed.name, dim_fn(parsed.args), expand=parsed.expand)
     except TypeError:
         try:
-            dg.add_dimension(parsed.name, dim_fn(*parsed.args))
+            dg.add_dimension(parsed.name, dim_fn(*parsed.args), expand=parsed.expand)
         except TypeError as inner_exc:
             raise HTTPException(
                 status_code=400,
