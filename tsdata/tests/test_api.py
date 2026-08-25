@@ -29,6 +29,13 @@ class TestHomeAndHealth:
         assert data["status"] == "ok"
         assert "version" in data
 
+    def test_home_page_has_expand_checkbox(self, client):
+        """The custom form exposes an Expand dimensions checkbox (#56)."""
+        resp = client.get("/")
+        assert resp.status_code == 200
+        assert 'id="f-expand"' in resp.text
+        assert 'name="expand_dimensions"' in resp.text
+
 
 # ---------------------------------------------------------------------------
 # POST /generate
@@ -197,6 +204,72 @@ class TestGenerate:
 
 
 # ---------------------------------------------------------------------------
+# expand_dimensions on /generate (#56)
+# ---------------------------------------------------------------------------
+
+
+class TestExpandDimensions:
+    """``expand_dimensions`` on the request body — default off, on multiplies rows."""
+
+    BASE = {
+        "start": "2024-01-01",
+        "end": "2024-01-03",
+        "granularity": "D",
+        "dimensions": ["region:random_choice:US,EU"],
+        "metrics": ["sales:LinearTrend(offset=10)"],
+        "seed": 42,
+    }
+
+    def test_field_defaults_to_off_when_omitted(self, client):
+        resp = client.post("/generate", json=self.BASE)
+        assert resp.status_code == 200
+        # 3 daily timestamps, one row each — no expansion.
+        assert resp.json()["rows"] == 3
+
+    def test_field_explicit_false(self, client):
+        resp = client.post("/generate", json={**self.BASE, "expand_dimensions": False})
+        assert resp.status_code == 200
+        assert resp.json()["rows"] == 3
+
+    def test_field_true_multiplies_rows(self, client):
+        resp = client.post("/generate", json={**self.BASE, "expand_dimensions": True})
+        assert resp.status_code == 200, resp.text
+        # 3 timestamps x 2 regions = 6 rows.
+        assert resp.json()["rows"] == 6
+
+    def test_field_true_carries_dimension_column(self, client):
+        resp = client.post("/generate", json={**self.BASE, "expand_dimensions": True})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "region" in data["columns"]
+        assert {row["region"] for row in data["data"]} == {"US", "EU"}
+
+    def test_field_true_two_dimensions(self, client):
+        body = {
+            **self.BASE,
+            "dimensions": [
+                "region:random_choice:US,EU",
+                "env:ordered_choice:prod,dev",
+            ],
+            "expand_dimensions": True,
+        }
+        resp = client.post("/generate", json=body)
+        assert resp.status_code == 200
+        # 3 timestamps x 2 regions x 2 envs = 12 rows.
+        assert resp.json()["rows"] == 12
+
+    def test_non_enumerable_dim_with_flag_returns_400(self, client):
+        body = {
+            **self.BASE,
+            "dimensions": ["port:random_int:1,100"],
+            "expand_dimensions": True,
+        }
+        resp = client.post("/generate", json=body)
+        assert resp.status_code == 400
+        assert "port" in resp.json()["detail"]
+
+
+# ---------------------------------------------------------------------------
 # POST /generate/preset/{name}
 # ---------------------------------------------------------------------------
 
@@ -237,6 +310,48 @@ class TestGenerateFromPreset:
             resp = client.post(f"/generate/preset/{name}")
             assert resp.status_code == 200, f"Preset {name} failed: {resp.text}"
 
+    def test_preset_override_expand_true_multiplies_rows(self, client):
+        # weekly-revenue's only dimension is enumerable (ordered_choice x3),
+        # so expand is valid and must yield 3x the rows.
+        off = client.post("/generate/preset/weekly-revenue", json={"seed": 42}).json()
+        on = client.post(
+            "/generate/preset/weekly-revenue",
+            json={"seed": 42, "expand_dimensions": True},
+        ).json()
+        assert on["rows"] == off["rows"] * 3
+
+    def test_preset_override_expand_null_uses_preset_default(self, client):
+        # An explicit null override falls back to the preset default (False),
+        # so it must match a request with no override at all.
+        default = client.post(
+            "/generate/preset/weekly-revenue", json={"seed": 42}
+        ).json()
+        nulled = client.post(
+            "/generate/preset/weekly-revenue",
+            json={"seed": 42, "expand_dimensions": None},
+        ).json()
+        assert nulled["rows"] == default["rows"]
+
+    def test_preset_override_expand_false_explicit(self, client):
+        # Explicit False must match the no-override default too.
+        default = client.post(
+            "/generate/preset/weekly-revenue", json={"seed": 42}
+        ).json()
+        off = client.post(
+            "/generate/preset/weekly-revenue",
+            json={"seed": 42, "expand_dimensions": False},
+        ).json()
+        assert off["rows"] == default["rows"]
+
+    def test_preset_override_expand_non_enumerable_returns_400(self, client):
+        # scientific-mock mixes enumerable + non-enumerable (random_int /
+        # random_float / auto_generate_name) dims, so expand must be rejected.
+        resp = client.post(
+            "/generate/preset/scientific-mock",
+            json={"expand_dimensions": True},
+        )
+        assert resp.status_code == 400
+
 
 # ---------------------------------------------------------------------------
 # GET /presets
@@ -253,6 +368,13 @@ class TestPresets:
         assert all("start" in p for p in presets)
         assert all("granularity" in p for p in presets)
 
+    def test_list_presets_carries_expand_dimensions(self, client):
+        """The /presets list summary exposes each preset's expand state (#56)."""
+        resp = client.get("/presets")
+        assert resp.status_code == 200
+        for preset in resp.json():
+            assert preset["expand_dimensions"] is False
+
     def test_get_preset_detail(self, client):
         resp = client.get("/presets/minute-stock")
         assert resp.status_code == 200
@@ -264,6 +386,22 @@ class TestPresets:
     def test_get_preset_not_found(self, client):
         resp = client.get("/presets/nonexistent")
         assert resp.status_code == 404
+
+    def test_preset_detail_carries_expand_dimensions(self, client):
+        """Every preset detail exposes expand_dimensions (default False)."""
+        for name in [
+            "minute-stock",
+            "weekly-revenue",
+            "monthly-recurring",
+            "scientific-mock",
+            "economics-cycle",
+            "sociology-mobility",
+            "electronics-reliability",
+            "epidemiology-wave",
+        ]:
+            cfg = client.get(f"/presets/{name}").json()["config"]
+            assert "expand_dimensions" in cfg
+            assert cfg["expand_dimensions"] is False
 
 
 # ---------------------------------------------------------------------------

@@ -36,6 +36,7 @@ from ts_data_generator.exceptions import (
     ConfigurationError,
     DataGeneratorError,
     DimensionError,
+    ExpandError,
     MetricError,
     MultiItemError,
     RegistryError,
@@ -48,6 +49,7 @@ from ts_data_generator.schema.parser import (
     parse_dimension_spec,
     parse_trend_spec,
 )
+from ts_data_generator.schema.types import DimensionSpec
 from ts_data_generator.utils.registry import Registry
 from ts_data_generator.utils.trends import Trends
 
@@ -102,6 +104,14 @@ class GenerateRequest(BaseModel):
     seed: int | None = Field(
         default=None, description="Random seed for deterministic generation"
     )
+    expand_dimensions: bool = Field(
+        default=False,
+        description=(
+            "Emit one row per (timestamp x Cartesian product of enumerable "
+            "dimensions' distinct values), each combination carrying its own "
+            "regenerated metric series"
+        ),
+    )
 
     @field_validator("granularity")
     @classmethod
@@ -135,6 +145,10 @@ class PresetGenerateRequest(BaseModel):
         default=None, description="Override preset granularity"
     )
     seed: int | None = Field(default=None, description="Override preset seed")
+    expand_dimensions: bool | None = Field(
+        default=None,
+        description="Override preset expand_dimensions (null = use preset default)",
+    )
 
 
 class PresetSummary(BaseModel):
@@ -144,6 +158,7 @@ class PresetSummary(BaseModel):
     granularity: str
     dimensions_count: int
     metrics_count: int
+    expand_dimensions: bool
 
 
 class PresetDetail(BaseModel):
@@ -280,13 +295,37 @@ async def generic_error_handler(request, exc):  # noqa: ARG001
 _DIM_SEPARATOR = ";"
 
 
+def _add_dimension(dg: DataGen, parsed: DimensionSpec, dim_fn: Any) -> None:
+    """Add a dimension, mirroring the CLI's single-arg then expanded-args call dance.
+
+    Translates a ``TypeError`` from a bad parameter count into a 400
+    ``HTTPException``. An :class:`ExpandError` raised by ``dg.add_dimension``
+    when the dimension is non-enumerable under ``expand_dimensions`` propagates
+    untouched for ``_build_datagen`` to map to a 400.
+    """
+    try:
+        # Mirror CLI behavior: first try single-argument call for iterable-style
+        # dimension functions (e.g. random_choice), then retry as expanded args
+        # for functions like random_int/random_float.
+        dg.add_dimension(parsed.name, dim_fn(parsed.args))
+    except TypeError:
+        try:
+            dg.add_dimension(parsed.name, dim_fn(*parsed.args))
+        except TypeError as inner_exc:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid parameters for dimension '{parsed.name}' "
+                f"with function '{parsed.function_name}': {parsed.args}",
+            ) from inner_exc
+
+
 def _build_datagen(request: GenerateRequest) -> DataGen:
     """Construct and configure a :class:`DataGen` from a request body.
 
     Mirrors the CLI ``generate`` command logic but raises
     :class:`HTTPException` on validation or registry errors.
     """
-    dg = DataGen(seed=request.seed)
+    dg = DataGen(seed=request.seed, expand_dimensions=request.expand_dimensions)
     dg.start_datetime = request.start
     dg.end_datetime = request.end
     dg.to_granularity(request.granularity)
@@ -304,19 +343,11 @@ def _build_datagen(request: GenerateRequest) -> DataGen:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
         try:
-            # Mirror CLI behavior: first try single-argument call for iterable-style
-            # dimension functions (e.g. random_choice), then retry as expanded args
-            # for functions like random_int/random_float.
-            dg.add_dimension(parsed.name, dim_fn(parsed.args))
-        except TypeError as exc:
-            try:
-                dg.add_dimension(parsed.name, dim_fn(*parsed.args))
-            except TypeError as inner_exc:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Invalid parameters for dimension '{parsed.name}' "
-                    f"with function '{parsed.function_name}': {parsed.args}",
-                ) from inner_exc
+            _add_dimension(dg, parsed, dim_fn)
+        except ExpandError as exc:
+            # Non-enumerable dimension under expand_dimensions — surface as 400
+            # rather than a generic 500, matching the CLI's error reporting.
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     # --- Metrics (collect trends + anomalies keyed by metric name) ---
     metrics_data: dict[str, dict[str, list]] = {}
@@ -521,6 +552,11 @@ def generate_from_preset(
             metrics=list(preset.metrics),
             anomalies=list(preset.anomalies),
             seed=overrides.seed if overrides and overrides.seed is not None else None,
+            expand_dimensions=(
+                overrides.expand_dimensions
+                if overrides and overrides.expand_dimensions is not None
+                else preset.expand_dimensions
+            ),
         )
     except PydanticValidationError as exc:
         # ValidationError from pydantic - return 422 with details
@@ -560,6 +596,7 @@ def list_presets() -> list[PresetSummary]:
                     granularity=preset.granularity,
                     dimensions_count=len(preset.dimensions),
                     metrics_count=len(preset.metrics),
+                    expand_dimensions=preset.expand_dimensions,
                 )
             )
         return summaries

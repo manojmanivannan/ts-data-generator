@@ -374,6 +374,25 @@
       color: var(--text-muted)
     }
 
+    .field .check {
+      display: flex;
+      align-items: center;
+      gap: .5rem;
+      cursor: pointer;
+      font-family: var(--mono);
+      font-size: .8rem;
+      color: var(--text)
+    }
+
+    .field .check input[type="checkbox"] {
+      width: auto;
+      margin: 0;
+      accent-color: var(--accent);
+      background: transparent;
+      border: none;
+      padding: 0
+    }
+
     .field .hint {
       font-size: .7rem;
       color: var(--text-muted);
@@ -812,6 +831,14 @@
             <label for="f-seed">Seed</label>
             <input id="f-seed" type="number" name="seed" placeholder="Random (optional)">
           </div>
+          <div class="field">
+            <label for="f-expand">Expand dimensions</label>
+            <label class="check">
+              <input id="f-expand" type="checkbox" name="expand_dimensions">
+              <span>One row per timestamp &times; dimension value</span>
+            </label>
+            <span class="hint">Cartesian-product rows; enumerable dims only</span>
+          </div>
 
           <!-- Dimensions -->
           <div class="field list-field">
@@ -1005,6 +1032,7 @@
         document.getElementById('f-end').value = cfg.end || '';
         document.getElementById('f-gran').value = cfg.granularity || 'h';
         document.getElementById('f-seed').value = cfg.seed != null ? cfg.seed : '';
+        document.getElementById('f-expand').checked = cfg.expand_dimensions === true;
 
         setEntries('dim-entries', cfg.dimensions || [], 'product:random_choice:A,B,C');
         setEntries('met-entries', cfg.metrics || [], 'sales:LinearTrend(slope=30)+WeekendTrend(weekend_effect=50)');
@@ -1070,6 +1098,7 @@
         metrics: [...document.querySelectorAll('#met-entries input')].map(i => i.value).filter(Boolean),
         anomalies: [...document.querySelectorAll('#anom-entries input')].map(i => i.value).filter(Boolean),
         seed: document.getElementById('f-seed').value ? parseInt(document.getElementById('f-seed').value) : null,
+        expand_dimensions: document.getElementById('f-expand').checked,
       };
 
       try {
