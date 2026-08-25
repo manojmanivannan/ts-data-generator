@@ -25,7 +25,7 @@ The package includes a comprehensive set of pre-built dimension helpers inside `
 | `random_choice(vals)` | Stochastic | Selects a random element uniformly at each step. | `region:random_choice:US,EU,AP` |
 | `random_int(min, max)`| Stochastic | Yields random integers in `[min, max]` (inclusive). | `user_id:random_int:1000,9999` |
 | `random_float(min, max)`| Stochastic | Yields random floats in `[min, max)` (exclusive). | `weight:random_float:0.0,1.0` |
-| `auto_generate_name(pre)`| Deterministic | Yields incrementing string keys with a prefix. | `id:auto_generate_name:sensor` |
+| `auto_generate_name(pre)`| Deterministic | Yields one auto-generated prefixed name (e.g. `s_42`) for the whole column. | `id:auto_generate_name:sensor` |
 
 ---
 
@@ -65,7 +65,7 @@ tsdata generate \
 
 ## 🐍 Python API Usage
 
-When using the Python API, you pass an infinite generator or any standard Python `Iterable` to the `.add_dimension()` method.
+When using the Python API, you pass a dimension generator to the `.add_dimension()` method. Each built-in helper returns a **carrier** — an infinite iterator (so it behaves like the generator you'd expect) that also carries its `.domain` and an `.expandable` flag, captured at construction time. A plain Python generator is still accepted; supply its `domain=` explicitly so the engine can see it (see below).
 
 Here is a fully runnable script showcasing all built-in helpers and custom generators:
 
@@ -112,6 +112,14 @@ def custom_infinite_seq():
         index += 3
 
 dg.add_dimension("custom_batch", custom_infinite_seq())
+
+# 8. A custom/opaque generator with an explicit domain (the domain= escape hatch).
+#    The engine cannot see a plain generator's domain, so declare it explicitly.
+def site_gen():
+    while True:
+        yield "site_A"  # one of a known finite set the engine can't introspect
+
+dg.add_dimension("site", site_gen(), domain=["site_A", "site_B", "site_C"])
 
 # Verify column outputs
 df = dg.data

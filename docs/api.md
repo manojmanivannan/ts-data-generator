@@ -46,12 +46,16 @@ dg = DataGen(seed=42)
 Sets the generation time step using a predefined frequency or Pandas alias string.
 *   **Examples**: `"s"`, `"min"`, `"5min"`, `"h"`, `"D"`, `"W"`, `"ME"`, `"YE"`.
 
-### `.add_dimension(name: str, function: int | float | str | list | Generator)`
+### `.add_dimension(name: str, function: int | float | str | list | Generator, domain: list | None = None)`
 Adds a categorical or context column mapping to the index.
+
+Each built-in generator helper (`random_choice`, `ordered_choice`, `constant`, `random_int`, `random_float`, `auto_generate_name`) returns a **carrier** — an infinite iterator (so `next()` works as before) that also carries its `.domain` and an `.expandable` flag, captured at construction. Static values and lists are converted to carriers automatically.
+
 *   **Parameters**:
     *   `name`: The resulting column name in the DataFrame.
-    *   `function`: An infinite generator, static value, or list that cycles. Static values (`int`, `float`, `str`) are wrapped as constants; lists are cycled infinitely.
-*   **Raises**: `DimensionError` if a dimension with this name already exists. `ValidationError` if the function type is unsupported.
+    *   `function`: An infinite generator (carrier or plain), or a static value (`int`, `float`, `str`) or `list`. Static values are wrapped as constants; lists become a carrier carrying their domain (no opaque `itertools.cycle`).
+    *   `domain`: Explicit value domain for an opaque custom/pre-built generator whose domain the engine cannot see structurally (the `domain=` escape hatch). Cannot be supplied to a carrier that already carries a domain, and cannot override the non-expandable range / auto-name rejection.
+*   **Raises**: `DimensionError` if a dimension with this name already exists. `ValidationError` if the function type is unsupported, or `domain=` is misused (supplied to a carrier, or to a non-expandable `random_int`/`random_float`/`auto_generate_name` generator).
 
 ### `.update_dimension(name: str, function: int | str | float | Generator | None)`
 Update an existing dimension's generator function.

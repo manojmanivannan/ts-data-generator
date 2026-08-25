@@ -87,14 +87,14 @@ class TestAutoGenerateNameWithRNG:
     def test_with_rng_is_deterministic(self) -> None:
         rng1 = SeedableRNG(123)
         rng2 = SeedableRNG(123)
-        names1 = [auto_generate_name("metric", rng=rng1) for _ in range(5)]
-        names2 = [auto_generate_name("metric", rng=rng2) for _ in range(5)]
+        names1 = [next(auto_generate_name("metric", rng=rng1)) for _ in range(5)]
+        names2 = [next(auto_generate_name("metric", rng=rng2)) for _ in range(5)]
         assert names1 == names2
 
     def test_without_rng_still_works(self) -> None:
-        name = auto_generate_name("metric")
+        name = next(auto_generate_name("metric"))
         assert name.startswith("m_")
 
     def test_with_default_rng_produces_valid_name(self) -> None:
-        name = auto_generate_name("dimension", rng=DefaultRNG())
+        name = next(auto_generate_name("dimension", rng=DefaultRNG()))
         assert name.startswith("d_")

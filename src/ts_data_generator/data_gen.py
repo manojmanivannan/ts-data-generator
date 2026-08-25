@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Any, cast
 import pandas as pd
 
 from ts_data_generator.aggregator import aggregate_dataframe
+from ts_data_generator.carriers import DimensionCarrier, DomainCarrier
 from ts_data_generator.exceptions import (
     ConfigurationError,
     DimensionError,
@@ -41,6 +42,21 @@ from ts_data_generator.transforms.normalizer import Normalizer, create_normalize
 from ts_data_generator.utils.functions import constant
 
 logger = logging.getLogger(__name__)
+
+
+def _list_carrier(values: list[Any]) -> DimensionCarrier:
+    """Wrap a static list as a domain-carrying carrier (no opaque itertools.cycle).
+
+    The list is captured as the carrier's domain before it is cycled, so the
+    expand path reads it directly instead of sampling an opaque C-level cycle.
+    """
+    values = list(values)
+
+    def _source() -> Any:
+        while True:
+            yield from cycle(values)
+
+    return DomainCarrier(_source(), values, "list")
 
 
 class PipelineState(Enum):
@@ -197,9 +213,7 @@ class DataGen:
             try:
                 datetime.fromisoformat(value)
             except ValueError as exc:
-                raise ValidationError(
-                    "Dates must be in ISO format (YYYY-MM-DD)."
-                ) from exc
+                raise ValidationError("Dates must be in ISO format (YYYY-MM-DD).") from exc
         self._start_datetime = value
         self._request_regeneration()
 
@@ -213,9 +227,7 @@ class DataGen:
             try:
                 datetime.fromisoformat(value)
             except ValueError as exc:
-                raise ValidationError(
-                    "Dates must be in ISO format (YYYY-MM-DD)."
-                ) from exc
+                raise ValidationError("Dates must be in ISO format (YYYY-MM-DD).") from exc
         self._end_datetime = value
         self._request_regeneration()
 
@@ -263,17 +275,30 @@ class DataGen:
         self,
         name: str,
         function: int | float | str | list[Any] | Generator[Any, None, None],
+        domain: list[Any] | None = None,
     ) -> None:
         """Add a new dimension column.
 
+        ``function`` is stored as a domain-carrying carrier so the expand path
+        can read its value domain with no generator introspection. Scalars and
+        static lists are converted to carriers at construction; the static-list
+        branch carries its domain directly (no opaque ``itertools.cycle``).
+
         Args:
             name: Unique column name for the dimension.
-            function: An infinite generator, or a static value (int, float,
-                str, list) which will be converted to a generator.
+            function: An infinite generator (carrier or plain), or a static
+                value (int, float, str, list) which is converted to a carrier.
+            domain: Explicit value domain for an opaque custom/pre-built
+                generator whose domain the engine cannot see structurally (the
+                ``domain=`` escape hatch). Cannot be supplied to a carrier that
+                already carries a domain, and cannot override the non-expandable
+                range / auto-name rejection.
 
         Raises:
             DimensionError: If a dimension with this name already exists.
-            ValidationError: If function is not a supported type.
+            ValidationError: If function is not a supported type, or ``domain=``
+                is misused (supplied to a carrier, or to a non-expandable
+                range/auto-name generator).
         """
         if not isinstance(function, (int, float, str, list, Generator)):
             raise ValidationError(
@@ -287,21 +312,55 @@ class DataGen:
         if isinstance(function, list):
             if not function:
                 raise ValidationError("Dimension values list must not be empty.")
-            function = cycle(function)
+            function = _list_carrier(function)
+
+        function = self._apply_domain(name, function, domain)
 
         dimension = Dimensions(name=name, function=function)
 
         if dimension in self._dimensions:
-            raise DimensionError(
-                f"Dimension with name {dimension.name!r} already exists."
-            )
+            raise DimensionError(f"Dimension with name {dimension.name!r} already exists.")
 
         self._dimensions.append(dimension)
         self._request_regeneration()
 
-    def update_dimension(
-        self, name: str, function: int | str | float | Generator | None
-    ) -> None:
+    @staticmethod
+    def _apply_domain(
+        name: str,
+        function: DimensionCarrier | Generator[Any, None, None],
+        domain: list[Any] | None,
+    ) -> DimensionCarrier | Generator[Any, None, None]:
+        """Apply the ``domain=`` escape hatch and eager range rejection.
+
+        ``domain=`` is the escape hatch for opaque generators (plain
+        ``Generator`` objects with no carried domain): it wraps them in an
+        expandable carrier. It cannot be supplied to a carrier that already
+        carries a domain, and — critically — it cannot override the
+        non-expandable range / auto-name rejection, which is eager here.
+        """
+        if domain is None:
+            return function
+
+        if isinstance(function, DimensionCarrier):
+            if not function.expandable:
+                raise ValidationError(
+                    f"domain= cannot be supplied to {function.func_name}() "
+                    f"for dimension {name!r}: it is a non-enumerable "
+                    f"{function.func_name} generator. "
+                    f"{function.non_expandable_reason}"
+                )
+            raise ValidationError(
+                f"domain= is only for opaque generators without a known domain; "
+                f"dimension {name!r} already carries its domain via "
+                f"{function.func_name}()."
+            )
+
+        # Opaque plain generator — wrap it in an expandable carrier carrying the
+        # declared domain. next() still delegates to the original generator.
+        carrier_name = getattr(function, "__name__", "custom")
+        return DomainCarrier(function, list(domain), carrier_name)
+
+    def update_dimension(self, name: str, function: int | str | float | Generator | None) -> None:
         """Update an existing dimension's generator function.
 
         Args:
@@ -419,17 +478,13 @@ class DataGen:
                 raise ValidationError("Multi-item values list must not be empty.")
             function = cycle(function)
 
-        items = MultiItems(
-            names=names, function=function, aggregation_type=aggregation_type
-        )
+        items = MultiItems(names=names, function=function, aggregation_type=aggregation_type)
 
         name_set = set(names)
         for mt in self._multi_items:
             overlap = name_set & set(mt.names)
             if overlap:
-                raise MultiItemError(
-                    f"Multi-item with name(s) {overlap} already exists."
-                )
+                raise MultiItemError(f"Multi-item with name(s) {overlap} already exists.")
 
         self._multi_items.append(items)
 
@@ -456,9 +511,7 @@ class DataGen:
 
         for item in overlapping:
             self.data.drop(item.names, axis=1, errors="ignore", inplace=True)
-            self._multi_items = [
-                mt for mt in self._multi_items if mt.names != item.names
-            ]
+            self._multi_items = [mt for mt in self._multi_items if mt.names != item.names]
 
     # ------------------------------------------------------------------
     # Data generation
@@ -499,9 +552,7 @@ class DataGen:
             freq=self.granularity,
         )
 
-        reset_needed = self._timestamps is not None and len(self._timestamps) != len(
-            new_timestamps
-        )
+        reset_needed = self._timestamps is not None and len(self._timestamps) != len(new_timestamps)
 
         if reset_needed or self.data.empty:
             self.data = pd.DataFrame(index=new_timestamps)
@@ -527,9 +578,7 @@ class DataGen:
             data = pd.concat(
                 [
                     data,
-                    pd.DataFrame(
-                        unix_timestamps, columns=["epoch"], index=new_timestamps
-                    ),
+                    pd.DataFrame(unix_timestamps, columns=["epoch"], index=new_timestamps),
                 ],
                 axis=1,
             )
@@ -574,9 +623,7 @@ class DataGen:
     def _sort_columns(self, data: pd.DataFrame) -> pd.DataFrame:
         dimension_names = list(self.dimensions.keys())
         metric_names = list(self.metrics.keys())
-        multi_item_names = list(
-            chain.from_iterable(s.split(",") for s in self.multi_items.keys())
-        )
+        multi_item_names = list(chain.from_iterable(s.split(",") for s in self.multi_items.keys()))
 
         column_order: list[str] = ["epoch", *dimension_names]
         for name in metric_names:
@@ -630,9 +677,7 @@ class DataGen:
             ValidationError: If method is unrecognized.
         """
         if self._state == PipelineState.CONFIGURED:
-            raise ConfigurationError(
-                "Cannot normalize before generating data. Access .data first."
-            )
+            raise ConfigurationError("Cannot normalize before generating data. Access .data first.")
         self._normalizer = create_normalizer(method)
         self._normalizer.normalize(self.data)
         logger.info("Data normalized with method=%r.", method)
@@ -644,9 +689,7 @@ class DataGen:
             logger.warning("Data is not normalized. Denormalize has no effect.")
             return
         if self._normalizer is None:
-            logger.warning(
-                "denormalize() called but no normalization has been applied."
-            )
+            logger.warning("denormalize() called but no normalization has been applied.")
             return
         self._normalizer.denormalize(self.data)
         logger.info("Data denormalized.")

@@ -103,7 +103,7 @@ class Metrics:
         aggregation_type: AggregationType = AggregationType.AVG,
         anomalies: list[Anomaly] | None = None,
     ) -> None:
-        self._name = auto_generate_name(category="metric") if name == "default" else name
+        self._name = next(auto_generate_name(category="metric")) if name == "default" else name
         self._trends: set[Trends] = trends or set()
         self._aggregation_type = aggregation_type
         self._anomalies: list[Anomaly] = anomalies or []
