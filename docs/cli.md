@@ -54,6 +54,7 @@ The primary command for creating synthetic datasets and saving them to CSV.
 | `--dims` | `-d` | `str` | Dimension specification. Can be repeated. | `None` |
 | `--mets` | `-m` | `str` | Metric (trend composition) specification. Can be repeated. | `None` |
 | `--anomalies` | `-a` | `str` | Anomaly specification keyed by metric. Can be repeated. | `None` |
+| `--expand-dimensions` / `--no-expand-dimensions` | | `bool` | Expand enumerable dimensions to their Cartesian product with independent per-combination metric series. | `False` |
 | `--seed` | `-s` | `int` | Seed for PCG64 deterministic generation. | `None` |
 | `--output` | `-o` | `str` | Destination path to save the generated CSV. | **Required** |
 | `--config` | `-c` | `str` | Path to a local JSON configuration file. | `None` |
@@ -68,6 +69,20 @@ tsdata generate \
   --mets "sales:LinearTrend(slope=40)+SinusoidalTrend(amplitude=10,freq=7)" \
   --output sales_data.csv
 ```
+
+#### Multivariate Cartesian Product Expansion Example:
+```bash
+tsdata generate \
+  --start 2024-01-01 --end 2024-01-07 --granularity h \
+  --dims "region=random_choice(US,EU)" \
+  --dims "store_type=ordered_choice(online,retail)" \
+  --mets "sales:LinearTrend(slope=40)+SinusoidalTrend(amplitude=10,freq=24)" \
+  --expand-dimensions \
+  --output expanded_sales.csv
+```
+
+> [!TIP]
+> **Per-Dimension Expansion Control**: When using modern dimension syntax (`name=func(...)`), you can override expansion per dimension using a trailing `,expand=true` or `,expand=false` (e.g. `--dims "device_id=random_int(1,100),expand=false"`).
 
 ---
 
@@ -222,6 +237,7 @@ tsdata generate --config config.json
   "end": "2024-01-02",
   "granularity": "5min",
   "seed": 42,
+  "expand_dimensions": true,
   "dimensions": [
     "ticker:ordered_choice:AAPL,GOOG,MSFT",
     "exchange:constant:NASDAQ"

@@ -30,6 +30,8 @@ For complete details on features, API reference, CLI usage, and advanced configu
 
 - **Realistic Data:** Mimic real-world time series with trends, seasonality, and noise.
 - **Composable Trends:** Layer multiple functions (Sinusoidal, Linear, AR Noise, Markov) to create complex signals.
+- **Multivariate Dimension Expansion:** Expand dimensions to their full Cartesian product (`expand_dimensions`) with independent, reproducible per-combination metric series and per-dimension control.
+- **Correlated Multi-Items:** Generate linked dimension tuples and correlated metric groups simultaneously (`add_multi_items`).
 - **Injectable Anomalies:** Simulate failures with point anomalies, missing data gaps, and concept drifts.
 - **Deterministic:** Guaranteed reproducibility via a seedable RNG.
 - **CLI & API:** Use the `tsdata` CLI for rapid prototyping or the Python API for production pipelines.
@@ -54,26 +56,49 @@ pip install ts-data-generator
 ### CLI Usage
 
 ```bash
+# Standard generation (one row per timestamp)
 tsdata generate --start 2024-01-01 --end 2024-01-07 --granularity h \
     --dims "region:US,EU,AP" \
     --mets "sales:LinearTrend(slope=45)+SinusoidalTrend(amplitude=10,freq=24)" \
     --output sales.csv
+
+# Multivariate expansion (Cartesian product of dimensions with independent series per combo)
+tsdata generate --start 2024-01-01 --end 2024-01-07 --granularity h \
+    --dims "region=random_choice(US,EU)" \
+    --dims "env=random_choice(prod,dev)" \
+    --mets "sales:LinearTrend(slope=45)+SinusoidalTrend(amplitude=10,freq=24)" \
+    --expand-dimensions \
+    --output expanded_sales.csv
 ```
 
 ### Python API
 
 ```python
 from ts_data_generator import DataGen
-from ts_data_generator.utils.trends import SinusoidalTrend
+from ts_data_generator.utils.functions import random_choice
+from ts_data_generator.utils.trends import SinusoidalTrend, LinearTrend
 
-dg = DataGen(seed=42)
-dg.start_datetime = "2024-01-01"
-dg.end_datetime = "2024-01-07"
-dg.to_granularity("h")
+# Expand dimensions across Cartesian product of dimensions
+dg = DataGen(
+    start_datetime="2024-01-01",
+    end_datetime="2024-01-07",
+    granularity="h",
+    seed=42,
+    expand_dimensions=True,
+)
 
-dg.add_metric("temp", {SinusoidalTrend(amplitude=10, freq=24)})
+dg.add_dimension("region", random_choice(["US", "EU"]))
+dg.add_dimension("environment", random_choice(["prod", "dev"]))
+dg.add_metric("sales", {LinearTrend(offset=100, slope=10), SinusoidalTrend(amplitude=20, freq=24)})
+
+# Linked correlated columns
+dg.add_multi_items(
+    names=["city", "country"],
+    function=[("New York", "US"), ("London", "UK")],
+)
 
 df = dg.data
+print(f"Generated {len(df)} rows across {df.groupby(['region', 'environment', 'city']).ngroups} combinations")
 dg.plot()
 ```
 

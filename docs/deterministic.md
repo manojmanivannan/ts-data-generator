@@ -90,6 +90,20 @@ tsdata generate \
   --output run_a.csv
 ```
 
+### 4. Per-Combination Seeding in Dimension Expansion
+When `expand_dimensions=True` is enabled, the generator creates a separate, independent metric series for every combination in the Cartesian product.
+
+To guarantee determinism and order-insensitivity:
+- Each combination receives a stable, derived seed computed as a SHA-256 hash of the base seed and the canonical sorted list of `[(dimension_name, value), ...]`.
+- Adding dimensions or metrics in a different order produces the exact same combination seeds, rows, and data values.
+
+```python
+# Order-insensitive, deterministic combination seeds
+dg = DataGen(seed=42, expand_dimensions=True)
+dg.add_dimension("region", random_choice(["US", "EU"]))
+dg.add_dimension("tier", random_choice(["free", "paid"]))
+```
+
 ---
 
 ## 💎 Why This is Critical
