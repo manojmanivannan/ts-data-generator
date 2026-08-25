@@ -25,6 +25,7 @@ from ts_data_generator.exceptions import (
     MultiItemError,
     ValidationError,
 )
+from ts_data_generator.expand import build_expanded_dataframe
 from ts_data_generator.plotting import plot_time_series
 from ts_data_generator.random import DefaultRNG, RNGProtocol, SeedableRNG
 from ts_data_generator.schema.models import (
@@ -77,6 +78,13 @@ class DataGen:
         granularity: Time granularity for the generated data.
         seed: Optional integer seed for deterministic generation.
             When set, all randomness flows through a PCG64-backed RNG.
+        expand_dimensions: When ``True``, emit one row per
+            *(timestamp x Cartesian product of all enumerable dimensions'
+            distinct values)*, each combination carrying its own independently
+            regenerated, reproducible metric series. Defaults to ``False``
+            (one row per timestamp). Non-enumerable dimensions raise
+            :class:`~ts_data_generator.exceptions.ExpandError`; multi-item
+            composition is not yet supported (see #58).
 
     Example:
         >>> dg = DataGen(
@@ -96,6 +104,7 @@ class DataGen:
         end_datetime: str | datetime | pd.Timestamp = "",
         granularity: Granularity = Granularity.FIVE_MIN,
         seed: int | None = None,
+        expand_dimensions: bool = False,
     ) -> None:
         self._dimensions = dimensions or []
         self._metrics = metrics or []
@@ -107,6 +116,7 @@ class DataGen:
         self._timestamps: pd.DatetimeIndex | None = None
         self._pending_regeneration = False
         self._rng: RNGProtocol = SeedableRNG(seed) if seed is not None else DefaultRNG()
+        self._expand_dimensions = expand_dimensions
 
         self.data: pd.DataFrame = pd.DataFrame()
         self._baselines: dict[str, pd.DataFrame] = {}
@@ -197,6 +207,26 @@ class DataGen:
         if value is not None:
             Granularity(value)  # validate
         self._granularity = value  # type: ignore[assignment]
+        self._request_regeneration()
+
+    # ------------------------------------------------------------------
+    # Expansion
+    # ------------------------------------------------------------------
+
+    @property
+    def expand_dimensions(self) -> bool:
+        """Whether per-combination Cartesian-product expansion is enabled.
+
+        When ``True``, generation emits one row per
+        *(timestamp x product of all enumerable dimensions' distinct values)*,
+        each combination carrying its own independently regenerated metric
+        series. Setting it triggers a regeneration.
+        """
+        return self._expand_dimensions
+
+    @expand_dimensions.setter
+    def expand_dimensions(self, value: bool) -> None:
+        self._expand_dimensions = bool(value)
         self._request_regeneration()
 
     # ------------------------------------------------------------------
@@ -463,7 +493,16 @@ class DataGen:
         Raises:
             MultiItemError: If any name overlaps with existing multi-items.
             ValidationError: If function type is invalid or generation fails.
+            ConfigurationError: If ``expand_dimensions`` is on (multi-item
+                composition with expansion is deferred to #58).
         """
+        if self._expand_dimensions:
+            raise ConfigurationError(
+                "expand_dimensions does not yet support multi_items "
+                "(linked metrics/dimensions composition is tracked in #58). "
+                "Use dimensions and metrics only, or disable expand_dimensions."
+            )
+
         if not isinstance(function, (int, float, str, list, Generator)):
             raise ValidationError(
                 f"Function for multi-items {names} must be int, float, str, "
@@ -554,10 +593,15 @@ class DataGen:
 
         reset_needed = self._timestamps is not None and len(self._timestamps) != len(new_timestamps)
 
+        self._timestamps = new_timestamps
+
+        if self._expand_dimensions:
+            self.data = self._generate_expanded_data(new_timestamps)
+            self._state = PipelineState.GENERATED
+            return self.data
+
         if reset_needed or self.data.empty:
             self.data = pd.DataFrame(index=new_timestamps)
-
-        self._timestamps = new_timestamps
 
         existing_columns: set[str] = set()
         if not self.data.empty:
@@ -586,6 +630,59 @@ class DataGen:
         self.data = self._sort_columns(data)
         self._state = PipelineState.GENERATED
         return self.data
+
+    def _generate_expanded_data(self, timestamps: pd.DatetimeIndex) -> pd.DataFrame:
+        """Build the expanded DataFrame: one row per (timestamp x combination).
+
+        With ``expand_dimensions`` on, every enumerable dimension participates in
+        a Cartesian product; each combination carries its own independently
+        regenerated metric series seeded per combination. Dimensions stay
+        groupby keys, so aggregation holds unchanged (verified by the #48
+        prototype). Multi-item composition is deferred to #58 and raises here.
+
+        When the engine is unseeded, a default base seed is derived per
+        generation — mirroring how :class:`~ts_data_generator.random.DefaultRNG`
+        makes unseeded ordinary generation work — so expand-then-filter works
+        without the user thinking about seeding, while remaining
+        non-deterministic across runs like ordinary unseeded generation.
+
+        Args:
+            timestamps: The full timestamp index for the dataset.
+
+        Returns:
+            The expanded DataFrame, sorted timestamp-first then by dimension
+            value, with ``epoch`` appended and columns ordered per
+            :meth:`_sort_columns` (alphabetical dimension names in expand mode).
+
+        Raises:
+            ConfigurationError: If multi-items are present (composition is
+                deferred to #58).
+            ExpandError: If any dimension is non-enumerable (numeric range /
+                auto-generated name / opaque generator without ``domain=``).
+        """
+        if self._multi_items:
+            raise ConfigurationError(
+                "expand_dimensions does not yet support multi_items "
+                "(linked metrics/dimensions composition is tracked in #58). "
+                "Use dimensions and metrics only, or disable expand_dimensions."
+            )
+
+        base_seed = self._rng.seed
+        if base_seed is None:
+            # Unseeded: derive a random base seed this run (see docstring).
+            base_seed = int(self._rng.integers(0, 2**32))
+
+        data = build_expanded_dataframe(
+            dimensions=self.dimensions,
+            metrics=self.metrics,
+            timestamps=timestamps,
+            base_seed=base_seed,
+        )
+
+        if "epoch" not in data.columns:
+            data = data.assign(epoch=data.index.map(lambda ts: int(ts.timestamp())))
+
+        return self._sort_columns(data, dims_alphabetical=True)
 
     def _build_metrics(
         self, timestamps: pd.DatetimeIndex, existing_columns: set[str]
@@ -620,8 +717,13 @@ class DataGen:
                 df = pd.concat([df, generated], axis=1)
         return df
 
-    def _sort_columns(self, data: pd.DataFrame) -> pd.DataFrame:
+    def _sort_columns(self, data: pd.DataFrame, *, dims_alphabetical: bool = False) -> pd.DataFrame:
         dimension_names = list(self.dimensions.keys())
+        if dims_alphabetical:
+            # Expand mode: column order follows the same order-insensitive
+            # principle as row ordering (alphabetical dimension-name order),
+            # so output is identical regardless of the add order of dimensions.
+            dimension_names = sorted(dimension_names)
         metric_names = list(self.metrics.keys())
         multi_item_names = list(chain.from_iterable(s.split(",") for s in self.multi_items.keys()))
 
