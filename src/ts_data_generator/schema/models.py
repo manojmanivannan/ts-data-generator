@@ -304,11 +304,13 @@ class MultiItems:
         names: list[str],
         function: int | str | float | Generator,
         aggregation_type: list[AggregationType | str] | None = None,
+        expand: bool | None = None,
     ) -> None:
         self._names = names
         self._function = function
         self._data: pd.DataFrame | None = None
         self._aggregation_type = aggregation_type
+        self._expand = expand
 
     @property
     def data(self) -> pd.DataFrame | None:
@@ -318,6 +320,11 @@ class MultiItems:
     def names(self) -> list[str]:
         """The column names in this multi-item group."""
         return self._names
+
+    @property
+    def expand(self) -> bool | None:
+        """Per-dimension expansion override for ``expand_dimensions``."""
+        return self._expand
 
     @property
     def function(self) -> int | str | float | Generator:

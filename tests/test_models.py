@@ -210,6 +210,24 @@ class TestMultiItemsInit:
         mi = MultiItems(names=["x"], function=gen())
         assert mi.aggregation_type is None
 
+    def test_expand_none_by_default(self) -> None:
+        def gen():
+            while True:
+                yield (1,)
+
+        mi = MultiItems(names=["x"], function=gen())
+        assert mi.expand is None
+
+    def test_with_expand_override(self) -> None:
+        def gen():
+            while True:
+                yield (1, 2)
+
+        mi_true = MultiItems(names=["a", "b"], function=gen(), expand=True)
+        mi_false = MultiItems(names=["a", "b"], function=gen(), expand=False)
+        assert mi_true.expand is True
+        assert mi_false.expand is False
+
 
 class TestMultiItemsGenerate:
     """Tests for MultiItems.generate()."""
@@ -374,8 +392,6 @@ class TestMetricsGenerateReturnsMetricResult:
         assert isinstance(result, MetricResult)
 
     def test_metric_result_has_signal_and_baseline(self) -> None:
-        from ts_data_generator.schema.models import MetricResult
-
         trend = LinearTrend(offset=10, noise_level=0)
         m = Metrics(name="val", trends={trend})
         result = m.generate(_timestamps(5), rng=DefaultRNG())

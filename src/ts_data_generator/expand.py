@@ -49,7 +49,7 @@ import pandas as pd
 from ts_data_generator.carriers import DimensionCarrier
 from ts_data_generator.exceptions import ExpandError
 from ts_data_generator.random import SeedableRNG
-from ts_data_generator.schema.models import Dimensions, Metrics
+from ts_data_generator.schema.models import Dimensions, Metrics, MultiItems
 
 # The carrier kind reported for an opaque plain generator with no domain.
 _OPAQUE_KIND = "custom"
@@ -75,7 +75,7 @@ def combination_seed(base_seed: int, combination: list[tuple[str, Any]]) -> int:
     return int(digest, 16) % (2**32)
 
 
-def resolve_expand(dimension: Dimensions, global_expand: bool) -> bool:
+def resolve_expand(dimension: Dimensions | MultiItems, global_expand: bool) -> bool:
     """Resolve a dimension's effective expansion against the global flag.
 
     ``None`` inherits the global flag; ``True``/``False`` override it
@@ -87,8 +87,8 @@ def resolve_expand(dimension: Dimensions, global_expand: bool) -> bool:
     return global_expand
 
 
-def _resolve_domain(name: str, dimension: Dimensions) -> list[Any]:
-    """Return the expandable domain of a dimension, or raise ``ExpandError``.
+def _resolve_domain(name: str, dimension: Dimensions | MultiItems) -> list[Any]:
+    """Return the expandable domain of a dimension or linked dimension, or raise ``ExpandError``.
 
     Reads the carrier's ``.domain`` with zero introspection. A non-expandable
     carrier (numeric range / auto-generated name) or a plain generator without
@@ -99,11 +99,12 @@ def _resolve_domain(name: str, dimension: Dimensions) -> list[Any]:
     """
     fn = dimension.function
     if not isinstance(fn, DimensionCarrier):
+        source_hint = "add_multi_items" if isinstance(dimension, MultiItems) else "add_dimension"
         raise ExpandError(
             f"dimension {name!r} cannot be expanded: it is an opaque generator "
             f"({_OPAQUE_KIND}) with no known domain. Provide a finite value list "
             f"via random_choice/ordered_choice/constant, a static list, or declare "
-            f"its domain explicitly with domain= in add_dimension."
+            f"its domain explicitly with domain= in {source_hint}."
         )
     if not fn.expandable:
         raise ExpandError(
@@ -113,6 +114,17 @@ def _resolve_domain(name: str, dimension: Dimensions) -> list[Any]:
         )
     domain = fn.domain
     assert domain is not None  # expandable carriers always carry a domain
+    if isinstance(dimension, MultiItems):
+        normalized_domain: list[tuple[Any, ...]] = []
+        for item in domain:
+            t = tuple(item) if isinstance(item, (list, tuple)) else (item,)
+            if len(t) != len(dimension.names):
+                raise ExpandError(
+                    f"dimension {name!r} cannot be expanded: domain entry {item!r} "
+                    f"length ({len(t)}) does not match number of columns ({len(dimension.names)})."
+                )
+            normalized_domain.append(t)
+        return normalized_domain
     return domain
 
 
@@ -122,18 +134,22 @@ def build_expanded_dataframe(
     timestamps: pd.DatetimeIndex,
     base_seed: int,
     global_expand: bool = True,
+    multi_items: dict[str, MultiItems] | None = None,
 ) -> pd.DataFrame:
     """Build the expanded DataFrame: one row per (timestamp x combination).
 
     The Cartesian product runs over **expanding** dimensions only — those whose
     effective expansion (per-dim override falling back to ``global_expand``) is
-    ``True`` and which carry an enumerable domain. Each combination carries its
-    own independently regenerated metric series, seeded deterministically per
+    ``True`` and which carry an enumerable domain. Linked dimensions (MultiItems
+    without ``aggregation_type``) participate in the product as a compound key
+    over their distinct-tuple domain. Each combination carries its own
+    independently regenerated metric series (both regular metrics and linked
+    metrics with ``aggregation_type``), seeded deterministically per
     combination over the expanding dims. Non-expanding dimensions regenerate
     one-value-per-timestamp within each series (varying across combos) instead
     of being broadcast. Rows are ordered timestamp-first, then by dimension
-    values lexicographically (all dimension names in alphabetical order, so
-    ordering is insensitive to the order dimensions were added).
+    values lexicographically (compound dimension keys sorted alphabetically,
+    with component columns in declared order).
 
     Args:
         dimensions: Mapping of dimension name to ``Dimensions`` instance.
@@ -143,6 +159,9 @@ def build_expanded_dataframe(
         global_expand: The global ``expand_dimensions`` flag the per-dim
             ``expand`` override falls back to. Defaults to ``True`` since this
             is only reached on the expansion path.
+        multi_items: Optional mapping of comma-joined names to ``MultiItems``
+            instance. Linked dimensions join dimension expansion; linked metrics
+            regenerate once per combination.
 
     Returns:
         A DataFrame indexed by timestamp with dimension columns, metric signal
@@ -154,48 +173,105 @@ def build_expanded_dataframe(
             (numeric range / auto-generated name / opaque generator without
             ``domain=``).
     """
-    # Alphabetical dimension-name order -> order-insensitive seeding + ordering.
-    dim_names = sorted(dimensions)
+    if multi_items is None:
+        multi_items = {}
 
-    expanding_names: list[str] = []
+    linked_dims: dict[str, MultiItems] = {
+        key: mi for key, mi in multi_items.items() if not mi.aggregation_type
+    }
+    linked_metrics: dict[str, MultiItems] = {
+        key: mi for key, mi in multi_items.items() if mi.aggregation_type
+    }
+
+    # Alphabetical (compound) dimension-name order -> order-insensitive seeding + ordering.
+    all_dim_keys = sorted(list(dimensions.keys()) + list(linked_dims.keys()))
+
+    expanding_keys: list[str] = []
     expanding_domains: list[list[Any]] = []
-    non_expanding_names: list[str] = []
-    for name in dim_names:
-        if resolve_expand(dimensions[name], global_expand):
-            expanding_domains.append(_resolve_domain(name, dimensions[name]))
-            expanding_names.append(name)
+    is_linked: list[bool] = []
+
+    non_expanding_scalar_names: list[str] = []
+    non_expanding_linked_keys: list[str] = []
+
+    for key in all_dim_keys:
+        if key in dimensions:
+            dim = dimensions[key]
+            if resolve_expand(dim, global_expand):
+                expanding_keys.append(key)
+                expanding_domains.append(_resolve_domain(key, dim))
+                is_linked.append(False)
+            else:
+                non_expanding_scalar_names.append(key)
         else:
-            non_expanding_names.append(name)
+            mi = linked_dims[key]
+            if resolve_expand(mi, global_expand):
+                expanding_keys.append(key)
+                expanding_domains.append(_resolve_domain(key, mi))
+                is_linked.append(True)
+            else:
+                non_expanding_linked_keys.append(key)
 
     frames: list[pd.DataFrame] = []
     for combo_values in product(*expanding_domains):
-        # (name, value) pairs for the expanding dims, alphabetical name order.
-        combo_pairs = list(zip(expanding_names, combo_values, strict=True))
+        # (key, value) pairs for the expanding dims, alphabetical key order.
+        # For scalar dim: ("region", "US").
+        # For linked dim: ("city,state", ("NYC", "NY")).
+        combo_pairs = list(zip(expanding_keys, combo_values, strict=True))
         seed = combination_seed(base_seed, combo_pairs)
         rng = SeedableRNG(seed)
 
         combo_df = pd.DataFrame(index=timestamps)
         combo_df["_ts"] = timestamps
+
+        # 1. Regular metrics
         for metric in metrics.values():
             result = metric.generate(timestamps, rng=rng)
             combo_df = pd.concat([combo_df, result.signal], axis=1)
             if not result.labels.empty:
                 combo_df = pd.concat([combo_df, result.labels], axis=1)
-        # Broadcast the fixed expanding-dimension values across this combo.
-        for name, value in combo_pairs:
-            combo_df[name] = value
-        # Non-expanding dims: one-value-per-timestamp within this series,
-        # advancing across combos (varying independently, not a broadcast).
-        for name in non_expanding_names:
+
+        # 2. Linked metrics (regenerate once per combination)
+        for mi in linked_metrics.values():
+            generated = mi.generate(timestamps, rng=rng)
+            combo_df = pd.concat([combo_df, generated], axis=1)
+
+        # 3. Expanding dimensions (broadcast fixed combination value)
+        for key, val, linked in zip(expanding_keys, combo_values, is_linked, strict=True):
+            if not linked:
+                combo_df[key] = val
+            else:
+                mi = linked_dims[key]
+                for comp_name, comp_val in zip(mi.names, val, strict=True):
+                    combo_df[comp_name] = comp_val
+
+        # 4. Non-expanding scalar dimensions (regenerate within series)
+        for name in non_expanding_scalar_names:
             generated = dimensions[name].generate(timestamps)
             combo_df[name] = generated[name].to_numpy()
+
+        # 5. Non-expanding linked dimensions (regenerate within series)
+        for key in non_expanding_linked_keys:
+            mi = linked_dims[key]
+            generated = mi.generate(timestamps)
+            for comp_name in mi.names:
+                combo_df[comp_name] = generated[comp_name].to_numpy()
+
         frames.append(combo_df)
 
     if not frames:
         return pd.DataFrame(index=timestamps)
 
+    # Ordering: one alphabetical slot per compound name; component columns sort
+    # in declared MultiItems.names order.
+    sort_cols: list[str] = ["_ts"]
+    for key in all_dim_keys:
+        if key in dimensions:
+            sort_cols.append(key)
+        else:
+            sort_cols.extend(linked_dims[key].names)
+
     out = pd.concat(frames, axis=0, ignore_index=True)
-    out = out.sort_values(by=["_ts", *dim_names], kind="stable").reset_index(drop=True)
+    out = out.sort_values(by=sort_cols, kind="stable").reset_index(drop=True)
     out = out.set_index("_ts")
     out.index.name = None
     return out

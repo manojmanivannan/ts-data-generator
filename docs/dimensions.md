@@ -229,3 +229,12 @@ Output:
 2024-01-01 08:00:00    Sydney      AU        Oceania
 2024-01-01 09:00:00     Tokyo      JP           Asia
 ```
+
+### MultiItems with `expand_dimensions`
+
+When `expand_dimensions=True`, MultiItems compose by role:
+
+- **Linked dimensions** (`aggregation_type=None`): Expand over their distinct-tuple domain as a single compound key (the tuple moves as a unit). The Cartesian product combines regular dimensions and linked dimensions' tuple domains.
+- **Linked metrics** (`aggregation_type` provided): Regenerate once per combination with a per-combination seed, preserving column correlation within each combination while generating independent series across combinations.
+- **Custom generators**: Can declare explicit tuple domains via `domain=[("NYC", "NY"), ("SFO", "CA")]` in `add_multi_items`.
+- **Per-dimension override**: Linked dimensions support `expand=False` to opt out of Cartesian product expansion and regenerate within each series instead.

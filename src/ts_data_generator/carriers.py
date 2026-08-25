@@ -35,7 +35,16 @@ def dedupe_sort(values: list[Any]) -> list[Any]:
     comparison. Original values are preserved (the key is for ordering only).
     """
     seen: set[Any] = set()
-    distinct = [v for v in values if not (v in seen or seen.add(v))]
+    distinct: list[Any] = []
+    for v in values:
+        v_key = tuple(v) if isinstance(v, list) else v
+        try:
+            if v_key not in seen:
+                seen.add(v_key)
+                distinct.append(v)
+        except TypeError:
+            if v not in distinct:
+                distinct.append(v)
     return sorted(distinct, key=lambda v: (type(v).__name__, str(v)))
 
 

@@ -60,6 +60,21 @@ def _list_carrier(values: list[Any]) -> DimensionCarrier:
     return DomainCarrier(_source(), values, "list")
 
 
+def _tuple_list_carrier(values: list[tuple[Any, ...]]) -> DimensionCarrier:
+    """Wrap a static list of tuples as a domain-carrying carrier.
+
+    The tuples are captured as the carrier's domain before cycling, so the
+    expand path reads it directly instead of sampling an opaque generator.
+    """
+    values = list(values)
+
+    def _source() -> Any:
+        while True:
+            yield from cycle(values)
+
+    return DomainCarrier(_source(), values, "list")
+
+
 class PipelineState(Enum):
     CONFIGURED = "configured"
     GENERATED = "generated"
@@ -83,13 +98,14 @@ class DataGen:
             distinct values)*, each combination carrying its own independently
             regenerated, reproducible metric series. Defaults to ``False``
             (one row per timestamp). Per-dimension ``expand`` overrides on
-            ``add_dimension`` make this flag an overridable default (#57):
-            ``expand=True`` forces a dimension into the product, ``expand=False``
-            opts it out (regenerating within-series). A non-enumerable dimension
-            that is actually expanding raises
-            :class:`~ts_data_generator.exceptions.ExpandError`; ``expand=False``
-            is the escape hatch. Multi-item composition is not yet supported
-            (see #58).
+            ``add_dimension`` and ``add_multi_items`` make this flag an
+            overridable default (#57, #58): ``expand=True`` forces a dimension
+            into the product, ``expand=False`` opts it out (regenerating
+            within-series). A non-enumerable dimension that is actually
+            expanding raises :class:`~ts_data_generator.exceptions.ExpandError`;
+            ``expand=False`` is the escape hatch. Multi-items compose by role:
+            linked metrics regenerate per combination; linked dimensions expand
+            over their tuple domain (#58).
 
     Example:
         >>> dg = DataGen(
@@ -240,12 +256,17 @@ class DataGen:
         The global flag on always selects the expansion path (per-dim
         ``expand=False`` opts a dimension out of the *product*, not out of the
         path); with the global flag off, the path runs only when some dimension
-        explicitly forces expansion via ``expand=True`` (#57). Pure flag logic —
-        no domain resolution, so it never raises ``ExpandError``.
+        or linked dimension explicitly forces expansion via ``expand=True``
+        (#57, #58). Pure flag logic — no domain resolution, so it never raises
+        ``ExpandError``.
         """
         if self._expand_dimensions:
             return True
-        return any(d.expand is True for d in self._dimensions)
+        if any(d.expand is True for d in self._dimensions):
+            return True
+        if any(mi.expand is True for mi in self._multi_items if not mi.aggregation_type):
+            return True
+        return False
 
     # ------------------------------------------------------------------
     # Datetime properties
@@ -507,28 +528,32 @@ class DataGen:
         names: list[str],
         function: int | float | str | list | Generator,
         aggregation_type: list[AggregationType | str] | None = None,
+        domain: list[Any] | None = None,
+        expand: bool | None = None,
     ) -> None:
         """Add a group of linked columns generated from a single function.
 
         Args:
             names: List of column names.
-            function: Generator that yields tuples matching len(names).
+            function: Generator that yields tuples matching len(names), or a
+                static list of tuples/lists which is converted to a carrier.
             aggregation_type: Optional aggregation methods for resampling.
-                If provided, items are treated as metrics.
+                If provided, items are treated as linked metrics.
+            domain: Explicit tuple domain for an opaque custom/pre-built
+                generator whose domain the engine cannot see structurally (the
+                ``domain=`` escape hatch). Cannot be supplied to a carrier that
+                already carries a domain, and cannot override non-expandable
+                rejection.
+            expand: Per-dimension expansion override for ``expand_dimensions``
+                (for linked dimensions). ``None`` (default) inherits the global
+                flag; ``True`` forces this linked dimension into the Cartesian
+                product even when the global flag is off; ``False`` opts it out
+                of the product (regenerating within-series).
 
         Raises:
             MultiItemError: If any name overlaps with existing multi-items.
-            ValidationError: If function type is invalid or generation fails.
-            ConfigurationError: If ``expand_dimensions`` is on (multi-item
-                composition with expansion is deferred to #58).
+            ValidationError: If function type is invalid, domain is invalid, or generation fails.
         """
-        if self._should_expand():
-            raise ConfigurationError(
-                "expand_dimensions does not yet support multi_items "
-                "(linked metrics/dimensions composition is tracked in #58). "
-                "Use dimensions and metrics only, or disable expand_dimensions."
-            )
-
         if not isinstance(function, (int, float, str, list, Generator)):
             raise ValidationError(
                 f"Function for multi-items {names} must be int, float, str, "
@@ -541,9 +566,25 @@ class DataGen:
         if isinstance(function, list):
             if not function:
                 raise ValidationError("Multi-item values list must not be empty.")
-            function = cycle(function)
+            tuple_values: list[tuple[Any, ...]] = []
+            for item in function:
+                t = tuple(item) if isinstance(item, (list, tuple)) else (item,)
+                if len(t) != len(names):
+                    raise ValidationError(
+                        f"Multi-item values entry {item!r} length ({len(t)}) "
+                        f"does not match len(names) ({len(names)})."
+                    )
+                tuple_values.append(t)
+            function = _tuple_list_carrier(tuple_values)
 
-        items = MultiItems(names=names, function=function, aggregation_type=aggregation_type)
+        function = self._apply_multi_item_domain(names, function, domain)
+
+        items = MultiItems(
+            names=names,
+            function=function,
+            aggregation_type=aggregation_type,
+            expand=expand,
+        )
 
         name_set = set(names)
         for mt in self._multi_items:
@@ -554,10 +595,51 @@ class DataGen:
         self._multi_items.append(items)
 
         try:
-            self._generate_data()
-        except Exception as exc:
+            self._request_regeneration()
+        except Exception:
             self._multi_items.remove(items)
-            raise ValidationError(str(exc)) from exc
+            raise
+
+    @staticmethod
+    def _apply_multi_item_domain(
+        names: list[str],
+        function: DimensionCarrier | Generator[Any, None, None],
+        domain: list[Any] | None,
+    ) -> DimensionCarrier | Generator[Any, None, None]:
+        """Apply the ``domain=`` escape hatch and eager validation for multi-items."""
+        if domain is None:
+            return function
+
+        if not domain:
+            raise ValidationError("Multi-item domain list must not be empty.")
+
+        tuple_domain: list[tuple[Any, ...]] = []
+        for item in domain:
+            t = tuple(item) if isinstance(item, (list, tuple)) else (item,)
+            if len(t) != len(names):
+                raise ValidationError(
+                    f"Multi-item domain entry {item!r} length ({len(t)}) "
+                    f"does not match len(names) ({len(names)})."
+                )
+            tuple_domain.append(t)
+
+        compound_name = ",".join(names)
+        if isinstance(function, DimensionCarrier):
+            if not function.expandable:
+                raise ValidationError(
+                    f"domain= cannot be supplied to {function.func_name}() "
+                    f"for dimension {compound_name!r}: it is a non-enumerable "
+                    f"{function.func_name} generator. "
+                    f"{function.non_expandable_reason}"
+                )
+            raise ValidationError(
+                f"domain= is only for opaque generators without a known domain; "
+                f"dimension {compound_name!r} already carries its domain via "
+                f"{function.func_name}()."
+            )
+
+        carrier_name = getattr(function, "__name__", "custom")
+        return DomainCarrier(function, tuple_domain, carrier_name)
 
     def remove_multi_item(self, names: str | list[str]) -> None:
         """Remove a multi-item group and its columns.
@@ -665,9 +747,10 @@ class DataGen:
         which carry an enumerable domain; each combination carries its own
         independently regenerated metric series seeded per combination.
         Non-expanding dimensions regenerate one-value-per-timestamp within each
-        series instead of being broadcast (#57). Expanding dimensions stay
-        groupby keys, so aggregation holds unchanged (verified by the #48
-        prototype). Multi-item composition is deferred to #58 and raises here.
+        series instead of being broadcast (#57). Multi-items compose by role:
+        linked dimensions join dimension expansion over their tuple domain;
+        linked metrics regenerate per combination (#58). Expanding dimensions
+        stay groupby keys, so aggregation holds unchanged.
 
         When the engine is unseeded, a default base seed is derived per
         generation — mirroring how :class:`~ts_data_generator.random.DefaultRNG`
@@ -684,20 +767,11 @@ class DataGen:
             :meth:`_sort_columns` (alphabetical dimension names in expand mode).
 
         Raises:
-            ConfigurationError: If multi-items are present (composition is
-                deferred to #58).
             ExpandError: If a dimension that is actually expanding is
                 non-enumerable (numeric range / auto-generated name / opaque
                 generator without ``domain=``). ``expand=False`` opts a
                 non-enumerable dimension out instead of erroring.
         """
-        if self._multi_items:
-            raise ConfigurationError(
-                "expand_dimensions does not yet support multi_items "
-                "(linked metrics/dimensions composition is tracked in #58). "
-                "Use dimensions and metrics only, or disable expand_dimensions."
-            )
-
         base_seed = self._rng.seed
         if base_seed is None:
             # Unseeded: derive a random base seed this run (see docstring).
@@ -709,6 +783,7 @@ class DataGen:
             timestamps=timestamps,
             base_seed=base_seed,
             global_expand=self._expand_dimensions,
+            multi_items=self.multi_items,
         )
 
         if "epoch" not in data.columns:
@@ -750,14 +825,26 @@ class DataGen:
         return df
 
     def _sort_columns(self, data: pd.DataFrame, *, dims_alphabetical: bool = False) -> pd.DataFrame:
-        dimension_names = list(self.dimensions.keys())
+        linked_dims = {k: mi for k, mi in self.multi_items.items() if not mi.aggregation_type}
+        linked_metrics = {k: mi for k, mi in self.multi_items.items() if mi.aggregation_type}
+
         if dims_alphabetical:
             # Expand mode: column order follows the same order-insensitive
             # principle as row ordering (alphabetical dimension-name order),
             # so output is identical regardless of the add order of dimensions.
-            dimension_names = sorted(dimension_names)
+            # Compound keys get one alphabetical slot; component columns sort
+            # in declared names order.
+            all_dim_keys = sorted(list(self.dimensions.keys()) + list(linked_dims.keys()))
+            dimension_names: list[str] = []
+            for key in all_dim_keys:
+                if key in self.dimensions:
+                    dimension_names.append(key)
+                else:
+                    dimension_names.extend(linked_dims[key].names)
+        else:
+            dimension_names = list(self.dimensions.keys())
+
         metric_names = list(self.metrics.keys())
-        multi_item_names = list(chain.from_iterable(s.split(",") for s in self.multi_items.keys()))
 
         column_order: list[str] = ["epoch", *dimension_names]
         for name in metric_names:
@@ -765,8 +852,17 @@ class DataGen:
             label_col = f"{name}_anomaly"
             if label_col in data.columns:
                 column_order.append(label_col)
-        column_order.extend(multi_item_names)
-        available = [col for col in column_order if col in data.columns]
+
+        if dims_alphabetical:
+            for mi in linked_metrics.values():
+                column_order.extend(mi.names)
+        else:
+            multi_item_names = list(
+                chain.from_iterable(s.split(",") for s in self.multi_items.keys())
+            )
+            column_order.extend(multi_item_names)
+
+        available = [col for col in dict.fromkeys(column_order) if col in data.columns]
         return data.reindex(columns=available)
 
     # ------------------------------------------------------------------
