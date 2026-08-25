@@ -5,14 +5,81 @@ from ts_data_generator.schema.types import DimensionSpec, TrendSpec, AnomalySpec
 
 def test_parse_dimension_spec_returns_dataclass():
     from ts_data_generator.schema.parser import parse_dimension_spec
-    
+
     spec = "location=random_choice(New York,London)"
     result = parse_dimension_spec(spec)
-    
+
     assert isinstance(result, DimensionSpec)
     assert result.name == "location"
     assert result.function_name == "random_choice"
     assert result.args == ("New York", "London")
+
+
+def test_parse_dimension_spec_expand_true():
+    """Modern string-spec trailing `,expand=true` overrides expansion on (#57)."""
+    from ts_data_generator.schema.parser import parse_dimension_spec
+
+    result = parse_dimension_spec("region=random_choice([east,west]),expand=true")
+    assert isinstance(result, DimensionSpec)
+    assert result.name == "region"
+    assert result.function_name == "random_choice"
+    assert result.expand is True
+
+
+def test_parse_dimension_spec_expand_false():
+    """`,expand=false` opts the dimension out of the product (#57)."""
+    from ts_data_generator.schema.parser import parse_dimension_spec
+
+    result = parse_dimension_spec("port=random_int(1,100),expand=false")
+    assert result.name == "port"
+    assert result.function_name == "random_int"
+    assert result.expand is False
+
+
+def test_parse_dimension_spec_expand_default_none():
+    """Without the modifier, expand is None (inherits the global flag)."""
+    from ts_data_generator.schema.parser import parse_dimension_spec
+
+    result = parse_dimension_spec("region=random_choice(US,EU)")
+    assert result.expand is None
+
+
+def test_parse_dimension_spec_legacy_colon_no_expand_support():
+    """The legacy colon form does not support per-dim control (#57)."""
+    from ts_data_generator.schema.parser import parse_dimension_spec
+
+    result = parse_dimension_spec("region:random_choice:US,EU")
+    assert result.expand is None
+
+
+def test_parse_dimension_spec_expand_strips_modifier_from_args():
+    """The modifier is not leaked into the parsed function args."""
+    from ts_data_generator.schema.parser import parse_dimension_spec
+
+    result = parse_dimension_spec("region=random_choice(east,west),expand=true")
+    assert result.args == ("east", "west")
+
+
+def test_parse_dimension_spec_weights_parsing():
+    from ts_data_generator.schema.parser import parse_dimension_spec
+
+    result = parse_dimension_spec("region=random_choice(US,EU),weights={US:5.0,EU:2.0}")
+    assert result.name == "region"
+    assert result.function_name == "random_choice"
+    assert result.args == ("US", "EU")
+    assert result.weights == {"US": 5.0, "EU": 2.0}
+
+
+def test_parse_dimension_spec_weights_and_expand_combined():
+    from ts_data_generator.schema.parser import parse_dimension_spec
+
+    result1 = parse_dimension_spec("region=random_choice(US,EU),weights={US:5,EU:2},expand=true")
+    assert result1.expand is True
+    assert result1.weights == {"US": 5.0, "EU": 2.0}
+
+    result2 = parse_dimension_spec("region=random_choice(US,EU),expand=false,weights={US:10,EU:1}")
+    assert result2.expand is False
+    assert result2.weights == {"US": 10.0, "EU": 1.0}
 
 def test_parse_trend_spec_returns_dataclass():
     from ts_data_generator.schema.parser import parse_trend_spec

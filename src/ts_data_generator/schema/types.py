@@ -13,6 +13,8 @@ class DimensionSpec:
     name: str
     function_name: str
     args: tuple[Any, ...] | list[Any] = field(default_factory=tuple)
+    expand: bool | None = None
+    weights: dict[Any, float] | None = None
 
 
 @dataclass
@@ -36,3 +38,5 @@ class PresetConfig:
     dimensions: list[str] = field(default_factory=list)
     metrics: list[str] = field(default_factory=list)
     anomalies: list[str] = field(default_factory=list)
+    expand_dimensions: bool = False
+    scale_variance: float = 0.0

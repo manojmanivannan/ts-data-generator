@@ -44,8 +44,12 @@ The core architecture relies on three distinct primitives:
 
 ### 1. Dimensions (Context)
 Dimensions represent the **contextual axes** of your time series data (e.g., `store_id`, `region`, `ip_address`, `client_version`).
-*   **Infinite Iteration**: Dimensions are implemented as infinite Python iterators (`generators`). This ensures they can produce values for a series of any length without exhausting memory.
-*   **Broadcasting**: When multiple dimensions are combined, they are mapped across the datetime index. When using dimensions, the generator produces multi-variate series where metrics are generated for each unique dimensional combination (e.g., revenue generated per store, per region, per timestamp).
+*   **Infinite Iteration**: Dimensions are implemented as infinite Python iterators (`generators` or domain carriers). This ensures they can produce values for a series of any length without exhausting memory.
+*   **Single-Stream vs. Cartesian Product Expansion**:
+    *   *Default (Single-Stream)*: Generates one row per timestamp, with each dimension advancing concurrently alongside the metrics.
+    *   *Multivariate Expansion (`expand_dimensions=True`)*: Emits one row per *(timestamp × Cartesian product of expanding dimensions)*. Each combination carries an independently regenerated, reproducible metric series derived from a deterministic per-combination seed.
+*   **Multi-Series Metric Scaling**: Scale metric baselines differently across combinations using explicit dimension weights (`weights={"US": 5.0, "EU": 2.0}`) or stochastic auto-scaling (`scale_variance=0.5`). Multipliers compose multiplicatively across dimensions while preserving ground-truth anomaly labels.
+*   **Linked Dimensions & Metrics (`add_multi_items`)**: Correlated dimension tuples expand as an atomic compound key, while linked metrics regenerate independently per combination with column correlation intact.
 
 [Learn more about Dimension Generators]({{ site.baseurl }}/dimensions){: .btn .btn-outline }
 

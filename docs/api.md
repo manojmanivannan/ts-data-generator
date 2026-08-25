@@ -46,12 +46,17 @@ dg = DataGen(seed=42)
 Sets the generation time step using a predefined frequency or Pandas alias string.
 *   **Examples**: `"s"`, `"min"`, `"5min"`, `"h"`, `"D"`, `"W"`, `"ME"`, `"YE"`.
 
-### `.add_dimension(name: str, function: int | float | str | list | Generator)`
+### `.add_dimension(name: str, function: int | float | str | list | Generator, domain: list | None = None, expand: bool | None = None)`
 Adds a categorical or context column mapping to the index.
+
+Each built-in generator helper (`random_choice`, `ordered_choice`, `constant`, `random_int`, `random_float`, `auto_generate_name`) returns a **carrier** — an infinite iterator (so `next()` works as before) that also carries its `.domain` and an `.expandable` flag, captured at construction. Static values and lists are converted to carriers automatically.
+
 *   **Parameters**:
     *   `name`: The resulting column name in the DataFrame.
-    *   `function`: An infinite generator, static value, or list that cycles. Static values (`int`, `float`, `str`) are wrapped as constants; lists are cycled infinitely.
-*   **Raises**: `DimensionError` if a dimension with this name already exists. `ValidationError` if the function type is unsupported.
+    *   `function`: An infinite generator (carrier or plain), or a static value (`int`, `float`, `str`) or `list`. Static values are wrapped as constants; lists become a carrier carrying their domain (no opaque `itertools.cycle`).
+    *   `domain`: Explicit value domain for an opaque custom/pre-built generator whose domain the engine cannot see structurally (the `domain=` escape hatch). Cannot be supplied to a carrier that already carries a domain, and cannot override the non-expandable range / auto-name rejection.
+    *   `expand`: Per-dimension expansion override for `expand_dimensions` (#57). `None` (default) inherits the global flag; `True` forces this dimension into the per-combination Cartesian product even when the global flag is off; `False` opts it out — it regenerates one-value-per-timestamp within each series instead of being broadcast, and a non-enumerable dimension marked `expand=False` is excluded from the product without raising `ExpandError`.
+*   **Raises**: `DimensionError` if a dimension with this name already exists. `ValidationError` if the function type is unsupported, or `domain=` is misused (supplied to a carrier, or to a non-expandable `random_int`/`random_float`/`auto_generate_name` generator). `ExpandError` if a dimension that is actually expanding (per-dim `expand` resolving to true) is non-enumerable.
 
 ### `.update_dimension(name: str, function: int | str | float | Generator | None)`
 Update an existing dimension's generator function.
@@ -79,13 +84,15 @@ Remove a metric and its column from the data.
 *   **Parameters**:
     *   `name`: The metric name to remove.
 
-### `.add_multi_items(names: list[str], function: int | float | str | list | Generator, aggregation_type: list[AggregationType | str] | None = None)`
+### `.add_multi_items(names: list[str], function: int | float | str | list | Generator, aggregation_type: list[AggregationType | str] | None = None, domain: list[Any] | None = None, expand: bool | None = None)`
 Adds multiple correlated columns that are generated together from a single iterator (e.g., city and country).
 *   **Parameters**:
     *   `names`: A list of column names.
-    *   `function`: A generator yielding tuples of values matching the length of `names`. Static values are wrapped as constants; lists are cycled.
-    *   `aggregation_type`: Optional list of aggregation methods for resampling.
-*   **Raises**: `MultiItemError` if any name overlaps with existing multi-items. `ValidationError` if generation fails.
+    *   `function`: A generator yielding tuples of values matching the length of `names`. Static values are wrapped as constants; lists are wrapped into carriers.
+    *   `aggregation_type`: Optional list of aggregation methods for resampling. When provided, items are treated as linked metrics; otherwise they are treated as linked dimensions.
+    *   `domain`: Optional explicit tuple domain for an opaque custom generator when `expand_dimensions` is enabled.
+    *   `expand`: Optional per-dimension expansion override for linked dimensions (`None` = inherit global flag, `True` = force into Cartesian product, `False` = opt out).
+*   **Raises**: `MultiItemError` if any name overlaps with existing multi-items. `ValidationError` if generation fails or `domain=` is invalid.
 
 ### `.remove_multi_item(names: str | list[str])`
 Remove a multi-item group and its columns from the data.

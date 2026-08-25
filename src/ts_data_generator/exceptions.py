@@ -31,3 +31,13 @@ class ConfigurationError(DataGeneratorError):
 
 class RegistryError(DataGeneratorError):
     """Raised when a registry lookup fails (missing name, wrong base class)."""
+
+
+class ExpandError(DataGeneratorError):
+    """Raised when a dimension cannot be expanded under ``expand_dimensions``.
+
+    A non-enumerable dimension (a numeric range such as ``random_int`` /
+    ``random_float``, an auto-generated name, or an opaque custom generator
+    without an explicit ``domain=``) cannot participate in the per-combination
+    Cartesian product. The error names the offending dimension and the reason.
+    """

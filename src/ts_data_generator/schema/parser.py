@@ -54,8 +54,23 @@ def _split_bracket_aware(text: str, sep: str = ",") -> list[str]:
     return parts
 
 
+def _parse_weights_dict(raw: str) -> dict[Any, float]:
+    weights = {}
+    for item in _split_bracket_aware(raw):
+        if ":" in item:
+            k, v = item.split(":", 1)
+            parsed_k = _parse_value(k.strip())
+            weights[parsed_k] = float(_parse_value(v.strip()))
+        elif "=" in item:
+            k, v = item.split("=", 1)
+            parsed_k = _parse_value(k.strip())
+            weights[parsed_k] = float(_parse_value(v.strip()))
+    return weights
+
+
 def parse_dimension_spec(spec: str) -> DimensionSpec:
-    # Support for legacy shorthand format: name:function:values or name:values
+    # Support for legacy shorthand format: name:function:values or name:values.
+    # The legacy colon form does not support per-dim expand control (#57).
     if ":" in spec and "=" not in spec:
         parts = spec.split(":", 2)
         if len(parts) == 2:
@@ -75,7 +90,30 @@ def parse_dimension_spec(spec: str) -> DimensionSpec:
 
     name, func_part = spec.split("=", 1)
 
-    match = re.match(r"(\w+)(?:\((.*)\))?", func_part)
+    expand: bool | None = None
+    weights: dict[Any, float] | None = None
+
+    # Repeatedly strip trailing modifiers (expand=..., weights={...}) in any order
+    changed = True
+    while changed:
+        changed = False
+        expand_match = re.search(r",expand=(true|false)\s*$", func_part, re.IGNORECASE)
+        if expand_match:
+            expand = expand_match.group(1).lower() == "true"
+            func_part = func_part[: expand_match.start()]
+            changed = True
+            continue
+
+        weights_match = re.search(r",weights=\{([^}]*)\}\s*$", func_part, re.IGNORECASE)
+        if weights_match:
+            raw_weights = weights_match.group(1).strip()
+            if raw_weights:
+                weights = _parse_weights_dict(raw_weights)
+            func_part = func_part[: weights_match.start()]
+            changed = True
+            continue
+
+    match = re.match(r"(\w+)(?:\((.*)\))?", func_part.strip())
     if not match:
         raise ValueError(f"Invalid function format: {func_part}")
 
@@ -88,7 +126,13 @@ def parse_dimension_spec(spec: str) -> DimensionSpec:
         parsed_args = [_parse_value(arg) for arg in args_list]
         args = tuple(parsed_args)
 
-    return DimensionSpec(name=name.strip(), function_name=func_name.strip(), args=args)
+    return DimensionSpec(
+        name=name.strip(),
+        function_name=func_name.strip(),
+        args=args,
+        expand=expand,
+        weights=weights,
+    )
 
 
 def parse_trend_spec(spec: str) -> TrendSpec:

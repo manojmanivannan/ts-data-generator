@@ -25,7 +25,7 @@ The package includes a comprehensive set of pre-built dimension helpers inside `
 | `random_choice(vals)` | Stochastic | Selects a random element uniformly at each step. | `region:random_choice:US,EU,AP` |
 | `random_int(min, max)`| Stochastic | Yields random integers in `[min, max]` (inclusive). | `user_id:random_int:1000,9999` |
 | `random_float(min, max)`| Stochastic | Yields random floats in `[min, max)` (exclusive). | `weight:random_float:0.0,1.0` |
-| `auto_generate_name(pre)`| Deterministic | Yields incrementing string keys with a prefix. | `id:auto_generate_name:sensor` |
+| `auto_generate_name(pre)`| Deterministic | Yields one auto-generated prefixed name (e.g. `s_42`) for the whole column. | `id:auto_generate_name:sensor` |
 
 ---
 
@@ -65,7 +65,7 @@ tsdata generate \
 
 ## 🐍 Python API Usage
 
-When using the Python API, you pass an infinite generator or any standard Python `Iterable` to the `.add_dimension()` method.
+When using the Python API, you pass a dimension generator to the `.add_dimension()` method. Each built-in helper returns a **carrier** — an infinite iterator (so it behaves like the generator you'd expect) that also carries its `.domain` and an `.expandable` flag, captured at construction time. A plain Python generator is still accepted; supply its `domain=` explicitly so the engine can see it (see below).
 
 Here is a fully runnable script showcasing all built-in helpers and custom generators:
 
@@ -113,6 +113,14 @@ def custom_infinite_seq():
 
 dg.add_dimension("custom_batch", custom_infinite_seq())
 
+# 8. A custom/opaque generator with an explicit domain (the domain= escape hatch).
+#    The engine cannot see a plain generator's domain, so declare it explicitly.
+def site_gen():
+    while True:
+        yield "site_A"  # one of a known finite set the engine can't introspect
+
+dg.add_dimension("site", site_gen(), domain=["site_A", "site_B", "site_C"])
+
 # Verify column outputs
 df = dg.data
 print(df.head())
@@ -127,6 +135,40 @@ Output:
 2024-01-01 03:00:00  1704078000  production  node_01   East             2     0.189741          d_1   batch_val_9
 2024-01-01 04:00:00  1704081600  production  node_02  North             4     0.138835          d_1  batch_val_12
 ```
+
+---
+
+## 🧮 Per-dimension expansion control (`expand=`)
+
+When `expand_dimensions` is on, the engine emits one row per *(timestamp × Cartesian product of every enumerable dimension's distinct values)*, each combination carrying its own regenerated metric series. The global flag is an **overridable default**: each dimension's `expand=` argument controls whether it participates.
+
+*   `expand=None` (default) — inherits the global `expand_dimensions` flag.
+*   `expand=True` — forces this dimension into the product **even when the global flag is off**.
+*   `expand=False` — opts this dimension **out** of the product. It instead regenerates one-value-per-timestamp *within* each series, varying independently across combinations (a categorical within-series field, not a broadcast).
+
+`expand=False` is also the **escape hatch** for non-enumerable dimensions (`random_int`, `random_float`, `auto_generate_name`, or an opaque generator without `domain=`): marked `expand=False`, a non-enumerable dimension is excluded from the product and does **not** raise `ExpandError`, even with the global flag on. The error fires only for a dimension that is *actually expanding*.
+
+```python
+dg = DataGen(start_datetime="2024-01-01", end_datetime="2024-01-03",
+             granularity="D", seed=42, expand_dimensions=True)
+
+dg.add_dimension("region", random_choice(["US", "EU"]))               # expands (inherits)
+dg.add_dimension("port", random_int(1, 100), expand=False)            # opts out, no error
+dg.add_dimension("env", ordered_choice(["prod", "dev"]), expand=True) # forces expansion
+dg.add_metric("sales", {LinearTrend(offset=10)})
+# Rows = 3 timestamps × 2 regions × 2 envs = 12; `port` varies within each series.
+```
+
+### String-spec syntax
+
+In the CLI `--dims` and the web API `dimensions` field, the modern `name=function(args)` form gains a trailing `,expand=true|false` after the closing paren. The legacy `name:function:values` colon form does not support per-dim control.
+
+```
+tsdata generate --expand-dimensions \
+  --dims "region=random_choice(US,EU);port=random_int(1,100),expand=false;env=ordered_choice(prod,dev),expand=true" \
+  --mets "sales:LinearTrend(offset=10)" --start 2024-01-01 --end 2024-01-03 --granularity D --output data.csv
+```
+
 ---
 
 ## 🔗 Advanced: Linked Dimensions (Multi-Items)
@@ -187,3 +229,90 @@ Output:
 2024-01-01 08:00:00    Sydney      AU        Oceania
 2024-01-01 09:00:00     Tokyo      JP           Asia
 ```
+
+### MultiItems with `expand_dimensions`
+
+When `expand_dimensions=True`, MultiItems compose by role:
+
+- **Linked dimensions** (`aggregation_type=None`): Expand over their distinct-tuple domain as a single compound key (the tuple moves as a unit). The Cartesian product combines regular dimensions and linked dimensions' tuple domains.
+- **Linked metrics** (`aggregation_type` provided): Regenerate once per combination with a per-combination seed, preserving column correlation within each combination while generating independent series across combinations.
+- **Custom generators**: Can declare explicit tuple domains via `domain=[("NYC", "NY"), ("SFO", "CA")]` in `add_multi_items`.
+- **Per-dimension override**: Linked dimensions support `expand=False` to opt out of Cartesian product expansion and regenerate within each series instead.
+
+---
+
+## 📈 Multi-Series Metric Scaling
+
+When generating multivariate time series with `expand_dimensions=True`, different dimension combinations often represent entities with fundamentally different base volume or magnitude (e.g., *Enterprise* accounts generate $10\times$ more revenue than *Starter* accounts; the *US* region has higher traffic than *EU*).
+
+`ts-data-generator` provides two complementary mechanisms to scale metrics differently across dimension slices: **Explicit Weights** and **Stochastic Log-Normal Scaling**.
+
+### 1. Explicit Dimension Weights
+
+Pass a dictionary mapping dimension values to scale multipliers directly, or pass `weights=` to `add_dimension` / `add_multi_items`:
+
+```python
+# Pass a dict directly: {value: weight}
+dg.add_dimension("tier", {"enterprise": 10.0, "pro": 3.0, "free": 1.0})
+
+# Or pass weights explicitly with any dimension function
+dg.add_dimension("region", ["US", "EU", "APAC"], weights={"US": 5.0, "EU": 2.0, "APAC": 1.0})
+
+# Linked dimension tuple weights
+dg.add_multi_items(
+    names=["city", "country"],
+    function=[("New York", "US"), ("London", "UK")],
+    weights={("New York", "US"): 4.0, ("London", "UK"): 2.0},
+)
+```
+
+When multiple dimensions carry weights, their multipliers compose multiplicatively across the Cartesian slice:
+$$\text{Scale}(\text{enterprise}, \text{US}) = 10.0 \times 5.0 = 50.0$$
+
+Any dimension or value without an explicit weight defaults to `1.0`.
+
+### 2. Stochastic Auto-Scaling (`scale_variance`)
+
+To automatically introduce natural magnitude variance across slices without specifying manual weights for every category, set `scale_variance` on `DataGen`:
+
+```python
+dg = DataGen(
+    start_datetime="2024-01-01",
+    end_datetime="2024-01-07",
+    granularity="h",
+    seed=42,
+    expand_dimensions=True,
+    scale_variance=0.5,  # Each combination is scaled by S ~ LogNormal(0, 0.5^2)
+)
+```
+
+Each unique dimension combination slice receives a deterministic scale factor derived from its slice seed:
+$$S_{\text{slice}} = \exp(\mathcal{N}(0, \sigma^2))$$
+
+### 3. Combining Explicit Weights and Scale Variance
+
+Explicit weights and stochastic scale variance can be combined seamlessly:
+$$\text{Scale}_{\text{total}} = S_{\text{explicit}} \times S_{\text{stochastic}}$$
+
+### 4. CLI Syntax
+
+In the `tsdata` CLI, weights can be specified in the dimension string spec via `,weights={...}` and stochastic scaling via `--scale-variance`:
+
+```bash
+# Explicit weights
+tsdata generate --start 2024-01-01 --end 2024-01-07 --granularity D \
+  --dims "tier=ordered_choice(enterprise,pro,free),weights={enterprise:10,pro:3,free:1}" \
+  --dims "region=random_choice(US,EU),weights={US:5,EU:2}" \
+  --mets "sales:LinearTrend(offset=100,slope=10)" \
+  --expand-dimensions \
+  --output multi_series_sales.csv
+
+# Auto stochastic variance
+tsdata generate --start 2024-01-01 --end 2024-01-07 --granularity D \
+  --dims "store_id=ordered_choice(store_1,store_2,store_3,store_4)" \
+  --mets "traffic:SinusoidalTrend(amplitude=50,freq=24)" \
+  --expand-dimensions \
+  --scale-variance 0.6 \
+  --output store_traffic.csv
+```
+
