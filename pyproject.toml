@@ -79,10 +79,8 @@ select = [
     "D",  # pydocstyle — enforces docs/docstrings.md (style guide, ticket 02)
 ]
 # Google-style baseline ignores (see docs/docstrings.md). The docstring-presence rules
-# (D100–D104) are intentionally KEPT: today's ~114 public-surface D violations are the documented
-# docstring-gap baseline that execution-phase tickets (07+) clear. `ruff check` returns to full
-# green once those docstrings are written; there is no CI ruff gate, so the red baseline breaks
-# nothing and makes the remaining work visible.
+# (D100–D104) are intentionally KEPT: enforced across the public package surface as a required
+# CI gate in test.yml.
 ignore = [
     "D105", # magic methods: dunders need no docstring (style guide §1)
     "D107", # __init__: Args live on the class docstring, not __init__ (style guide §6)

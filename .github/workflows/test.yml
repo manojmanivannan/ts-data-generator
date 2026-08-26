@@ -30,13 +30,9 @@ jobs:
         # via `testpaths` (pyproject.toml) and needs it.
         run: uv sync --all-packages --all-extras
 
-      - name: Run ruff check 🧹 (advisory)
-        # Advisory gate: `continue-on-error` so the intentional D-violation
-        # baseline (the 07+ do-phase docstring worklist) surfaces without
-        # blocking PRs. Scope is the public package surface (the destination
-        # enforces scoped `D` here, not on tests). Remove `continue-on-error`
-        # to flip to a required gate once the surface passes `D` (ticket 08).
-        continue-on-error: true
+      - name: Run ruff check 🧹
+        # Required CI gate enforcing docs/docstrings.md via scoped ruff D rules.
+        # Scope is the public package surface (src/ts_data_generator).
         run: uv run ruff check src/ts_data_generator
 
       - name: Run PyTest 🧪

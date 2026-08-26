@@ -1,11 +1,9 @@
 <!--
-PROTOTYPE — ticket 02 (wayfinder). Conventions RATIFIED by the user; this draft is
-the primary-source artifact for the decision. Captured on branch
-`prototype/02-style-guide`. Lands on `main` as the canonical guide when the pilot
-(ticket 07) folds it in; until then this branch is the reference 03/04/05 cite.
+Docstring & type-hint style guide for ts-data-generator. Canonical reference ratified in
+wayfinder ticket 02 and enforced in CI via scoped ruff D rules (ticket 08 / #70).
 -->
 
-# Docstring & type-hint style guide (DRAFT)
+# Docstring & type-hint style guide
 
 This is the canonical reference for how every **user-facing** symbol in
 `ts_data_generator` is documented and typed. Docstrings are the source of truth

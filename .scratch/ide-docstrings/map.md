@@ -24,9 +24,8 @@ ticket (07); every other ticket resolves a decision.
 - **Toolchain:** linter = ruff (`E,W,F,I,B,UP,D` — `D` added by ticket 03, scoped to the public
   surface via `per-file-ignores`; red-baseline until 07+ writes the docstrings); runner = pytest
   (`-ra -q`, `--doctest-modules` on the 3 core modules, wired by 04). Docstring style = Google.
-  **CI ruff gate = advisory** (wired by 08): `test.yml` runs `ruff check src/ts_data_generator` with
-  `continue-on-error: true` — the 114-violation D baseline surfaces without blocking; flip to
-  required (one-line `continue-on-error` removal) once the 07+ surface is D-green.
+  **CI ruff gate = required** (wired by 08, flipped by #70): `test.yml` runs `ruff check src/ts_data_generator`
+  as a required CI gate enforcing `docs/docstrings.md` across the public package surface.
 - **Skills every session should consult:** `grilling` + `domain-modeling` by default; `prototype`
   for ticket 02; `research` for ticket 01.
 - **Foundations (settled in charting — not tickets):**
