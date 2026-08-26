@@ -9,6 +9,7 @@ import tempfile
 from pathlib import Path
 
 import pytest
+import pandas as pd
 from click.testing import CliRunner
 
 from ts_data_generator.cli import main, PRESETS
@@ -1442,3 +1443,88 @@ class TestAggregateBySubset:
         )
         assert result.exit_code != 0
         assert "non-groupable" in result.output
+
+
+class TestWorkers:
+    """Tests for multi-worker parallel generation."""
+
+    @pytest.fixture
+    def runner(self):
+        return CliRunner()
+
+    @pytest.fixture
+    def temp_output(self, runner):
+        with tempfile.NamedTemporaryFile(suffix=".csv", delete=False) as f:
+            yield f.name
+        Path(f.name).unlink(missing_ok=True)
+
+    def test_workers_flag(self, runner, temp_output):
+        """Test --workers flag generates identical deterministic output."""
+        # Run with 1 worker
+        result_seq = runner.invoke(
+            main,
+            [
+                "generate",
+                "--start", "2024-01-01",
+                "--end", "2024-01-03",
+                "--granularity", "h",
+                "--dims", "region:US,EU",
+                "--dims", "env:prod,dev",
+                "--mets", "sales:LinearTrend(offset=10,slope=5)",
+                "--expand-dimensions",
+                "--seed", "42",
+                "--workers", "1",
+                "--output", temp_output,
+            ],
+        )
+        assert result_seq.exit_code == 0
+        df_seq = pd.read_csv(temp_output)
+
+        # Run with 2 workers
+        result_par = runner.invoke(
+            main,
+            [
+                "generate",
+                "--start", "2024-01-01",
+                "--end", "2024-01-03",
+                "--granularity", "h",
+                "--dims", "region:US,EU",
+                "--dims", "env:prod,dev",
+                "--mets", "sales:LinearTrend(offset=10,slope=5)",
+                "--expand-dimensions",
+                "--seed", "42",
+                "--workers", "2",
+                "--output", temp_output,
+            ],
+        )
+        assert result_par.exit_code == 0
+        df_par = pd.read_csv(temp_output)
+
+        pd.testing.assert_frame_equal(df_seq, df_par)
+
+    def test_workers_in_config_file(self, runner, temp_output):
+        """Test workers specified in JSON config file."""
+        config = {
+            "start": "2024-01-01",
+            "end": "2024-01-02",
+            "granularity": "h",
+            "dimensions": ["region:random_choice:US,EU"],
+            "metrics": ["sales:LinearTrend(slope=10)"],
+            "expand_dimensions": True,
+            "seed": 42,
+            "workers": 2,
+            "output": temp_output,
+        }
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump(config, f)
+            config_path = f.name
+
+        try:
+            result = runner.invoke(main, ["generate", "--config", config_path])
+            assert result.exit_code == 0, f"Error: {result.output}"
+            assert Path(temp_output).exists()
+            df = pd.read_csv(temp_output)
+            assert len(df) == 50  # 25 hours x 2 regions
+        finally:
+            Path(config_path).unlink(missing_ok=True)
+

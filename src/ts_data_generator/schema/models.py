@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Generator
 from enum import Enum
-from typing import TYPE_CHECKING, NamedTuple
+from typing import TYPE_CHECKING, Any, NamedTuple
 
 import numpy as np
 import pandas as pd
@@ -209,7 +209,9 @@ class Dimensions:
         weights: Optional mapping of dimension values to scale multipliers.
 
     Example:
-        >>> d = Dimensions(name="region", function=random_choice(["US", "EU"]), weights={"US": 5.0, "EU": 2.0})
+        >>> d = Dimensions(
+        ...     name="region", function=random_choice(["US", "EU"]), weights={"US": 5.0, "EU": 2.0}
+        ... )
     """
 
     def __init__(
