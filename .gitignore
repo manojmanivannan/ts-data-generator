@@ -9,6 +9,7 @@ develop-eggs/
 dist/
 downloads/
 eggs/
+notebooks/__marimo__/
 .eggs/
 lib/
 lib64/

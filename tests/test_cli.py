@@ -1334,3 +1334,111 @@ class TestCLIDimensionScaling:
         us_sales = df[df["region"] == "US"]["sales"].to_numpy()
         eu_sales = df[df["region"] == "EU"]["sales"].to_numpy()
         assert us_sales[0] != eu_sales[0]
+
+
+class TestAggregateBySubset:
+    """Tests for --aggregate paired with --by (subset dimension rollup)."""
+
+    @pytest.fixture
+    def runner(self):
+        return CliRunner()
+
+    @pytest.fixture
+    def temp_output(self, runner):
+        with tempfile.NamedTemporaryFile(suffix=".csv", delete=False) as f:
+            yield f.name
+        Path(f.name).unlink(missing_ok=True)
+
+    def test_aggregate_rolls_up_to_subset(self, runner, temp_output):
+        """--aggregate D --by region keeps region, drops the other dimension."""
+        import pandas as pd
+
+        result = runner.invoke(
+            main,
+            [
+                "generate",
+                "--start", "2024-01-01",
+                "--end", "2024-01-03",
+                "--granularity", "h",
+                "--dims", "region:US,EU",
+                "--dims", "env:prod,dev",
+                "--mets", "sales:LinearTrend(offset=10,slope=0,noise_level=0)",
+                "--expand-dimensions",
+                "--seed", "42",
+                "--aggregate", "D",
+                "--by", "region",
+                "--output", temp_output,
+            ],
+        )
+        assert result.exit_code == 0, f"Error: {result.output}"
+        df = pd.read_csv(temp_output)
+        assert "region" in df.columns
+        assert "env" not in df.columns
+        # 3 days x 2 regions = 6 rows
+        assert len(df) == 6
+
+    def test_aggregate_without_by_keeps_all_dims(self, runner, temp_output):
+        """--aggregate without --by keeps every dimension (historical behavior)."""
+        import pandas as pd
+
+        result = runner.invoke(
+            main,
+            [
+                "generate",
+                "--start", "2024-01-01",
+                "--end", "2024-01-03",
+                "--granularity", "h",
+                "--dims", "region:US,EU",
+                "--dims", "env:prod,dev",
+                "--mets", "sales:LinearTrend(offset=10,slope=0,noise_level=0)",
+                "--expand-dimensions",
+                "--seed", "42",
+                "--aggregate", "D",
+                "--output", temp_output,
+            ],
+        )
+        assert result.exit_code == 0, f"Error: {result.output}"
+        df = pd.read_csv(temp_output)
+        assert "region" in df.columns
+        assert "env" in df.columns
+        # 3 days x 2 regions x 2 envs = 12 rows
+        assert len(df) == 12
+
+    def test_aggregate_finer_granularity_errors(self, runner, temp_output):
+        """--aggregate to a finer granularity is rejected."""
+        result = runner.invoke(
+            main,
+            [
+                "generate",
+                "--start", "2024-01-01",
+                "--end", "2024-01-02",
+                "--granularity", "h",
+                "--dims", "region:US,EU",
+                "--mets", "sales:LinearTrend(offset=10)",
+                "--aggregate", "5min",
+                "--output", temp_output,
+            ],
+        )
+        assert result.exit_code != 0
+        assert "finer granularity" in result.output
+
+    def test_aggregate_by_unknown_column_errors(self, runner, temp_output):
+        """--by naming a non-dimension column is rejected."""
+        result = runner.invoke(
+            main,
+            [
+                "generate",
+                "--start", "2024-01-01",
+                "--end", "2024-01-03",
+                "--granularity", "h",
+                "--dims", "region:US,EU",
+                "--mets", "sales:LinearTrend(offset=10,slope=0,noise_level=0)",
+                "--expand-dimensions",
+                "--seed", "42",
+                "--aggregate", "D",
+                "--by", "nonexistent",
+                "--output", temp_output,
+            ],
+        )
+        assert result.exit_code != 0
+        assert "non-groupable" in result.output

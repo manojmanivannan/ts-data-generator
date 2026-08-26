@@ -901,19 +901,30 @@ class DataGen:
     # Aggregation
     # ------------------------------------------------------------------
 
-    def aggregate(self, granularity: str) -> pd.DataFrame:
+    def aggregate(
+        self,
+        granularity: str,
+        by: list[str] | None = None,
+    ) -> pd.DataFrame:
         """Aggregate data to a coarser granularity.
 
         Delegates to :func:`ts_data_generator.aggregator.aggregate_dataframe`.
 
         Args:
             granularity: Target granularity string (e.g. ``"h"``, ``"D"``).
+            by: Optional subset of dimension column names to group by.  When
+                ``expand_dimensions`` is active, pass a subset to roll up
+                across the other dimensions — e.g. ``by=["region"]`` keeps
+                ``region`` and aggregates every other dimension away.
+                ``None`` (default) groups by all dimensions; ``[]`` rolls up
+                every dimension for a time-only resample.
 
         Returns:
             A new DataFrame aggregated to the target granularity.
 
         Raises:
-            AggregationError: If target granularity is finer than current.
+            AggregationError: If target granularity is finer than current, or
+                if *by* names a column that is not a groupable dimension.
             KeyError: If granularity string is not recognized.
         """
         return aggregate_dataframe(
@@ -923,6 +934,7 @@ class DataGen:
             multi_items=self.multi_items,
             from_granularity=self.granularity,
             to_granularity=granularity,
+            by=by,
         )
 
     # ------------------------------------------------------------------
