@@ -31,6 +31,7 @@ class MissingData(Anomaly):
         >>> MissingData(mode="random", probability=0.05)
         >>> MissingData(mode="burst", burst_probability=0.02, min_length=3, max_length=10)
         >>> MissingData(mode="patterned", schedule=lambda ts: ts.weekday() == 6)
+
     """
 
     def __init__(
@@ -54,27 +55,33 @@ class MissingData(Anomaly):
         self._schedule = schedule
 
     @property
-    def mode(self) -> str:
+    def mode(self) -> Literal["random", "burst", "patterned"]:
+        """NaN-injection strategy: per-timestamp, burst runs, or schedule-driven."""
         return self._mode
 
     @property
     def probability(self) -> float:
+        """Per-timestamp NaN probability (``random`` mode)."""
         return self._probability
 
     @property
     def burst_probability(self) -> float:
+        """Per-timestamp probability of a NaN burst starting (``burst`` mode)."""
         return self._burst_probability
 
     @property
     def min_length(self) -> int:
+        """Minimum length of a NaN burst run (``burst`` mode)."""
         return self._min_length
 
     @property
     def max_length(self) -> int:
+        """Maximum length of a NaN burst run (``burst`` mode)."""
         return self._max_length
 
     @property
     def schedule(self) -> Callable[[pd.Timestamp], bool] | None:
+        """The ``(pd.Timestamp) -> bool`` NaN schedule, or ``None`` when not ``patterned``."""
         return self._schedule
 
     def intervene(
@@ -83,6 +90,18 @@ class MissingData(Anomaly):
         timestamps: pd.DatetimeIndex,
         rng: RNGProtocol,
     ) -> np.ndarray:
+        """Inject NaN gaps into a copy of the base array per the active mode.
+
+        ``random`` sets each timestamp to NaN independently with
+        ``probability``; ``burst`` starts consecutive NaN runs (length in
+        ``[min_length, max_length]``) with per-timestamp ``burst_probability``;
+        ``patterned`` sets NaN wherever the ``schedule`` callable returns True.
+
+        Returns:
+            A new numpy array (a copy of ``base_array``); the input is never
+            mutated.
+
+        """
         result = base_array.copy()
         n = len(base_array)
 
