@@ -25,7 +25,10 @@ jobs:
           echo "$HOME/.local/bin" >> $GITHUB_PATH
 
       - name: Install dependencies
-        run: uv sync --all-extras
+        # `--all-packages` syncs the `tsdata` workspace member too, so its
+        # fastapi dependency is installed — `tsdata/tests` is collected in CI
+        # via `testpaths` (pyproject.toml) and needs it.
+        run: uv sync --all-packages --all-extras
 
       - name: Run ruff check 🧹 (advisory)
         # Advisory gate: `continue-on-error` so the intentional D-violation
