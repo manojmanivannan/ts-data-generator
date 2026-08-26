@@ -272,10 +272,22 @@ class Dimensions:
         """
         return self._expand
 
+    @expand.setter
+    def expand(self, value: bool | None) -> None:
+        if value is not None and not isinstance(value, bool):
+            raise ValueError("expand must be a bool or None")
+        self._expand = value
+
     @property
     def weights(self) -> dict[Any, float] | None:
         """Per-value scale weights for multivariate dimension expansion."""
         return self._weights
+
+    @weights.setter
+    def weights(self, value: dict[Any, float] | None) -> None:
+        if value is not None and not isinstance(value, dict):
+            raise ValueError("weights must be a dict or None")
+        self._weights = value
 
     @property
     def function(self) -> DimensionFunction:
@@ -314,6 +326,9 @@ class Dimensions:
         self._data = pd.DataFrame(data, columns=columns, index=timestamps)
         return self._data
 
+    def __repr__(self) -> str:
+        return str(self.to_json())
+
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, Dimensions):
             return NotImplemented
@@ -327,6 +342,8 @@ class Dimensions:
         return {
             "name": self.name,
             "function": self.function.__repr__().split(" at ")[0],
+            "expand": self.expand,
+            "weights": self.weights,
         }
 
 
@@ -388,10 +405,22 @@ class MultiItems:
         """Per-dimension expansion override for ``expand_dimensions``."""
         return self._expand
 
+    @expand.setter
+    def expand(self, value: bool | None) -> None:
+        if value is not None and not isinstance(value, bool):
+            raise ValueError("expand must be a bool or None")
+        self._expand = value
+
     @property
     def weights(self) -> dict[tuple[Any, ...] | Any, float] | None:
         """Per-tuple scale weights for multivariate dimension expansion."""
         return self._weights
+
+    @weights.setter
+    def weights(self, value: dict[tuple[Any, ...] | Any, float] | None) -> None:
+        if value is not None and not isinstance(value, dict):
+            raise ValueError("weights must be a dict or None")
+        self._weights = value
 
     @property
     def function(self) -> DimensionFunction:
@@ -431,6 +460,9 @@ class MultiItems:
         self._data = pd.DataFrame(data, columns=self._names, index=timestamps)
         return self._data
 
+    def __repr__(self) -> str:
+        return str(self.to_json())
+
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, MultiItems):
             return NotImplemented
@@ -444,4 +476,7 @@ class MultiItems:
         return {
             "names": self.names,
             "function": self.function.__repr__().split(" at ")[0],
+            "aggregation_type": self.aggregation_type,
+            "expand": self.expand,
+            "weights": self.weights,
         }

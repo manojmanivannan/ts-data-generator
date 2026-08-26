@@ -14,11 +14,13 @@ from ts_data_generator.utils.trends import LinearTrend
 
 # ── helpers ─────────────────────────────────────────────────────────────
 
+
 def _timestamps(n: int = 10) -> pd.DatetimeIndex:
     return pd.date_range("2024-01-01", periods=n, freq="h")
 
 
 # ── Dimensions ──────────────────────────────────────────────────────────
+
 
 class TestDimensionsInit:
     """Tests for Dimensions.__init__."""
@@ -111,6 +113,32 @@ class TestDimensionsFunctionSetter:
             d.function = [1, 2, 3]
 
 
+class TestDimensionsExpandSetter:
+    """Tests for Dimensions.expand setter."""
+
+    def test_assignment_updates_override(self) -> None:
+        d = Dimensions(name="region", function=random_choice(["US", "EU"]))
+        d.expand = False
+        assert d.expand is False
+        d.expand = True
+        assert d.expand is True
+
+
+class TestMultiItemsExpandSetter:
+    """Tests for MultiItems.expand setter."""
+
+    def test_assignment_updates_override(self) -> None:
+        def gen():
+            while True:
+                yield (1, 2)
+
+        mi = MultiItems(names=["a", "b"], function=gen())
+        mi.expand = False
+        assert mi.expand is False
+        mi.expand = True
+        assert mi.expand is True
+
+
 class TestDimensionsEquality:
     """Tests for Dimensions.__eq__ and __hash__."""
 
@@ -160,8 +188,23 @@ class TestDimensionsToJson:
         js = d.to_json()
         assert "random_choice" in js["function"]
 
+    def test_repr_includes_expand_and_weights(self) -> None:
+        d = Dimensions(
+            name="region",
+            function=random_choice(["US", "EU"]),
+            expand=False,
+            weights={"US": 5.0, "EU": 2.0},
+        )
+        text = repr(d)
+        assert "'expand'" in text
+        assert "False" in text
+        assert "'weights'" in text
+        assert "US" in text
+        assert "EU" in text
+
 
 # ── MultiItems ──────────────────────────────────────────────────────────
+
 
 class TestMultiItemsInit:
     """Tests for MultiItems.__init__."""
@@ -384,6 +427,7 @@ class TestMultiItemsToJson:
 
 
 # ── Metrics ──────────────────────────────────────────────────────────────
+
 
 class TestMetricsGenerateReturnsMetricResult:
     """Phase 2A: Metrics.generate() returns MetricResult with .signal and .baseline."""
