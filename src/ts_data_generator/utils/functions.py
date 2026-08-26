@@ -131,6 +131,7 @@ def random_int(start: int, end: int, rng: RNGProtocol | None = None) -> Dimensio
         "random_int",
         "random_int() draws from a numeric range; use random_choice/ordered_choice "
         "for an enumerable dimension",
+        (start, end),
     )
 
 
@@ -176,6 +177,7 @@ def random_float(
         "random_float",
         "random_float() draws from a numeric range; use random_choice/ordered_choice "
         "for an enumerable dimension",
+        (start, end),
     )
 
 
@@ -237,6 +239,7 @@ def auto_generate_name(category: str, rng: RNGProtocol | None = None) -> Dimensi
         _source(),
         "auto_generate_name",
         "auto_generate_name() is not a finite-domain dimension generator",
+        (category,),
     )
 
 

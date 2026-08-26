@@ -1020,3 +1020,36 @@ class TestPerDimensionExpand:
         assert dg.dimensions["a"].expand is None
         assert dg.dimensions["b"].expand is False
         assert dg.dimensions["c"].expand is True
+
+
+class TestExpandParallelWorkers:
+    def test_workers_equivalence_sequential_vs_parallel(self) -> None:
+        def make_dg(workers: int | None) -> DataGen:
+            dg = DataGen(
+                start_datetime="2024-01-01",
+                end_datetime="2024-01-03",
+                granularity=Granularity.HOURLY,
+                seed=42,
+                expand_dimensions=True,
+                workers=workers,
+            )
+            dg.add_dimension("region", random_choice(["US", "EU", "APAC"]))
+            dg.add_dimension("env", ordered_choice(["prod", "stage"]))
+            dg.add_metric("sales", {LinearTrend(offset=10, slope=2, noise_level=0.5)})
+            return dg
+
+        df_seq = make_dg(workers=1).data
+        df_par = make_dg(workers=2).data
+        df_auto = make_dg(workers=None).data
+
+        pd.testing.assert_frame_equal(df_seq, df_par)
+        pd.testing.assert_frame_equal(df_seq, df_auto)
+
+    def test_workers_property_getter_setter(self) -> None:
+        dg = DataGen(workers=4)
+        assert dg.workers == 4
+        dg.workers = 8
+        assert dg.workers == 8
+        dg.workers = None
+        assert dg.workers is None
+

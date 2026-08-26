@@ -15,6 +15,11 @@ import pandas as pd
 
 from ts_data_generator.random import RNGProtocol
 
+try:
+    from scipy.signal import lfilter as _scipy_lfilter
+except ImportError:
+    _scipy_lfilter = None
+
 logger = logging.getLogger(__name__)
 
 # Map pandas frequency strings to conversion functions for LinearTrend.
@@ -110,7 +115,8 @@ class SinusoidalTrend(Trends):
         return self._noise_level
 
     def generate(self, timestamps: pd.DatetimeIndex, rng: RNGProtocol) -> np.ndarray:
-        time_in_days = (timestamps - timestamps[0]).total_seconds() / (24 * 3600)
+        t_start = timestamps[0].value
+        time_in_days = (timestamps.asi8 - t_start) * (1.0 / 86_400_000_000_000.0)
         phase_in_days = self._phase / 24.0
         base_wave = self._amplitude * np.sin(
             2 * np.pi * (1 / self._freq) * (time_in_days + phase_in_days)
@@ -479,12 +485,27 @@ class ARNoiseTrend(Trends):
 
         noise = rng.normal(0, self._noise_std, total)
 
+        if _scipy_lfilter is not None and p == 1:
+            c0 = self._coefficients[0]
+            a = np.array([1.0, -c0])
+            b = np.array([1.0])
+            return _scipy_lfilter(b, a, noise)[1:]
+
         result = np.zeros(total)
         result[:p] = noise[:p]
 
-        coeffs = self._coefficients
-        for t in range(p, total):
-            result[t] = float(np.dot(coeffs, result[t - p : t][::-1])) + noise[t]
+        if p == 1:
+            c0 = self._coefficients[0]
+            for t in range(1, total):
+                result[t] = c0 * result[t - 1] + noise[t]
+        elif p == 2:
+            c0, c1 = self._coefficients[0], self._coefficients[1]
+            for t in range(2, total):
+                result[t] = c0 * result[t - 1] + c1 * result[t - 2] + noise[t]
+        else:
+            coeffs_rev = self._coefficients[::-1]
+            for t in range(p, total):
+                result[t] = float(np.dot(coeffs_rev, result[t - p : t])) + noise[t]
 
         return result[p:]
 
@@ -602,14 +623,20 @@ class MarkovTrend(Trends):
         noise = rng.normal(0, self._noise_std, n)
         init_state = rng.choice(n_states)
 
-        # Generate state sequence
         states = np.zeros(n, dtype=np.int64)
         states[0] = init_state
 
+        cdf = np.cumsum(mat, axis=1)
+        u = rng.random(n)
+
         for t in range(1, n):
             prev = states[t - 1]
-            probs = mat[prev]
-            states[t] = rng.choice(n_states, p=probs)
+            row_cdf = cdf[prev]
+            ut = u[t]
+            s = 0
+            while s < n_states - 1 and ut >= row_cdf[s]:
+                s += 1
+            states[t] = s
 
         return self._values[states] + noise
 
@@ -655,15 +682,17 @@ class StockTrend(Trends):
 
     def generate(self, timestamps: pd.DatetimeIndex, rng: RNGProtocol) -> np.ndarray:
         num_steps = len(timestamps)
-        trend = np.zeros(num_steps)
-        drift_per_step = self._amplitude / num_steps if num_steps > 0 else 0
-
+        if num_steps == 0:
+            return np.zeros(0)
+        drift_per_step = self._amplitude / num_steps
         volatilities = rng.normal(0, self._noise_level, num_steps)
+        increments = np.empty(num_steps)
+        increments[0] = 0.0
+        increments[1:] = drift_per_step + volatilities[1:]
+        trend = np.cumsum(increments)
 
-        for i in range(1, num_steps):
-            trend[i] = trend[i - 1] + drift_per_step + volatilities[i]
-
-        time_in_days = (timestamps - timestamps[0]).total_seconds() / (24 * 3600)
+        t_start = timestamps[0].value
+        time_in_days = (timestamps.asi8 - t_start) * (1.0 / 86_400_000_000_000.0)
         base_wave = (
             self._amplitude * np.sin(2 * np.pi * (time_in_days / 5))
             - self._amplitude

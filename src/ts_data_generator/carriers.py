@@ -24,6 +24,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections.abc import Generator
+from itertools import cycle
 from typing import Any
 
 
@@ -96,6 +97,35 @@ class DimensionCarrier(Generator, ABC):
         return f"<{self._func_name} carrier at {id(self):#x}>"
 
 
+def _reconstruct_domain_carrier(domain: list[Any], func_name: str) -> DomainCarrier:
+    values = list(domain)
+
+    def _source() -> Any:
+        while True:
+            yield from cycle(values)
+
+    return DomainCarrier(_source(), values, func_name)
+
+
+def _reconstruct_non_expandable_carrier(
+    func_name: str, reason: str, func_args: tuple[Any, ...]
+) -> NonExpandableCarrier:
+    from ts_data_generator.utils import functions as df_funcs
+
+    if hasattr(df_funcs, func_name):
+        fn = getattr(df_funcs, func_name)
+        try:
+            return fn(*func_args)
+        except Exception:
+            pass
+
+    def _source() -> Any:
+        while True:
+            yield None
+
+    return NonExpandableCarrier(_source(), func_name, reason, func_args)
+
+
 class DomainCarrier(DimensionCarrier):
     """Expandable carrier with a captured finite explicit-list domain.
 
@@ -117,6 +147,9 @@ class DomainCarrier(DimensionCarrier):
     def expandable(self) -> bool:
         return True
 
+    def __reduce__(self) -> tuple[Any, ...]:
+        return (_reconstruct_domain_carrier, (self._domain, self._func_name))
+
 
 class NonExpandableCarrier(DimensionCarrier):
     """Non-expandable carrier for numeric ranges and auto-generated names.
@@ -127,9 +160,16 @@ class NonExpandableCarrier(DimensionCarrier):
     explaining why they cannot expand.
     """
 
-    def __init__(self, source: Generator[Any, None, None], func_name: str, reason: str) -> None:
+    def __init__(
+        self,
+        source: Generator[Any, None, None],
+        func_name: str,
+        reason: str,
+        func_args: tuple[Any, ...] | None = None,
+    ) -> None:
         super().__init__(source, func_name)
         self._reason = reason
+        self._func_args = func_args or ()
 
     @property
     def domain(self) -> None:
@@ -142,3 +182,10 @@ class NonExpandableCarrier(DimensionCarrier):
     @property
     def non_expandable_reason(self) -> str:
         return self._reason
+
+    def __reduce__(self) -> tuple[Any, ...]:
+        return (
+            _reconstruct_non_expandable_carrier,
+            (self._func_name, self._reason, self._func_args),
+        )
+
