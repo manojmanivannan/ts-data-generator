@@ -1,8 +1,8 @@
 <!--
-PROTOTYPE / DRAFT — ticket 02 (wayfinder). This is a throwaway draft for reaction,
-NOT the ratified style guide yet. Captured on branch `prototype/02-style-guide`.
-The validated version lands on `main` only after the user signs off and 03 (ruff D
-config) is wired against it. Treat the conventions below as a proposal to grill.
+PROTOTYPE — ticket 02 (wayfinder). Conventions RATIFIED by the user; this draft is
+the primary-source artifact for the decision. Captured on branch
+`prototype/02-style-guide`. Lands on `main` as the canonical guide when the pilot
+(ticket 07) folds it in; until then this branch is the reference 03/04/05 cite.
 -->
 
 # Docstring & type-hint style guide (DRAFT)
@@ -319,17 +319,17 @@ def random_choice(
 
 ---
 
-**Open questions for grilling (to resolve before this draft is ratified):**
+**Ratified decisions (ticket 02, signed off by the user):**
 
-1. Is the `conftest`-namespace approach in §3 (inject `pd` + package root, keep
-   explicit per-example imports) the right call, or should doctests rely *only*
-   on the namespace and drop the explicit imports for brevity? (Overlaps
-   ticket 04.)
-2. Should the 8 trend classes and 6 function carriers each carry a *runnable*
-   doctest (CI cost), or is one combined trend-composition doctest enough to
-   cover the "trend composition" core flow, with the rest illustrative? (This
-   sets the size of ticket 04's doctest scope.)
-3. `Returns` on `-> None` callables: confirm we omit the section entirely
-   (current draft) rather than write `Returns: None`.
-4. Module docstrings on `schema/` and `anomalies/` packages: one on the
-   `__init__.py` only, or one per public submodule too?
+1. **Doctest imports** — keep explicit per-example imports *and* the `conftest`
+   namespace (inject `pd` + package root). Examples read correctly standalone
+   and in the IDE hover.
+2. **Doctest scope** — one combined trend-composition doctest
+   (`SinusoidalTrend`/`LinearTrend` + `random_choice` → `add_metric`) runs in
+   CI; the other 7 trends and 5 carriers get illustrative `::` blocks. Sets
+   ticket 04's CI doctest scope.
+3. **`Returns` on `-> None`** — omit the section entirely; the annotation
+   communicates None.
+4. **Package docstrings** — one module docstring on the package `__init__.py`
+   (naming exported symbols); no per-submodule docstrings beyond what each
+   public symbol already carries.
