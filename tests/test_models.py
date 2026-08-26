@@ -99,14 +99,16 @@ class TestDimensionsFunctionSetter:
         # Accepts float
         d.function = 3.14
         assert d.function == 3.14
-        # Accepts list
-        d.function = [1, 2, 3]
-        assert d.function == [1, 2, 3]
 
     def test_invalid_type_raises(self) -> None:
         d = Dimensions(name="x", function=random_choice(["a", "b"]))
         with pytest.raises(ValueError, match="must be a generator"):
             d.function = {"key": "value"}  # dict is invalid
+        # A plain list is rejected: `next()` on a list raises TypeError, so the
+        # list branch is dead code (removed per decision #06 — cleanup, not a
+        # type widening).
+        with pytest.raises(ValueError, match="must be a generator"):
+            d.function = [1, 2, 3]
 
 
 class TestDimensionsEquality:
@@ -308,6 +310,9 @@ class TestMultiItemsFunctionSetter:
         mi = MultiItems(names=["x"], function=gen())
         with pytest.raises(ValueError, match="must be a generator"):
             mi.function = {"key": "val"}
+        # A plain list is rejected (dead `list` branch removed, per decision #06).
+        with pytest.raises(ValueError, match="must be a generator"):
+            mi.function = [1, 2, 3]
 
 
 class TestMultiItemsEquality:

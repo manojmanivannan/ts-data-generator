@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Generator
 from enum import Enum
-from typing import TYPE_CHECKING, Any, NamedTuple
+from typing import TYPE_CHECKING, Any, NamedTuple, TypeAlias
 
 import numpy as np
 import pandas as pd
@@ -24,6 +24,16 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+DimensionFunction: TypeAlias = int | str | float | Generator
+"""A value source for a ``Dimensions`` or ``MultiItems`` column.
+
+A scalar (``int | str | float``) is a constant value emitted at every
+timestamp; a ``Generator`` (the ``utils.functions`` carrier helpers all return
+``DimensionCarrier[T]``, a ``Generator`` subclass) produces a fresh value per
+timestamp via ``next()``.
+"""
+
+
 class MetricResult(NamedTuple):
     """Result of ``Metrics.generate()``.
 
@@ -33,6 +43,7 @@ class MetricResult(NamedTuple):
         labels: DataFrame with a single boolean ``<name>_anomaly`` column
             marking each point where the signal deviates from the clean
             baseline. Empty when the metric has no anomalies.
+
     """
 
     signal: pd.DataFrame
@@ -69,7 +80,7 @@ class Granularity(Enum):
         return self.order() < other.order()
 
     def resample_alias(self) -> str:
-        """Return the pandas resample alias for this granularity (e.g. ``\"Y\"`` -> ``\"YE\"``)."""
+        """Return the pandas resample alias for this granularity (e.g. ``"Y"`` -> ``"YE"``)."""
         _aliases = {"Y": "YE"}
         return _aliases.get(self.value, self.value)
 
@@ -94,6 +105,7 @@ class Metrics:
     Example:
         >>> trend = SinusoidalTrend(amplitude=5, freq=24)
         >>> metric = Metrics(name="temperature", trends={trend})
+
     """
 
     def __init__(
@@ -145,6 +157,7 @@ class Metrics:
             MetricResult with .signal (trends + anomalies), .baseline (trends
             only), and .labels (boolean ``<name>_anomaly`` ground truth, empty
             when this metric has no anomalies).
+
         """
         data = np.zeros(len(timestamps))
         for trend in self._trends:
@@ -190,7 +203,7 @@ class Metrics:
     def __repr__(self) -> str:
         return str(self.to_json())
 
-    def to_json(self) -> dict:
+    def to_json(self) -> dict[str, Any]:
         """Serialize the metric to a JSON-compatible dict."""
         return {
             "name": self._name,
@@ -209,13 +222,18 @@ class Dimensions:
         weights: Optional mapping of dimension values to scale multipliers.
 
     Example:
-        >>> d = Dimensions(name="region", function=random_choice(["US", "EU"]), weights={"US": 5.0, "EU": 2.0})
+        >>> d = Dimensions(
+        ...     name="region",
+        ...     function=random_choice(["US", "EU"]),
+        ...     weights={"US": 5.0, "EU": 2.0},
+        ... )
+
     """
 
     def __init__(
         self,
         name: str | list[str],
-        function: int | str | float | Generator,
+        function: DimensionFunction,
         expand: bool | None = None,
         weights: dict[Any, float] | None = None,
     ) -> None:
@@ -226,12 +244,21 @@ class Dimensions:
         self._data: pd.DataFrame | None = None
 
     @property
-    def data(self) -> pd.Series | None:
+    def data(self) -> pd.DataFrame | None:
+        """The generated dimension values, or ``None`` before ``generate`` runs.
+
+        Returns:
+            A ``pd.DataFrame`` indexed by the generation timestamps with one
+            column per name (a single column when ``name`` is a string),
+            holding the per-timestamp dimension values; ``None`` until
+            ``generate`` has been called.
+
+        """
         return self._data
 
     @property
     def name(self) -> str | list[str]:
-        """The name(s) of this dimension."""
+        """The column name, or names, of this dimension."""
         return self._name
 
     @property
@@ -251,14 +278,19 @@ class Dimensions:
         return self._weights
 
     @property
-    def function(self) -> int | str | float | Generator:
-        """The generator function producing dimension values."""
+    def function(self) -> DimensionFunction:
+        """The value source producing dimension values (see ``DimensionFunction``).
+
+        Assigning a non-scalar, non-``Generator`` value raises ``ValueError``;
+        a plain ``list`` is rejected (``next()`` on a list is not callable), so
+        the type stays ``DimensionFunction`` and is not widened to accept lists.
+        """
         return self._function
 
     @function.setter
-    def function(self, value: int | str | float | Generator) -> None:
-        if not isinstance(value, (int, str, float, Generator, list)):
-            raise ValueError("function must be a generator object or int, str, float, or list")
+    def function(self, value: DimensionFunction) -> None:
+        if not isinstance(value, (int, str, float, Generator)):
+            raise ValueError("function must be a generator object or int, str, or float")
         self._function = value
 
     def generate(
@@ -272,6 +304,7 @@ class Dimensions:
 
         Returns:
             DataFrame with one column (or multiple if name is a list of names).
+
         """
         data = [
             (list(next(self._function)) if isinstance(self._name, list) else [next(self._function)])
@@ -289,7 +322,7 @@ class Dimensions:
     def __hash__(self) -> int:
         return hash(self._name if isinstance(self._name, str) else tuple(self._name))
 
-    def to_json(self) -> dict:
+    def to_json(self) -> dict[str, Any]:
         """Serialize the dimension to a JSON-compatible dict."""
         return {
             "name": self.name,
@@ -315,12 +348,13 @@ class MultiItems:
         ...     while True:
         ...         yield (1, 2, 3)
         >>> mi = MultiItems(names=["a", "b", "c"], function=linked_gen())
+
     """
 
     def __init__(
         self,
         names: list[str],
-        function: int | str | float | Generator,
+        function: DimensionFunction,
         aggregation_type: list[AggregationType | str] | None = None,
         expand: bool | None = None,
         weights: dict[tuple[Any, ...] | Any, float] | None = None,
@@ -334,6 +368,14 @@ class MultiItems:
 
     @property
     def data(self) -> pd.DataFrame | None:
+        """The generated linked values, or ``None`` before ``generate`` runs.
+
+        Returns:
+            A ``pd.DataFrame`` indexed by the generation timestamps with one
+            column per name in the group, holding the per-timestamp linked
+            values; ``None`` until ``generate`` has been called.
+
+        """
         return self._data
 
     @property
@@ -352,8 +394,13 @@ class MultiItems:
         return self._weights
 
     @property
-    def function(self) -> int | str | float | Generator:
-        """The generator function producing linked values."""
+    def function(self) -> DimensionFunction:
+        """The value source producing linked values (see ``DimensionFunction``).
+
+        Assigning a non-scalar, non-``Generator`` value raises ``ValueError``;
+        a plain ``list`` is rejected (``next()`` on a list is not callable), so
+        the type stays ``DimensionFunction`` and is not widened to accept lists.
+        """
         return self._function
 
     @property
@@ -362,9 +409,9 @@ class MultiItems:
         return self._aggregation_type
 
     @function.setter
-    def function(self, value: int | str | float | Generator) -> None:
-        if not isinstance(value, (int, str, float, Generator, list)):
-            raise ValueError("function must be a generator object or int, str, float, or list")
+    def function(self, value: DimensionFunction) -> None:
+        if not isinstance(value, (int, str, float, Generator)):
+            raise ValueError("function must be a generator object or int, str, or float")
         self._function = value
 
     def generate(
@@ -378,6 +425,7 @@ class MultiItems:
 
         Returns:
             DataFrame with one column per name in the multi-item group.
+
         """
         data = [list(next(self._function)) for _ in timestamps]
         self._data = pd.DataFrame(data, columns=self._names, index=timestamps)
@@ -391,7 +439,7 @@ class MultiItems:
     def __hash__(self) -> int:
         return hash(tuple(self._names))
 
-    def to_json(self) -> dict:
+    def to_json(self) -> dict[str, Any]:
         """Serialize the multi-item to a JSON-compatible dict."""
         return {
             "names": self.names,
