@@ -149,9 +149,9 @@ def granularity(self) -> str:
 
     Returns the granularity's string value (the ``Granularity`` enum's
     ``.value``). Assigning to this property re-binds the granularity and
-    requests a regeneration on the next ``.data`` access; pass a
-    ``Granularity`` member or a pandas-style offset string (``"h"``, ``"D"``).
-    A string that ``Granularity`` cannot parse raises ``ValueError``.
+    regenerates the data; pass a ``Granularity`` member or a pandas-style
+    offset string (``"h"``, ``"D"``). A string that ``Granularity`` cannot
+    parse raises ``ValueError``.
 
     Example:
         >>> dg = DataGen(start_datetime="2024-01-01",

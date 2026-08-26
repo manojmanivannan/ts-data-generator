@@ -76,6 +76,8 @@ def _tuple_list_carrier(values: list[tuple[Any, ...]]) -> DimensionCarrier:
 
 
 class PipelineState(Enum):
+    """Lifecycle stage of the DataGen pipeline: ``CONFIGURED`` → ``GENERATED`` → ``NORMALIZED``."""
+
     CONFIGURED = "configured"
     GENERATED = "generated"
     NORMALIZED = "normalized"
@@ -83,6 +85,14 @@ class PipelineState(Enum):
 
 class DataGen:
     """Generate synthetic time series data with dimensions, metrics, and trends.
+
+    A DataGen engine orchestrates dimension, metric, and multi-item models to
+    produce a timestamp-indexed DataFrame. Configure it up-front via the
+    constructor's pre-built :class:`Dimensions`/:class:`Metrics`/:class:`MultiItems`
+    lists, or incrementally with :meth:`add_dimension`, :meth:`add_metric`, and
+    :meth:`add_multi_items`. Data is generated up front once both datetimes are
+    set and regenerated automatically whenever configuration changes; :attr:`data`
+    is the read-out attribute holding the current DataFrame.
 
     Args:
         dimensions: Initial list of :class:`Dimensions` instances.
@@ -106,14 +116,29 @@ class DataGen:
             ``expand=False`` is the escape hatch. Multi-items compose by role:
             linked metrics regenerate per combination; linked dimensions expand
             over their tuple domain (#58).
+        scale_variance: Standard deviation of the log-normal factor that
+            stochastically scales each dimension-combination slice when
+            ``expand_dimensions`` is active. ``0.0`` (default) disables scaling.
 
     Example:
+        >>> from ts_data_generator import DataGen
+        >>> from ts_data_generator.schema import Granularity
+        >>> from ts_data_generator.utils.functions import random_choice
+        >>> from ts_data_generator.utils.trends import LinearTrend
         >>> dg = DataGen(
         ...     start_datetime="2024-01-01",
         ...     end_datetime="2024-01-02",
         ...     granularity=Granularity.HOURLY,
         ...     seed=42,
         ... )
+        >>> dg.add_dimension("region", random_choice(["north", "south"]))
+        >>> dg.add_metric("sales", {LinearTrend(offset=100.0, slope=0)})
+        >>> dg.data.shape[0] > 0
+        True
+        >>> daily = dg.aggregate("D", by=["region"])
+        >>> "region" in daily.columns
+        True
+
     """
 
     def __init__(
@@ -150,6 +175,7 @@ class DataGen:
 
     @property
     def state(self) -> PipelineState:
+        """Current pipeline state: ``CONFIGURED`` → ``GENERATED`` → ``NORMALIZED``."""
         return self._state
 
     def __repr__(self) -> str:
@@ -179,6 +205,7 @@ class DataGen:
 
         Returns:
             Tuple of (row_count, column_count).
+
         """
         return self.data.shape
 
@@ -190,6 +217,7 @@ class DataGen:
 
         Returns:
             DataFrame with the first n rows.
+
         """
         return self.data.head(n=n)
 
@@ -201,6 +229,7 @@ class DataGen:
 
         Returns:
             DataFrame with the last n rows.
+
         """
         return self.data.tail(n=n)
 
@@ -216,11 +245,30 @@ class DataGen:
 
         Raises:
             ValueError: If the granularity string is not recognized.
+
         """
         self.granularity = Granularity(granularity)
 
     @property
     def granularity(self) -> str:
+        """Time-step spacing of the generated series, as a string (e.g. ``"5min"``).
+
+        Returns the granularity's string value (the :class:`Granularity` enum's
+        ``.value``). Assigning to this property re-binds the granularity and
+        regenerates the data; pass a :class:`Granularity` member or a pandas-style
+        offset string (``"h"``, ``"D"``). A string that ``Granularity`` cannot
+        parse raises ``ValueError``.
+
+        Example:
+            Read and rebind the granularity, regenerating immediately::
+
+                dg = DataGen(start_datetime="2024-01-01",
+                             end_datetime="2024-01-02", seed=1)
+                dg.granularity            # "5min"
+                dg.granularity = "h"
+                dg.granularity            # "h"
+
+        """
         if isinstance(self._granularity, Granularity):
             return self._granularity.value
         return self._granularity
@@ -254,11 +302,12 @@ class DataGen:
 
     @property
     def scale_variance(self) -> float:
-        """Standard deviation for stochastic log-normal metric scaling across dimension combinations.
+        """Std. dev. of the log-normal factor scaling metric slices across combinations.
 
-        When > 0 and ``expand_dimensions`` is active, each unique combination slice
-        is scaled by a deterministic factor sampled from LogNormal(0, scale_variance).
-        Defaults to 0.0 (disabled).
+        When > 0 and ``expand_dimensions`` is active, each unique combination
+        slice is scaled by a deterministic factor sampled from
+        ``LogNormal(0, scale_variance)``. Assigning regenerates the data.
+        Defaults to ``0.0`` (disabled).
         """
         return self._scale_variance
 
@@ -291,6 +340,12 @@ class DataGen:
 
     @property
     def start_datetime(self) -> str | datetime | pd.Timestamp:
+        """Start bound of the generated time range.
+
+        Returns the value set at construction or via assignment. Assigning a
+        non-empty value regenerates the data; assigning an empty value raises
+        :class:`ValidationError`.
+        """
         return self._start_datetime
 
     @start_datetime.setter
@@ -305,6 +360,12 @@ class DataGen:
 
     @property
     def end_datetime(self) -> str | datetime | pd.Timestamp:
+        """End bound of the generated time range.
+
+        Returns the value set at construction or via assignment. Assigning a
+        non-empty value regenerates the data; assigning an empty value raises
+        :class:`ValidationError`.
+        """
         return self._end_datetime
 
     @end_datetime.setter
@@ -349,7 +410,7 @@ class DataGen:
         return self._baselines
 
     @property
-    def trends(self) -> dict[str, dict[str, object]]:
+    def trends(self) -> dict[str, dict[str, Trends]]:
         """Nested mapping: ``{metric_name: {trend_name: trend_instance}}``."""
         return {m.name: {t.name: t for t in m.trends} for m in self._metrics}
 
@@ -397,6 +458,16 @@ class DataGen:
             ValidationError: If function is not a supported type, or ``domain=``
                 is misused (supplied to a carrier, or to a non-expandable
                 range/auto-name generator).
+
+        Example:
+            >>> from ts_data_generator import DataGen
+            >>> from ts_data_generator.utils.functions import random_choice
+            >>> dg = DataGen(start_datetime="2024-01-01",
+            ...              end_datetime="2024-01-02", seed=0)
+            >>> dg.add_dimension("region", random_choice(["north", "south"]))
+            >>> "region" in dg.data.columns
+            True
+
         """
         if isinstance(function, dict):
             if not function:
@@ -474,6 +545,7 @@ class DataGen:
         Raises:
             DimensionError: If the dimension does not exist.
             ValidationError: If the function type is invalid.
+
         """
         if name not in self.dimensions:
             raise DimensionError(f"Dimension with name {name!r} does not exist.")
@@ -491,6 +563,7 @@ class DataGen:
 
         Args:
             name: The dimension name to remove.
+
         """
         if name in self.dimensions:
             self.data = self.data.drop([name], axis=1, errors="ignore")
@@ -519,6 +592,20 @@ class DataGen:
         Raises:
             MetricError: If a metric with this name already exists, or if
                 duplicate trends are detected.
+
+        Example:
+            >>> from ts_data_generator import DataGen
+            >>> from ts_data_generator.utils.functions import random_choice
+            >>> from ts_data_generator.utils.trends import SinusoidalTrend
+            >>> dg = DataGen(start_datetime="2024-01-01",
+            ...              end_datetime="2024-01-02", seed=1)
+            >>> dg.add_dimension("region", random_choice(["north", "south"]))
+            >>> dg.add_metric("signal", {SinusoidalTrend(amplitude=10.0, freq=0.1)})
+            >>> "signal" in dg.data.columns
+            True
+            >>> dg.data["signal"].shape[0] == dg.data.shape[0]
+            True
+
         """
         if len(trends) != len(set(trends)):
             raise MetricError("Duplicate trends are present.")
@@ -541,6 +628,7 @@ class DataGen:
 
         Args:
             name: The metric name to remove.
+
         """
         if name in self.metrics:
             self.data = self.data.drop([name], axis=1, errors="ignore")
@@ -583,6 +671,17 @@ class DataGen:
         Raises:
             MultiItemError: If any name overlaps with existing multi-items.
             ValidationError: If function type is invalid, domain is invalid, or generation fails.
+
+        Example:
+            >>> from ts_data_generator import DataGen
+            >>> from ts_data_generator.utils.functions import random_choice
+            >>> dg = DataGen(start_datetime="2024-01-01",
+            ...              end_datetime="2024-01-02", seed=2)
+            >>> dg.add_multi_items(["city", "zone"],
+            ...                   random_choice([("NYC", "E"), ("LA", "W")]))
+            >>> "city" in dg.data.columns and "zone" in dg.data.columns
+            True
+
         """
         if not isinstance(function, (int, float, str, list, Generator)):
             raise ValidationError(
@@ -680,6 +779,7 @@ class DataGen:
 
         Args:
             names: Name or list of names belonging to the multi-item group.
+
         """
         if isinstance(names, str):
             names = [names]
@@ -705,6 +805,7 @@ class DataGen:
 
         Raises:
             ValidationError: If dates are missing or start is after end.
+
         """
         if not self._start_datetime:
             raise ValidationError("start_datetime must be set.")
@@ -721,6 +822,7 @@ class DataGen:
 
         Returns:
             The updated :attr:`data` DataFrame.
+
         """
         self._validate_dates()
 
@@ -802,6 +904,7 @@ class DataGen:
                 non-enumerable (numeric range / auto-generated name / opaque
                 generator without ``domain=``). ``expand=False`` opts a
                 non-enumerable dimension out instead of erroring.
+
         """
         base_seed = self._rng.seed
         if base_seed is None:
@@ -926,6 +1029,20 @@ class DataGen:
             AggregationError: If target granularity is finer than current, or
                 if *by* names a column that is not a groupable dimension.
             KeyError: If granularity string is not recognized.
+
+        Example:
+            >>> from ts_data_generator import DataGen
+            >>> from ts_data_generator.schema import Granularity
+            >>> from ts_data_generator.utils.functions import random_choice
+            >>> from ts_data_generator.utils.trends import LinearTrend
+            >>> dg = DataGen(start_datetime="2024-01-01",
+            ...              end_datetime="2024-01-02",
+            ...              granularity=Granularity.HOURLY, seed=42)
+            >>> dg.add_dimension("region", random_choice(["north", "south"]))
+            >>> dg.add_metric("sales", {LinearTrend(offset=100.0, slope=0)})
+            >>> dg.aggregate("D").shape[0] < dg.data.shape[0]
+            True
+
         """
         return aggregate_dataframe(
             data=self.data,
@@ -949,6 +1066,7 @@ class DataGen:
 
         Raises:
             ValidationError: If method is unrecognized.
+
         """
         if self._state == PipelineState.CONFIGURED:
             raise ConfigurationError("Cannot normalize before generating data. Access .data first.")
@@ -992,6 +1110,7 @@ class DataGen:
         Raises:
             ValidationError: If both exclude and include are provided, or
                 if no numeric columns are available.
+
         """
         plot_time_series(
             self.data,
