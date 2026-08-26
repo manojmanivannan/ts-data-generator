@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from ts_data_generator import DataGen
 from ts_data_generator.anomalies.base import Anomaly
-from ts_data_generator.exceptions import RegistryError
+from ts_data_generator.exceptions import AggregationError, RegistryError
 from ts_data_generator.schema.models import Granularity
 from ts_data_generator.utils import functions as dimension_functions
 from ts_data_generator.utils import trends as trend_functions
@@ -86,6 +86,16 @@ class GeneratorConfig(BaseModel):
         description="Standard deviation for log-normal scaling across dimension combinations in expand mode",
     )
     output: str = Field(..., description="Output CSV file path")
+    aggregate: str | None = Field(
+        default=None,
+        description="Optional target granularity to resample the generated data to "
+        "(e.g. 'D'). Must be coarser than `granularity`.",
+    )
+    by: list[str] | None = Field(
+        default=None,
+        description="Subset of dimension column names to group by when aggregating. "
+        "Columns not listed are rolled up. Only valid with `aggregate`.",
+    )
 
     @field_validator("granularity")
     @classmethod
@@ -93,6 +103,16 @@ class GeneratorConfig(BaseModel):
         valid = [g.value for g in Granularity]
         if v not in valid:
             raise ValueError(f"Invalid granularity {v!r}. Valid: {', '.join(valid)}")
+        return v
+
+    @field_validator("aggregate")
+    @classmethod
+    def validate_aggregate(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        valid = [g.value for g in Granularity]
+        if v not in valid:
+            raise ValueError(f"Invalid aggregate granularity {v!r}. Valid: {', '.join(valid)}")
         return v
 
 
@@ -593,6 +613,22 @@ def main():
     help="Print a sample JSON config file to stdout and exit. "
     "Redirect to a file to edit: 'tsdata generate --show-sample-config > config.json'",
 )
+@click.option(
+    "--aggregate",
+    type=click.Choice([g.value for g in Granularity], case_sensitive=False),
+    default=None,
+    help="Resample generated data to a coarser granularity before writing "
+    "(e.g. 'D'). Must be coarser than --granularity. With --expand-dimensions, "
+    "pair with --by to roll up across a subset of dimensions.",
+)
+@click.option(
+    "--by",
+    type=str,
+    default=None,
+    help="Comma-separated subset of dimension column names to group by when "
+    "aggregating (only with --aggregate). Columns not listed are rolled up "
+    "across. e.g. --by region,city",
+)
 def generate(
     start: str | None,
     end: str | None,
@@ -607,6 +643,8 @@ def generate(
     config: Path | None,
     preset: str | None,
     show_sample_config: bool,
+    aggregate: str | None,
+    by: str | None,
 ) -> None:
     """Generate synthetic time series data and save to CSV.
 
@@ -690,6 +728,15 @@ def generate(
     \b
         # Using config file
         tsdata generate --config config.json
+
+    \b
+        # Expand dimensions then aggregate to daily, rolling up across a
+        # subset of dimensions (keep only `region`, sum the rest away)
+        tsdata generate \\
+            --dims "region:US,EU" --mets "sales:LinearTrend(offset=10)" \\
+            --start 2024-01-01 --end 2024-01-03 --granularity h \\
+            --expand-dimensions --aggregate D --by region \\
+            --output sales_by_region.csv
     Config file schema::
 
         {
@@ -706,7 +753,9 @@ def generate(
           ],
           "seed": 42,
           "expand_dimensions": false,
-          "output": "data.csv"
+          "output": "data.csv",
+          "aggregate": null,
+          "by": null
         }
     """
 
@@ -752,6 +801,12 @@ def generate(
         if not anomalies:
             config_anomalies = config_data.get("anomalies", [])
             anomalies = tuple(config_anomalies)
+        if aggregate is None:
+            aggregate = config_data.get("aggregate")
+        if by is None:
+            by_from_config = config_data.get("by")
+            if by_from_config:
+                by = ",".join(by_from_config)
 
     # expand_dimensions fall-through: CLI flag > config > preset > False. A present
     # config already resolved the field above (config overrides preset, consistent
@@ -869,6 +924,18 @@ def generate(
         raise click.BadParameter("Output file must have .csv extension.")
 
     data = data_gen.data
+
+    if aggregate:
+        by_list = None
+        if by:
+            by_list = [name.strip() for name in by.split(",") if name.strip()]
+            if not by_list:
+                raise click.BadParameter("--by must list at least one column name.")
+        try:
+            data = data_gen.aggregate(granularity=aggregate, by=by_list)
+        except AggregationError as exc:
+            raise click.BadParameter(f"Aggregation failed: {exc}") from exc
+
     data.to_csv(output, index=True, index_label="datetime")
 
     logger.info("Generated %s rows → %s", f"{len(data):,}", output)

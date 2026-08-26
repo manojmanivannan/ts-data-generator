@@ -290,3 +290,109 @@ class TestAggregationMultipleDimensions:
         # Original should have more combinations than aggregated (since we're grouping by time too)
         # Actually, after aggregation by time only, dimensions should be the same
         assert original_dims == aggregated_dims
+
+
+class TestAggregationSubsetDimensions:
+    """Tests for ``aggregate(by=[...])`` rolling up across a dimension subset.
+
+    With ``expand_dimensions`` the engine emits one row per
+    (timestamp x dimension combination); ``by`` selects which dimension
+    columns survive as groupby keys, aggregating the rest away per each
+    metric's ``aggregation_type``.
+    """
+
+    @pytest.fixture
+    def expanded_hourly(self):
+        """2 regions x 2 stores x 72 hours, expand on, SUM metric."""
+        dg = DataGen(
+            start_datetime="2024-01-01 00:00:00",
+            end_datetime="2024-01-03 23:00:00",
+            granularity=Granularity.HOURLY,
+            seed=42,
+            expand_dimensions=True,
+        )
+        dg.add_dimension("region", random_choice(["US", "EU"]))
+        # Linked dimension: store_id + city travel together.
+        dg.add_multi_items(
+            names=["store_id", "city"],
+            function=[("S1", "New York"), ("S2", "London")],
+        )
+        dg.add_metric(
+            "sales",
+            {LinearTrend(offset=10, slope=0, noise_level=0)},
+            aggregation_type=AggregationType.SUM,
+        )
+        return dg
+
+    def test_by_subset_rolls_up_other_dimensions(self, expanded_hourly):
+        """by=["region"] keeps region and rolls up store_id/city."""
+        daily_by_region = expanded_hourly.aggregate("D", by=["region"])
+
+        # 3 days x 2 regions = 6 rows; store_id/city aggregated away.
+        assert len(daily_by_region) == 6
+        assert "region" in daily_by_region.columns
+        assert "store_id" not in daily_by_region.columns
+        assert "city" not in daily_by_region.columns
+
+    def test_by_subset_matches_manual_groupby(self, expanded_hourly):
+        """The subset rollup equals a manual groupby+resample of the raw data."""
+        daily_by_region = expanded_hourly.aggregate("D", by=["region"])
+
+        manual = (
+            expanded_hourly.data.reset_index()
+            .groupby(["region"])
+            .resample("D", on="index")["sales"]
+            .sum()
+            .reset_index()
+            .set_index("index")
+            .sort_index()
+        )
+
+        for region in ("US", "EU"):
+            expected = manual[manual["region"] == region]["sales"].to_numpy()
+            got = daily_by_region[daily_by_region["region"] == region]["sales"].to_numpy()
+            np.testing.assert_allclose(got, expected)
+
+    def test_by_empty_rolls_up_all_dimensions(self, expanded_hourly):
+        """by=[] aggregates away every dimension -> time-only resample."""
+        daily = expanded_hourly.aggregate("D", by=[])
+
+        # 3 days, no dimension columns.
+        assert len(daily) == 3
+        assert "region" not in daily.columns
+        assert "store_id" not in daily.columns
+        assert "city" not in daily.columns
+        assert "sales" in daily.columns
+
+        # Total sales per day equals the sum across all combinations.
+        raw_daily = expanded_hourly.data["sales"].resample("D").sum()
+        np.testing.assert_allclose(daily["sales"].to_numpy(), raw_daily.to_numpy())
+
+    def test_by_linked_component_kept_companion_rolled_up(self, expanded_hourly):
+        """by=["city"] keeps city, rolls up region and store_id."""
+        daily = expanded_hourly.aggregate("D", by=["city"])
+
+        assert len(daily) == 6  # 3 days x 2 cities
+        assert "city" in daily.columns
+        assert "store_id" not in daily.columns
+        assert "region" not in daily.columns
+
+    def test_by_unknown_column_raises(self, expanded_hourly):
+        """A column that is not a dimension is rejected."""
+        with pytest.raises(AggregationError, match="non-groupable"):
+            expanded_hourly.aggregate("D", by=["nonexistent"])
+
+    def test_by_metric_name_raises(self, expanded_hourly):
+        """A metric name is not a groupable dimension and is rejected."""
+        with pytest.raises(AggregationError, match="non-groupable"):
+            expanded_hourly.aggregate("D", by=["sales"])
+
+    def test_by_none_preserves_all_dimensions(self, expanded_hourly):
+        """by=None is the historical behaviour: every dimension kept."""
+        daily = expanded_hourly.aggregate("D")
+
+        assert "region" in daily.columns
+        assert "store_id" in daily.columns
+        assert "city" in daily.columns
+        # 3 days x 2 regions x 2 stores = 12 rows
+        assert len(daily) == 12
