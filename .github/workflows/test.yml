@@ -29,5 +29,8 @@ jobs:
 
       - name: Run PyTest 🧪
         shell: bash
+        # No explicit path arg: rely on `testpaths` (pyproject.toml) so the
+        # scoped doctest collection (`--doctest-modules` on the 3 core modules)
+        # runs in CI alongside the unit tests.
         run: |
-          uv run -m pytest -vv tests
+          uv run -m pytest -vv

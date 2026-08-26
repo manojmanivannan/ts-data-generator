@@ -76,7 +76,40 @@ select = [
     "I",  # isort
     "B",  # flake8-bugbear
     "UP", # pyupgrade
+    "D",  # pydocstyle — enforces docs/docstrings.md (style guide, ticket 02)
 ]
+# Google-style baseline ignores (see docs/docstrings.md). The docstring-presence rules
+# (D100–D104) are intentionally KEPT: today's ~114 public-surface D violations are the documented
+# docstring-gap baseline that execution-phase tickets (07+) clear. `ruff check` returns to full
+# green once those docstrings are written; there is no CI ruff gate, so the red baseline breaks
+# nothing and makes the remaining work visible.
+ignore = [
+    "D105", # magic methods: dunders need no docstring (style guide §1)
+    "D107", # __init__: Args live on the class docstring, not __init__ (style guide §6)
+    "D203", # blank-line-before-class conflicts with D211; Google style uses no blank line
+    "D213", # multi-line-summary-second-line conflicts with D212; Google style puts summary first
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Internal modules — out of the user-facing public surface (style guide §5; scope Q2=b). `D` is
+# not enforced here. Public surface (D enforced): the package __init__, data_gen, utils/functions,
+# utils/trends, anomalies/*, schema/models, schema/__init__, plus analyzers/converter
+# (SchemaConverter) and carriers (DimensionCarrier) per the gray-module decision (ticket 03).
+"src/ts_data_generator/_version.py" = ["D"]
+"src/ts_data_generator/aggregator.py" = ["D"]
+"src/ts_data_generator/cli.py" = ["D"]
+"src/ts_data_generator/expand.py" = ["D"]
+"src/ts_data_generator/plotting.py" = ["D"]
+"src/ts_data_generator/random.py" = ["D"]
+"src/ts_data_generator/exceptions.py" = ["D"]
+"src/ts_data_generator/utils/__init__.py" = ["D"]
+"src/ts_data_generator/utils/registry.py" = ["D"]
+"src/ts_data_generator/schema/parser.py" = ["D"]
+"src/ts_data_generator/schema/types.py" = ["D"]
+"src/ts_data_generator/analyzers/__init__.py" = ["D"]
+"src/ts_data_generator/core/**/*.py" = ["D"]
+"src/ts_data_generator/data/**/*.py" = ["D"]
+"src/ts_data_generator/transforms/**/*.py" = ["D"]
 
 [tool.ruff.format]
 quote-style = "double"
@@ -84,8 +117,20 @@ indent-style = "space"
 line-ending = "auto"
 
 [tool.pytest.ini_options]
-addopts = "-ra -q"
-testpaths = ["tests", "tsdata/tests"]
+# `--doctest-modules` collects `>>>` blocks from the files in `testpaths`.
+# `testpaths` scopes doctest collection to the *core* docstring surface
+# (ticket 04): `data_gen`, `utils.trends`, `utils.functions`. Other modules
+# (`anomalies`, `schema/models`, `analyzers`, `utils/registry`, `random`)
+# carry illustrative `>>>` blocks that are not CI doctests and are kept out
+# by simply not listing their files here — see `docs/docstrings.md` §2/§3.
+addopts = "-ra -q --doctest-modules"
+testpaths = [
+    "tests",
+    "tsdata/tests",
+    "src/ts_data_generator/data_gen.py",
+    "src/ts_data_generator/utils/trends.py",
+    "src/ts_data_generator/utils/functions.py",
+]
 
 [tool.uv.workspace]
 members = ["tsdata"]

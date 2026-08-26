@@ -21,8 +21,10 @@ ticket (07); every other ticket resolves a decision.
   consult it before naming things in docstrings.
 - **Tracker:** local-markdown (this `.scratch/ide-docstrings/` directory). Frontier = open,
   unblocked, unclaimed tickets in `issues/`, first by number.
-- **Toolchain:** linter = ruff (`E,W,F,I,B,UP` today, no `D` yet); runner = pytest
-  (`-ra -q`, no `--doctest-modules` yet). Docstring style = Google.
+- **Toolchain:** linter = ruff (`E,W,F,I,B,UP,D` — `D` added by ticket 03, scoped to the public
+  surface via `per-file-ignores`; red-baseline until 07+ writes the docstrings); runner = pytest
+  (`-ra -q`, no `--doctest-modules` yet). Docstring style = Google. **No CI ruff gate today**
+  (`ci.yaml` is release-only; `test.yml` runs pytest) → ticket 08 wires it in.
 - **Skills every session should consult:** `grilling` + `domain-modeling` by default; `prototype`
   for ticket 02; `research` for ticket 01.
 - **Foundations (settled in charting — not tickets):**
@@ -40,14 +42,19 @@ ticket (07); every other ticket resolves a decision.
 <!-- one line per closed ticket: gist + link. Empty until tickets resolve. -->
 
 - [01 — Public-symbol inventory](issues/01-public-symbol-inventory.md) — ~58 public symbols; type hints already strong, the real gap is ~22 one-liners + 7 missing docstrings on `DataGen` and zero Examples on the 4 core methods + 8 trends + 6 functions; only 2 `@overload` candidates.
+- [02 — Style guide template](issues/02-style-guide-template.md) — Google-style template ratified on branch `prototype/02-style-guide` (`docs/docstrings.md`, commit `e0adf0c`): explicit+namespace doctest imports, one combined trend-composition doctest (+rest illustrative), omit `Returns` on `-> None`, package `__init__`-only module docstrings; prototype is the primary-source artifact 03/04/05 cite. Caught: `Granularity` imports from `ts_data_generator.schema` (not top-level); `add_metric` takes `trends` not `baseline=`.
+- [03 — ruff `D`-rule config & scoping](issues/03-ruff-d-rule-config.md) — full `D` selected (Google-style ignores `D105`/`D107`/`D203`/`D213`); `per-file-ignores` for internals; gray modules `analyzers/converter` + `carriers` enabled (D enforced), `schema/parser` + `schema/types` internal; **red-baseline strategy** — the ~114 D violations are the 07+ worklist, full green returns once docstrings are written. Corrects 01: presence gap is ~61 D102 (per-getter), not ~7. Surfaced 08 (no CI ruff gate).
+- [04 — Doctest CI wiring](issues/04-doctest-ci-wiring.md) — `--doctest-modules` in `addopts` + the 3 core module files (`data_gen`, `utils.trends`, `utils.functions`) listed in `testpaths` (testpaths-scoping keeps illustrative `>>>` elsewhere out of CI); root `conftest.py` injects `pd` + `ts_data_generator` into `doctest_namespace`; `test.yml` drops its explicit `tests` arg so `testpaths` applies (also pulls `tsdata/tests` into CI — already green). Green run proven (596 passed). Diff on `prototype/02-style-guide` working tree, uncommitted, folds to `main` via pilot 07. Unblocks one of 07's four blockers.
 
 ## Not yet specified
 
 - **Module-by-module docstring + example writing (non-pilot).** The bulk execution. Can't be
   sharply ticketed per module until the pilot (07) validates the full stack end-to-end; one patch
   that graduates into a sequenced worklist once the pilot is done.
-- **Promoting the existing anomaly `>>>` blocks to CI doctests.** Q6 left this optional; revisit
-  after 04 wires doctest CI — cheap to add if the harness is already there.
+- **Promoting the existing anomaly `>>>` blocks to CI doctests.** Q6 left this optional; 04's
+  harness is now wired, so this is *possible* (rewrite those blocks to deterministic assertion-style
+  + add their files to `testpaths`) — but still optional and outside the destination's core-flow CI
+  scope, so it stays fog rather than graduating.
 - **Whether to add a mypy/typing CI gate.** Sub-decision inside 06's typing strategy; defer until
   06 settles the overload/union work.
 
