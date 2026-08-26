@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Generator
 from enum import Enum
-from typing import TYPE_CHECKING, NamedTuple
+from typing import TYPE_CHECKING, Any, NamedTuple
 
 import numpy as np
 import pandas as pd

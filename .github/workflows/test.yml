@@ -27,6 +27,15 @@ jobs:
       - name: Install dependencies
         run: uv sync --all-extras
 
+      - name: Run ruff check 🧹 (advisory)
+        # Advisory gate: `continue-on-error` so the intentional D-violation
+        # baseline (the 07+ do-phase docstring worklist) surfaces without
+        # blocking PRs. Scope is the public package surface (the destination
+        # enforces scoped `D` here, not on tests). Remove `continue-on-error`
+        # to flip to a required gate once the surface passes `D` (ticket 08).
+        continue-on-error: true
+        run: uv run ruff check src/ts_data_generator
+
       - name: Run PyTest 🧪
         shell: bash
         # No explicit path arg: rely on `testpaths` (pyproject.toml) so the

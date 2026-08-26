@@ -23,8 +23,10 @@ ticket (07); every other ticket resolves a decision.
   unblocked, unclaimed tickets in `issues/`, first by number.
 - **Toolchain:** linter = ruff (`E,W,F,I,B,UP,D` — `D` added by ticket 03, scoped to the public
   surface via `per-file-ignores`; red-baseline until 07+ writes the docstrings); runner = pytest
-  (`-ra -q`, no `--doctest-modules` yet). Docstring style = Google. **No CI ruff gate today**
-  (`ci.yaml` is release-only; `test.yml` runs pytest) → ticket 08 wires it in.
+  (`-ra -q`, `--doctest-modules` on the 3 core modules, wired by 04). Docstring style = Google.
+  **CI ruff gate = advisory** (wired by 08): `test.yml` runs `ruff check src/ts_data_generator` with
+  `continue-on-error: true` — the 114-violation D baseline surfaces without blocking; flip to
+  required (one-line `continue-on-error` removal) once the 07+ surface is D-green.
 - **Skills every session should consult:** `grilling` + `domain-modeling` by default; `prototype`
   for ticket 02; `research` for ticket 01.
 - **Foundations (settled in charting — not tickets):**
@@ -45,21 +47,34 @@ ticket (07); every other ticket resolves a decision.
 - [02 — Style guide template](issues/02-style-guide-template.md) — Google-style template ratified on branch `prototype/02-style-guide` (`docs/docstrings.md`, commit `e0adf0c`): explicit+namespace doctest imports, one combined trend-composition doctest (+rest illustrative), omit `Returns` on `-> None`, package `__init__`-only module docstrings; prototype is the primary-source artifact 03/04/05 cite. Caught: `Granularity` imports from `ts_data_generator.schema` (not top-level); `add_metric` takes `trends` not `baseline=`.
 - [03 — ruff `D`-rule config & scoping](issues/03-ruff-d-rule-config.md) — full `D` selected (Google-style ignores `D105`/`D107`/`D203`/`D213`); `per-file-ignores` for internals; gray modules `analyzers/converter` + `carriers` enabled (D enforced), `schema/parser` + `schema/types` internal; **red-baseline strategy** — the ~114 D violations are the 07+ worklist, full green returns once docstrings are written. Corrects 01: presence gap is ~61 D102 (per-getter), not ~7. Surfaced 08 (no CI ruff gate).
 - [04 — Doctest CI wiring](issues/04-doctest-ci-wiring.md) — `--doctest-modules` in `addopts` + the 3 core module files (`data_gen`, `utils.trends`, `utils.functions`) listed in `testpaths` (testpaths-scoping keeps illustrative `>>>` elsewhere out of CI); root `conftest.py` injects `pd` + `ts_data_generator` into `doctest_namespace`; `test.yml` drops its explicit `tests` arg so `testpaths` applies (also pulls `tsdata/tests` into CI — already green). Green run proven (596 passed). Diff on `prototype/02-style-guide` working tree, uncommitted, folds to `main` via pilot 07. Unblocks one of 07's four blockers.
+- [05 — api.md slimming boundary](issues/05-api-md-slimming-boundary.md) — `api.md` becomes the Python-surface orientation page; mental model deferred to `concepts.md` via one cross-link; per-method prose (`Configuration Methods` + `Retrieval/Aggregation` sections) and `Internal Architecture` section removed, replaced with a `DataGen`-only one-line-per-method summary table grouped by workflow stage, rows linking to the source file on GitHub (path-only blob URL, no line numbers); `DataGen Class` section slimmed to intro + `__init__` signature + one-line properties map; lifecycle script trimmed to the core flow (construct → `add_dimension` → `add_metric` → `.data` → `.aggregate`). Execution deferred to the do-phase — table one-liners are copied from finalized docstring summaries, so it lands after pilot 07.
+- [06 — Type-hint audit strategy](issues/06-type-hint-audit-strategy.md) — **tighten, don't enumerate: zero `@overload`s.** Shape-difference bar (overload only when two modes have different *argument shapes* and collapsing misleads hover; "different value type in one slot" is below it) dissolves both research-01 candidates — `Dimensions.__init__` (`str|list[str]`) and `DataGen.__init__` (pre-built lists vs `add_*` is a usage pattern, not a signature variant). Instead: named alias `DimensionFunction = int|str|float|Generator` on `Dimensions`+`MultiItems` (scalar-vs-generator branches; setter's dead `list` acceptance flagged as a latent cleanup, not added to the type); tighten loose return types where unambiguous (`dict`→`dict[str, Any]`, etc.), leave honest unions. mypy/pyright CI gate deferred — out of scope (separate effort). Typing edits are do-phase execution folded into the per-module worklist 07 sequences; unblocks 07.
+- [07 — Execution sequencing & pilot module](issues/07-sequencing-pilot-module.md) — **pilot = `data_gen.py`** (the only doctest-core module that exercises the class/method template — ~90 of 143 D violations are class/method-style — plus the core-flow doctest); do-phase sequence = `data_gen` → `utils/trends` → `utils/functions` → `anomalies/*` (batched) → `schema/models` (the collapsed "schema"+"factory types" slot; `Dimensions`/`Metrics`/`MultiItems`) → `carriers` + `analyzers/converter` (batched; the two gray D-enforced modules the proposed plan dropped); ~6 PRs — doctest-core modules individual, `anomalies` + gray pair batched; the pilot PR also folds `prototype/02-style-guide` → `main` carrying the 02/03/04/**08** config stack; `api.md` slim is the trailing do-phase step. Graduates the three execution fog patches into the worklist hand-off; unblocks 08 (the last open decision).
+- [08 — Wire `ruff check` into CI](issues/08-ruff-ci-gate.md) — **advisory gate now, flip later**: `test.yml` runs `ruff check src/ts_data_generator` with `continue-on-error: true` (scoped to the package — whole-repo `ruff check .` rejected as test-noise; 499 test `D102` out of scope); the 114-violation D baseline surfaces without blocking, flip to required is a one-line `continue-on-error` removal at do-phase end. Cleared the 14 non-D errors: fixed the 6× `F821` (`Any` undefined in `schema/models.py` — real latent bug, added to `typing` import), `E501`-ignored internal `cli.py` (argparse help/example strings), folded the 2 package-surface docstring E501s into the pilot + step 5. Verified: 116 = 114 D + 2 deferred E501, F821 clean, pytest green. **The map's last decision — the enforcement criterion is wired; frontier empty, map done.** The working-tree diff folds to `main` via the pilot PR (joining 02/03/04); the advisory→required flip is the trailing do-phase enforcement step alongside the `api.md` slim.
 
 ## Not yet specified
 
-- **Module-by-module docstring + example writing (non-pilot).** The bulk execution. Can't be
-  sharply ticketed per module until the pilot (07) validates the full stack end-to-end; one patch
-  that graduates into a sequenced worklist once the pilot is done.
 - **Promoting the existing anomaly `>>>` blocks to CI doctests.** Q6 left this optional; 04's
   harness is now wired, so this is *possible* (rewrite those blocks to deterministic assertion-style
   + add their files to `testpaths`) — but still optional and outside the destination's core-flow CI
   scope, so it stays fog rather than graduating.
-- **Whether to add a mypy/typing CI gate.** Sub-decision inside 06's typing strategy; defer until
-  06 settles the overload/union work.
+- **(Graduated to the 07 worklist — hand-off, not a ticket.)** The non-pilot module-by-module
+  docstring writing, the non-pilot type-hint tightening (06 strategy attached), and the `api.md`
+  structural slim + summary-table population all graduated from fog into the concrete sequenced
+  do-phase worklist recorded in [07's resolution](issues/07-sequencing-pilot-module.md). They are
+  execution, not decisions, so they live as that worklist — the hand-off point where the map ends and
+  the "do" begins — not as new decision tickets.
 
 ## Out of scope
 
 - Migrating the docs site to mkdocstrings / auto-generating `api.md` from docstrings (Q1=b; `api.md`
   stays hand-written conceptual per Q5=a).
 - Documenting internal `_*` pipeline helpers (Q2=b — the user never hovers over them).
+- Slimming the per-area docs pages (`/trends`, `/anomalies`, `/dimensions`) to a conceptual +
+  point-to-docstring shape (surfaced by 05's summary-table-scope decision). The destination fixes
+  scope at `api.md` + IDE docstrings; these pages are a separate effort if pursued, not a
+  resumption.
+- Adding a mypy/pyright typing-correctness CI gate (decided in 06). The destination is docstrings +
+  hints *for hover*, enforced by ruff `D` (03/08); a type-correctness gate is a separate quality
+  dimension off this route. If pursued, it's a fresh effort (its own map) — and 06's audit is the
+  prerequisite input either way.

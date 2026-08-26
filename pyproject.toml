@@ -97,7 +97,7 @@ ignore = [
 # (SchemaConverter) and carriers (DimensionCarrier) per the gray-module decision (ticket 03).
 "src/ts_data_generator/_version.py" = ["D"]
 "src/ts_data_generator/aggregator.py" = ["D"]
-"src/ts_data_generator/cli.py" = ["D"]
+"src/ts_data_generator/cli.py" = ["D", "E501"]  # internal; argparse help/example strings run long
 "src/ts_data_generator/expand.py" = ["D"]
 "src/ts_data_generator/plotting.py" = ["D"]
 "src/ts_data_generator/random.py" = ["D"]
