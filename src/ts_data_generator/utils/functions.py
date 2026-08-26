@@ -40,7 +40,20 @@ def constant(
         ``True``; ``next()`` yields the constant (or next cycled) value.
 
     Example:
-        CLI shorthand: ``name:constant:10`` or ``name:constant:X,Y,Z``
+        >>> from ts_data_generator.utils.functions import constant
+        >>> carrier = constant(10)
+        >>> carrier.domain
+        [10]
+        >>> carrier.expandable
+        True
+        >>> next(carrier), next(carrier)
+        (10, 10)
+        >>> cyc = constant(["X", "Y", "Z"])
+        >>> cyc.domain
+        ['X', 'Y', 'Z']
+        >>> [next(cyc) for _ in range(4)]
+        ['X', 'Y', 'Z', 'X']
+
     """
     if isinstance(value, (list, tuple)):
         domain = list(value)
@@ -73,7 +86,10 @@ def random_choice(iterable: Iterable[T], rng: RNGProtocol | None = None) -> Dime
         ``.expandable`` is ``True``; ``next()`` yields a random element.
 
     Example:
-        CLI shorthand: ``name:random_choice:A,B,C``
+        CLI shorthand::
+
+            name:random_choice:A,B,C
+
     """
     items = list(iterable)
     if rng is not None:
@@ -107,7 +123,10 @@ def random_int(start: int, end: int, rng: RNGProtocol | None = None) -> Dimensio
         enumerable dimension); ``next()`` yields a random integer.
 
     Example:
-        CLI shorthand: ``name:random_int:1,100``
+        CLI shorthand::
+
+            name:random_int:1,100
+
     """
     if isinstance(start, list):
         start = start[0]
@@ -152,7 +171,10 @@ def random_float(
         enumerable dimension); ``next()`` yields a random float.
 
     Example:
-        CLI shorthand: ``name:random_float:0.0,1.0``
+        CLI shorthand::
+
+            name:random_float:0.0,1.0
+
     """
     if isinstance(start, list):
         start = start[0]
@@ -194,7 +216,10 @@ def ordered_choice(iterable: Iterable[T]) -> DimensionCarrier[T]:
         sequence.
 
     Example:
-        CLI shorthand: ``name:ordered_choice:A,B,C``
+        CLI shorthand::
+
+            name:ordered_choice:A,B,C
+
     """
     items = list(iterable)
 
@@ -221,7 +246,10 @@ def auto_generate_name(category: str, rng: RNGProtocol | None = None) -> Dimensi
         name indefinitely; ``next()`` yields the name string.
 
     Example:
-        CLI shorthand: ``name:auto_generate_name:mycat``
+        CLI shorthand::
+
+            name:auto_generate_name:mycat
+
     """
     prefix = category[0] if category else "x"
     if rng is not None:
