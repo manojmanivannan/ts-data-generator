@@ -82,15 +82,47 @@ class DimensionCarrier(Generator, ABC):
         return self._func_name
 
     def send(self, value: Any | None) -> Any:
+        """Resume the underlying generator, sending ``value`` into it.
+
+        Delegates to the wrapped source so the carrier is transparent to
+        ``generator.send`` callers.
+
+        Args:
+            value: The value to send into the underlying generator; ``None``
+                resumes it at the current yield point (equivalent to ``next``).
+
+        Returns:
+            Any: The next value yielded by the wrapped generator. Typed ``Any``
+            because a carrier wraps an arbitrary domain generator whose yield
+            type is not statically known.
+
+        """
         return self._source.send(value)
 
     def throw(self, *args: Any) -> Any:
+        """Raise an exception inside the underlying generator.
+
+        Delegates to the wrapped source; returns the next yielded value or
+        re-raises ``StopIteration`` per the generator protocol.
+
+        Args:
+            *args: Arguments forwarded to the underlying generator's ``throw``
+                (typically an exception type/instance, plus optional value and
+                traceback).
+
+        Returns:
+            Any: The next value yielded by the wrapped generator. Typed ``Any``
+            because a carrier wraps an arbitrary domain generator whose yield
+            type is not statically known.
+
+        """
         return self._source.throw(*args)
 
     def __next__(self) -> Any:
         return next(self._source)
 
     def close(self) -> None:
+        """Close the underlying generator, releasing any held resources."""
         self._source.close()
 
     def __repr__(self) -> str:
@@ -141,10 +173,12 @@ class DomainCarrier(DimensionCarrier):
 
     @property
     def domain(self) -> list[Any]:
+        """The sorted-distinct captured domain (a fresh list copy each read)."""
         return list(self._domain)
 
     @property
     def expandable(self) -> bool:
+        """Always ``True`` — finite explicit-list domains may expand."""
         return True
 
     def __reduce__(self) -> tuple[Any, ...]:
@@ -173,14 +207,17 @@ class NonExpandableCarrier(DimensionCarrier):
 
     @property
     def domain(self) -> None:
+        """Always ``None`` — non-expandable carriers have no enumerable domain."""
         return None
 
     @property
     def expandable(self) -> bool:
+        """Always ``False`` — numeric ranges / auto-names cannot expand."""
         return False
 
     @property
     def non_expandable_reason(self) -> str:
+        """The human-readable reason this carrier cannot expand."""
         return self._reason
 
     def __reduce__(self) -> tuple[Any, ...]:

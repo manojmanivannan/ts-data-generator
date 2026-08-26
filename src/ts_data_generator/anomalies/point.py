@@ -22,6 +22,7 @@ class PointAnomaly(Anomaly):
 
     Example:
         >>> PointAnomaly(probability=0.05, magnitude=999, mode="replacement")
+
     """
 
     def __init__(
@@ -38,14 +39,17 @@ class PointAnomaly(Anomaly):
 
     @property
     def probability(self) -> float:
+        """Per-timestamp probability of a point-anomaly spike."""
         return self._probability
 
     @property
-    def mode(self) -> str:
+    def mode(self) -> Literal["additive", "replacement"]:
+        """How ``magnitude`` is applied: added to or replacing the trend value."""
         return self._mode
 
     @property
     def magnitude(self) -> float | tuple[float, float]:
+        """Fixed spike magnitude, or a ``(low, high)`` tuple sampled uniformly per hit."""
         return self._magnitude
 
     def intervene(
@@ -54,6 +58,18 @@ class PointAnomaly(Anomaly):
         timestamps: pd.DatetimeIndex,
         rng: RNGProtocol,
     ) -> np.ndarray:
+        """Inject isolated point-anomaly spikes into a copy of the base array.
+
+        Each timestamp triggers independently with probability ``probability``;
+        on a hit, ``magnitude`` (or a uniform draw from the ``(low, high)``
+        tuple) is added to the trend value in ``additive`` mode, or replaces it
+        in ``replacement`` mode.
+
+        Returns:
+            A new numpy array (a copy of ``base_array``); the input is never
+            mutated.
+
+        """
         result = base_array.copy()
         n = len(base_array)
 

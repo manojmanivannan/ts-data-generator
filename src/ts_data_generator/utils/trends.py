@@ -1,7 +1,31 @@
 """Trend generators for time series metrics.
 
-Each trend class inherits from the abstract ``Trends`` base and implements
-``generate(timestamps)`` to produce a numpy array of values.
+Each trend class inherits from the abstract :class:`Trends` base and implements
+``generate(timestamps, rng)`` to produce a numpy array of values matching the
+length of the given timestamps. Trends compose inside
+:class:`~ts_data_generator.DataGen` by passing one or more trend instances to
+:meth:`~ts_data_generator.DataGen.add_metric`, which sums their outputs into a
+single metric column.
+
+Example:
+    >>> from ts_data_generator import DataGen
+    >>> from ts_data_generator.schema import Granularity
+    >>> from ts_data_generator.utils.functions import random_choice
+    >>> from ts_data_generator.utils.trends import LinearTrend, SinusoidalTrend
+    >>> dg = DataGen(
+    ...     start_datetime="2024-01-01",
+    ...     end_datetime="2024-01-02",
+    ...     granularity=Granularity.HOURLY,
+    ...     seed=42,
+    ... )
+    >>> dg.add_dimension("region", random_choice(["north", "south"]))
+    >>> dg.add_metric("sales", {SinusoidalTrend(amplitude=2.0, freq=24),
+    ...                        LinearTrend(offset=100.0, slope=0)})
+    >>> "sales" in dg.data.columns and "region" in dg.data.columns
+    True
+    >>> dg.data.shape[0] > 0
+    True
+
 """
 
 from __future__ import annotations
@@ -39,11 +63,15 @@ _FREQ_CONVERTERS: dict[str, object] = {
 class Trends(ABC):
     """Abstract base for all trend generators.
 
-    Subclasses must implement ``generate(timestamps)`` to produce a numpy
-    array of values matching the length of the given timestamps.
+    Subclasses implement :meth:`generate` to produce a numpy array of values
+    matching the length of the given timestamps. Trends are not used directly;
+    they compose inside :class:`~ts_data_generator.DataGen` via
+    :meth:`~ts_data_generator.DataGen.add_metric`, which sums the arrays from
+    every trend handed to a metric into one column.
 
     Args:
         name: Human-readable name for this trend.
+
     """
 
     def __init__(self, name: str | None = None) -> None:
@@ -63,7 +91,8 @@ class Trends(ABC):
             rng: RNG instance for randomness (use DefaultRNG() for non-deterministic).
 
         Returns:
-            Numpy array of trend values with length matching timestamps.
+            Numpy array of trend values with length matching ``timestamps``.
+
         """
         ...
 
@@ -79,7 +108,10 @@ class SinusoidalTrend(Trends):
         noise_level: Standard deviation of Gaussian noise to add.
 
     Example:
-        CLI shorthand: ``SinusoidalTrend(amplitude=1,freq=24,phase=0,noise_level=0)``
+        CLI shorthand::
+
+            SinusoidalTrend(amplitude=1,freq=24,phase=0,noise_level=0)
+
     """
 
     _example = "sales:SinusoidalTrend(amplitude=1,freq=24,phase=0,noise_level=0)"
@@ -100,21 +132,31 @@ class SinusoidalTrend(Trends):
 
     @property
     def amplitude(self) -> float:
+        """Peak amplitude of the sine wave."""
         return self._amplitude
 
     @property
     def freq(self) -> float:
+        """Period of oscillation in days."""
         return self._freq
 
     @property
     def phase(self) -> float:
+        """Phase offset in hours."""
         return self._phase
 
     @property
     def noise_level(self) -> float:
+        """Standard deviation of the Gaussian noise added to the wave."""
         return self._noise_level
 
     def generate(self, timestamps: pd.DatetimeIndex, rng: RNGProtocol) -> np.ndarray:
+        """Evaluate the sine wave (plus Gaussian noise) at each timestamp.
+
+        Phase is converted from hours to days and time is measured in days
+        from the first timestamp, so ``freq`` is interpreted as a period in
+        days regardless of granularity.
+        """
         t_start = timestamps[0].value
         time_in_days = (timestamps.asi8 - t_start) * (1.0 / 86_400_000_000_000.0)
         phase_in_days = self._phase / 24.0
@@ -143,7 +185,10 @@ class LinearTrend(Trends):
         ValueError: If slope is outside (-90, 90).
 
     Example:
-        CLI shorthand: ``LinearTrend(offset=0,noise_level=1,slope=30)``
+        CLI shorthand::
+
+            LinearTrend(offset=0,noise_level=1,slope=30)
+
     """
 
     _example = "sales:LinearTrend(offset=0,noise_level=1,slope=30)"
@@ -164,17 +209,26 @@ class LinearTrend(Trends):
 
     @property
     def slope(self) -> float:
+        """Angle of the trend in degrees, in the open range (-90, 90)."""
         return self._slope
 
     @property
     def offset(self) -> float:
+        """Intercept (value at t=0)."""
         return self._offset
 
     @property
     def noise_level(self) -> float:
+        """Standard deviation of the Gaussian noise."""
         return self._noise_level
 
     def generate(self, timestamps: pd.DatetimeIndex, rng: RNGProtocol) -> np.ndarray:
+        """Evaluate the linear trend (plus Gaussian noise) at each timestamp.
+
+        Time deltas are converted to numeric units via the granularity's
+        frequency string (falling back to daily units when unrecognised), then
+        scaled by ``tan(slope)`` so ``slope`` is the literal angle in degrees.
+        """
         time_deltas = timestamps - timestamps[0]
 
         freq_str = timestamps.freqstr if timestamps.freq else "D"
@@ -205,7 +259,10 @@ class WeekendTrend(Trends):
         limit: Clamp value to [-limit, limit].
 
     Example:
-        CLI shorthand: ``WeekendTrend(weekend_effect=10,direction='up',noise_level=0.5,limit=10)``
+        CLI shorthand::
+
+            WeekendTrend(weekend_effect=10,direction='up',noise_level=0.5,limit=10)
+
     """
 
     _example = "sales:WeekendTrend(weekend_effect=10,direction='up',noise_level=0.5,limit=10)"
@@ -226,21 +283,30 @@ class WeekendTrend(Trends):
 
     @property
     def weekend_effect(self) -> float:
+        """Magnitude of the weekend adjustment."""
         return self._weekend_effect
 
     @property
-    def direction(self) -> str:
+    def direction(self) -> Literal["up", "down"]:
+        """Whether weekends push values ``'up'`` or ``'down'``."""
         return self._direction
 
     @property
     def noise_level(self) -> float:
+        """Standard deviation of the Gaussian noise."""
         return self._noise_level
 
     @property
     def limit(self) -> float:
+        """Clamp bound; values are clipped to ``[-limit, limit]``."""
         return self._limit
 
     def generate(self, timestamps: pd.DatetimeIndex, rng: RNGProtocol) -> np.ndarray:
+        """Apply the weekend spike (clamped, plus Gaussian noise) per timestamp.
+
+        Adds ``±weekend_effect`` on Saturdays/Sundays per ``direction``, clamps
+        the result to ``[-limit, limit]``, then adds Gaussian noise.
+        """
         trend = np.zeros(len(timestamps))
         is_weekend = timestamps.weekday >= 5
         adjustment = self._weekend_effect if self._direction == "up" else -self._weekend_effect
@@ -273,11 +339,13 @@ class HolidayTrend(Trends):
             fallback when the ``holidays`` library is not installed.
 
     Example:
-        CLI shorthand:
-        ``HolidayTrend(country='US',effect=50,pre_window=3,post_window=2,direction='up')``
+        CLI shorthand::
+
+            HolidayTrend(country='US',effect=50,pre_window=3,post_window=2,direction='up')
 
     Raises:
         ImportError: If ``holidays`` is not installed and no ``dates`` are provided.
+
     """
 
     _example = (
@@ -304,26 +372,32 @@ class HolidayTrend(Trends):
 
     @property
     def country(self) -> str:
+        """ISO 3166-1 alpha-2 country code for holiday resolution."""
         return self._country
 
     @property
     def effect(self) -> float:
+        """Peak magnitude of the holiday adjustment."""
         return self._effect
 
     @property
     def pre_window(self) -> int:
+        """Days before the holiday to start the ramp."""
         return self._pre_window
 
     @property
     def post_window(self) -> int:
+        """Days after the holiday to end the ramp."""
         return self._post_window
 
     @property
-    def direction(self) -> str:
+    def direction(self) -> Literal["up", "down"]:
+        """Whether the ramp pushes values ``'up'`` or ``'down'``."""
         return self._direction
 
     @property
     def dates(self) -> list[str] | None:
+        """Explicit ``YYYY-MM-DD`` date strings, or ``None`` to resolve automatically."""
         return self._dates
 
     def _resolve_holidays(self, timestamps: pd.DatetimeIndex) -> list[pd.Timestamp]:
@@ -355,6 +429,13 @@ class HolidayTrend(Trends):
         return [pd.Timestamp(d) for d in country_holidays if start_date <= d <= end_date]
 
     def generate(self, timestamps: pd.DatetimeIndex, rng: RNGProtocol) -> np.ndarray:
+        """Sum the triangular holiday ramps across all timestamps.
+
+        Each holiday contributes a linear ramp rising to ``effect`` over the
+        ``pre_window``, peaking on the holiday, and falling over the
+        ``post_window``; overlapping windows add. ``rng`` is unused — the
+        ramp is deterministic once the holidays are resolved.
+        """
         holiday_dates = self._resolve_holidays(timestamps)
         result = np.zeros(len(timestamps))
         sign = 1 if self._direction == "up" else -1
@@ -415,8 +496,10 @@ class ARNoiseTrend(Trends):
             or if ``decay`` is outside ``(0, 1)``.
 
     Example:
-        CLI shorthand:
-        ``ARNoiseTrend(coefficients=[0.5,-0.2],noise_std=0.5)``
+        CLI shorthand::
+
+            ARNoiseTrend(coefficients=[0.5,-0.2],noise_std=0.5)
+
     """
 
     _example = "sales:ARNoiseTrend(coefficients=[0.5,-0.2],noise_std=0.5)"
@@ -468,17 +551,26 @@ class ARNoiseTrend(Trends):
 
     @property
     def order(self) -> int:
+        """AR order *p* (the length of ``coefficients``)."""
         return self._order
 
     @property
     def coefficients(self) -> np.ndarray:
+        """AR coefficients as a numpy array of length *p*."""
         return self._coefficients
 
     @property
     def noise_std(self) -> float:
+        """Standard deviation of the white-noise innovation."""
         return self._noise_std
 
     def generate(self, timestamps: pd.DatetimeIndex, rng: RNGProtocol) -> np.ndarray:
+        """Advance the AR(p) process one innovation per timestamp.
+
+        A *p*-step warm-up seeds the lag buffer so the returned array has
+        exactly ``len(timestamps)`` values; each step sums the prior *p*
+        values (dot ``coefficients``) plus a fresh Gaussian innovation.
+        """
         n = len(timestamps)
         p = self._order
         total = n + p
@@ -539,8 +631,10 @@ class MarkovTrend(Trends):
             rows don't sum to 1.
 
     Example:
-        CLI shorthand:
-        ``MarkovTrend(states=['low','high'],values=[10,100],stickiness=0.9,noise_std=5)``
+        CLI shorthand::
+
+            MarkovTrend(states=['low','high'],values=[10,100],stickiness=0.9,noise_std=5)
+
     """
 
     _example = "sales:MarkovTrend(states=['low','high'],values=[10,100],stickiness=0.9,noise_std=5)"
@@ -601,21 +695,31 @@ class MarkovTrend(Trends):
 
     @property
     def states(self) -> list[str]:
+        """List of state names."""
         return self._states
 
     @property
     def values(self) -> np.ndarray:
+        """Float values corresponding to each state."""
         return self._values
 
     @property
     def transition_matrix(self) -> np.ndarray:
+        """N×N row-stochastic transition probability matrix."""
         return self._transition_matrix
 
     @property
     def noise_std(self) -> float:
+        """Standard deviation of the Gaussian noise added to each state value."""
         return self._noise_std
 
     def generate(self, timestamps: pd.DatetimeIndex, rng: RNGProtocol) -> np.ndarray:
+        """Sample the Markov chain across timestamps and emit state values plus noise.
+
+        The initial state is drawn uniformly via ``rng``; each subsequent state
+        is sampled from its row of ``transition_matrix``, and the output is
+        ``values[state] + N(0, noise_std)``.
+        """
         n = len(timestamps)
         n_states = self._n_states
         mat = self._transition_matrix
@@ -651,7 +755,10 @@ class StockTrend(Trends):
         noise_level: Volatility of the random walk component.
 
     Example:
-        CLI shorthand: ``StockTrend(amplitude=15.0,direction='up',noise_level=0.0)``
+        CLI shorthand::
+
+            StockTrend(amplitude=15.0,direction='up',noise_level=0.0)
+
     """
 
     _example = "sales:StockTrend(amplitude=15.0,direction='up',noise_level=0.0)"
@@ -670,17 +777,27 @@ class StockTrend(Trends):
 
     @property
     def amplitude(self) -> float:
+        """Overall scale of the trend."""
         return self._amplitude
 
     @property
-    def direction(self) -> str:
+    def direction(self) -> Literal["up", "down"]:
+        """Whether the trend rises ``'up'`` or falls ``'down'``."""
         return self._direction
 
     @property
     def noise_level(self) -> float:
+        """Volatility of the random-walk component."""
         return self._noise_level
 
     def generate(self, timestamps: pd.DatetimeIndex, rng: RNGProtocol) -> np.ndarray:
+        """Combine a drift-plus-volatility random walk with multi-scale sine components.
+
+        A per-step drift of ``amplitude / N`` accumulates a random walk driven
+        by ``noise_level`` volatility, layered on a sum of sine waves at
+        5/30/45/180-day periods; ``direction='down'`` reverses the wave
+        component.
+        """
         num_steps = len(timestamps)
         if num_steps == 0:
             return np.zeros(0)

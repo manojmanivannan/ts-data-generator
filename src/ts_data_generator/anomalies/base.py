@@ -33,5 +33,6 @@ class Anomaly(ABC):
 
         Returns:
             Modified numpy array (may be the same array mutated, or a copy).
+
         """
         ...

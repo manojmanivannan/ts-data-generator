@@ -23,6 +23,7 @@ class DriftSegment:
         target_std: Standard deviation of the target Gaussian distribution.
         hold_duration: Duration in seconds to stay in the new regime (default 7200 = 2 h).
         restore: If True, transition back to baseline after hold.
+
     """
 
     start_timestamp: pd.Timestamp | str
@@ -56,6 +57,7 @@ class ConceptDrift(Anomaly):
         ...                  transition_window=1800, target_mean=50, target_std=5,
         ...                  hold_duration=7200, restore=True),
         ... ])
+
     """
 
     def __init__(self, segments: list[DriftSegment]) -> None:
@@ -63,6 +65,7 @@ class ConceptDrift(Anomaly):
 
     @property
     def segments(self) -> list[DriftSegment]:
+        """Ordered drift segments applied left-to-right by ``intervene``."""
         return self._segments
 
     def intervene(
@@ -71,6 +74,19 @@ class ConceptDrift(Anomaly):
         timestamps: pd.DatetimeIndex,
         rng: RNGProtocol,
     ) -> np.ndarray:
+        """Apply each drift segment's regime shift to a copy of the base array.
+
+        Segments are applied in order; each ramps the values from the baseline
+        into a target Gaussian distribution over ``transition_window``, holds
+        there for ``hold_duration``, and (if ``restore``) ramps back. Timestamps
+        resolve to indices by exact match; out-of-bounds segments are skipped
+        with a warning, and an in-range timestamp with no exact match raises.
+
+        Returns:
+            A new numpy array (a copy of ``base_array``); the input is never
+            mutated.
+
+        """
         result = base_array.copy()
         n = len(base_array)
         interval_seconds = (timestamps[1] - timestamps[0]).total_seconds()

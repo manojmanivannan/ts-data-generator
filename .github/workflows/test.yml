@@ -25,9 +25,20 @@ jobs:
           echo "$HOME/.local/bin" >> $GITHUB_PATH
 
       - name: Install dependencies
-        run: uv sync --all-extras
+        # `--all-packages` syncs the `tsdata` workspace member too, so its
+        # fastapi dependency is installed — `tsdata/tests` is collected in CI
+        # via `testpaths` (pyproject.toml) and needs it.
+        run: uv sync --all-packages --all-extras
+
+      - name: Run ruff check 🧹
+        # Required CI gate enforcing docs/docstrings.md via scoped ruff D rules.
+        # Scope is the public package surface (src/ts_data_generator).
+        run: uv run ruff check src/ts_data_generator
 
       - name: Run PyTest 🧪
         shell: bash
+        # No explicit path arg: rely on `testpaths` (pyproject.toml) so the
+        # scoped doctest collection (`--doctest-modules` on the 3 core modules)
+        # runs in CI alongside the unit tests.
         run: |
-          uv run -m pytest -vv tests
+          uv run -m pytest -vv

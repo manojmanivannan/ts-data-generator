@@ -8,6 +8,7 @@ The :class:`SchemaConverter` reads a CSV file and can:
 
 import logging
 import warnings
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -27,6 +28,7 @@ class SchemaConverter:
         >>> converter = SchemaConverter("data.csv", index_col=0)
         >>> schema = converter.impute_schema()
         >>> trends = converter.analyze_numeric_trends(columns=["sales"])
+
     """
 
     def __init__(
@@ -52,6 +54,7 @@ class SchemaConverter:
 
         Returns:
             Dict like ``{"product": "object", "sales": "float64"}``.
+
         """
         return {col: str(self.data[col].dtype) for col in self.data.columns}
 
@@ -60,7 +63,7 @@ class SchemaConverter:
         dataframe: pd.DataFrame | None = None,
         columns: list[str] | None = None,
         top_freq: int = 3,
-    ) -> dict:
+    ) -> dict[str, str | dict[str, Any]]:
         """Detect linear and sinusoidal components in numeric columns.
 
         Uses FFT to identify dominant frequencies and scipy's curve_fit
@@ -74,6 +77,7 @@ class SchemaConverter:
         Returns:
             Dict mapping column name to either a trend dict (with ``linear``
             and ``sinusoidal`` keys) or an error message string.
+
         """
         df = dataframe if dataframe is not None else self.data
         if not isinstance(df, pd.DataFrame):
@@ -106,7 +110,7 @@ class SchemaConverter:
 
         return trends
 
-    def _fit_column(self, values: np.ndarray, top_freq: int) -> dict:
+    def _fit_column(self, values: np.ndarray, top_freq: int) -> dict[str, Any]:
         """Fit linear + sinusoidal model to a 1-D numeric array.
 
         Args:
@@ -115,6 +119,7 @@ class SchemaConverter:
 
         Returns:
             Dict with ``linear`` and ``sinusoidal`` keys.
+
         """
         try:
             import scipy.optimize  # lazy import — scipy is optional
@@ -199,6 +204,7 @@ class SchemaConverter:
 
         Raises:
             ValueError: If ``column_name`` doesn't exist in the DataFrame.
+
         """
         trend_column_name = f"{column_name}_constructed"
 
