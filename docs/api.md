@@ -35,6 +35,7 @@ DataGen(
     seed: int | None = None,
     expand_dimensions: bool = False,
     scale_variance: float = 0.0,
+    workers: int | None = None,
 ) -> None
 ```
 
@@ -49,6 +50,7 @@ Full parameter semantics are documented in the [`__init__` docstring](https://gi
 | `granularity` | Time-step spacing of the generated series, as a string (e.g. `"5min"`). |
 | `expand_dimensions` | Whether per-combination Cartesian-product expansion is enabled. |
 | `scale_variance` | Std. dev. of the log-normal factor scaling metric slices across combinations. |
+| `workers` | Number of parallel worker processes for data generation (`None` = sequential). |
 | `start_datetime` | Start bound of the generated time range. |
 | `end_datetime` | End bound of the generated time range. |
 | `dimensions` | Mapping of dimension name to `Dimensions` instance. |

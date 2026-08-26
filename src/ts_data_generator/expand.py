@@ -41,6 +41,8 @@ Standing spec constraints (from the map's destination-pinning grilling):
 from __future__ import annotations
 
 import hashlib
+import os
+from concurrent.futures import ProcessPoolExecutor
 from itertools import product
 from typing import Any
 
@@ -158,6 +160,79 @@ def _resolve_domain(name: str, dimension: Dimensions | MultiItems) -> list[Any]:
     return domain
 
 
+def _generate_combo_dataframe(
+    combo_values: tuple[Any, ...],
+    expanding_keys: list[str],
+    is_linked: list[bool],
+    base_seed: int,
+    dimensions: dict[str, Dimensions],
+    linked_dims: dict[str, MultiItems],
+    metrics: dict[str, Metrics],
+    linked_metrics: dict[str, MultiItems],
+    timestamps: pd.DatetimeIndex,
+    scale_variance: float,
+    non_expanding_scalar_names: list[str],
+    non_expanding_linked_keys: list[str],
+) -> pd.DataFrame:
+    # (key, value) pairs for the expanding dims, alphabetical key order.
+    # For scalar dim: ("region", "US").
+    # For linked dim: ("city,state", ("NYC", "NY")).
+    combo_pairs = list(zip(expanding_keys, combo_values, strict=True))
+    seed = combination_seed(base_seed, combo_pairs)
+    rng = SeedableRNG(seed)
+    combo_scale = compute_combination_scale(
+        combo_pairs, dimensions, linked_dims, rng, scale_variance=scale_variance
+    )
+
+    data_dict: dict[str, Any] = {"_ts": timestamps}
+
+    # 1. Regular metrics
+    for metric in metrics.values():
+        result = metric.generate(timestamps, rng=rng, scale=combo_scale)
+        data_dict[metric.name] = result.signal[metric.name].to_numpy()
+        if not result.labels.empty:
+            label_col = f"{metric.name}_anomaly"
+            data_dict[label_col] = result.labels[label_col].to_numpy()
+
+    # 2. Linked metrics (regenerate once per combination)
+    for mi in linked_metrics.values():
+        generated = mi.generate(timestamps, rng=rng)
+        if combo_scale != 1.0:
+            num_cols = generated.select_dtypes(include="number").columns
+            if not num_cols.empty:
+                generated = generated.copy()
+                generated[num_cols] = generated[num_cols] * combo_scale
+        for col in generated.columns:
+            data_dict[col] = generated[col].to_numpy()
+
+    # 3. Expanding dimensions (broadcast fixed combination value)
+    for key, val, linked in zip(expanding_keys, combo_values, is_linked, strict=True):
+        if not linked:
+            data_dict[key] = val
+        else:
+            mi = linked_dims[key]
+            for comp_name, comp_val in zip(mi.names, val, strict=True):
+                data_dict[comp_name] = comp_val
+
+    # 4. Non-expanding scalar dimensions (regenerate within series)
+    for name in non_expanding_scalar_names:
+        generated = dimensions[name].generate(timestamps)
+        data_dict[name] = generated[name].to_numpy()
+
+    # 5. Non-expanding linked dimensions (regenerate within series)
+    for key in non_expanding_linked_keys:
+        mi = linked_dims[key]
+        generated = mi.generate(timestamps)
+        for comp_name in mi.names:
+            data_dict[comp_name] = generated[comp_name].to_numpy()
+
+    return pd.DataFrame(data_dict, index=timestamps)
+
+
+def _generate_combo_worker(task: tuple) -> pd.DataFrame:
+    return _generate_combo_dataframe(*task)
+
+
 def build_expanded_dataframe(
     dimensions: dict[str, Dimensions],
     metrics: dict[str, Metrics],
@@ -166,6 +241,7 @@ def build_expanded_dataframe(
     global_expand: bool = True,
     multi_items: dict[str, MultiItems] | None = None,
     scale_variance: float = 0.0,
+    workers: int | None = None,
 ) -> pd.DataFrame:
     """Build the expanded DataFrame: one row per (timestamp x combination).
 
@@ -195,6 +271,9 @@ def build_expanded_dataframe(
             regenerate once per combination.
         scale_variance: Standard deviation for stochastic log-normal scaling
             across unique combinations (0.0 = disabled).
+        workers: Optional number of worker processes for parallel generation.
+            Defaults to auto-parallelizing across available CPUs when there
+            are multiple combinations. Pass 1 for sequential execution.
 
     Returns:
         A DataFrame indexed by timestamp with dimension columns, metric signal
@@ -244,63 +323,79 @@ def build_expanded_dataframe(
             else:
                 non_expanding_linked_keys.append(key)
 
-    frames: list[pd.DataFrame] = []
-    for combo_values in product(*expanding_domains):
-        # (key, value) pairs for the expanding dims, alphabetical key order.
-        # For scalar dim: ("region", "US").
-        # For linked dim: ("city,state", ("NYC", "NY")).
-        combo_pairs = list(zip(expanding_keys, combo_values, strict=True))
-        seed = combination_seed(base_seed, combo_pairs)
-        rng = SeedableRNG(seed)
-        combo_scale = compute_combination_scale(
-            combo_pairs, dimensions, linked_dims, rng, scale_variance=scale_variance
-        )
-
-        combo_df = pd.DataFrame(index=timestamps)
-        combo_df["_ts"] = timestamps
-
-        # 1. Regular metrics
-        for metric in metrics.values():
-            result = metric.generate(timestamps, rng=rng, scale=combo_scale)
-            combo_df = pd.concat([combo_df, result.signal], axis=1)
-            if not result.labels.empty:
-                combo_df = pd.concat([combo_df, result.labels], axis=1)
-
-        # 2. Linked metrics (regenerate once per combination)
-        for mi in linked_metrics.values():
-            generated = mi.generate(timestamps, rng=rng)
-            if combo_scale != 1.0:
-                num_cols = generated.select_dtypes(include="number").columns
-                if not num_cols.empty:
-                    generated = generated.copy()
-                    generated[num_cols] = generated[num_cols] * combo_scale
-            combo_df = pd.concat([combo_df, generated], axis=1)
-
-        # 3. Expanding dimensions (broadcast fixed combination value)
-        for key, val, linked in zip(expanding_keys, combo_values, is_linked, strict=True):
-            if not linked:
-                combo_df[key] = val
-            else:
-                mi = linked_dims[key]
-                for comp_name, comp_val in zip(mi.names, val, strict=True):
-                    combo_df[comp_name] = comp_val
-
-        # 4. Non-expanding scalar dimensions (regenerate within series)
-        for name in non_expanding_scalar_names:
-            generated = dimensions[name].generate(timestamps)
-            combo_df[name] = generated[name].to_numpy()
-
-        # 5. Non-expanding linked dimensions (regenerate within series)
-        for key in non_expanding_linked_keys:
-            mi = linked_dims[key]
-            generated = mi.generate(timestamps)
-            for comp_name in mi.names:
-                combo_df[comp_name] = generated[comp_name].to_numpy()
-
-        frames.append(combo_df)
-
-    if not frames:
+    combos = list(product(*expanding_domains))
+    if not combos:
         return pd.DataFrame(index=timestamps)
+
+    effective_workers = 1
+    if workers is not None:
+        if workers < 0 or workers == 0:
+            effective_workers = os.cpu_count() or 1
+        else:
+            effective_workers = workers
+    elif len(combos) > 1:
+        cpu_cnt = os.cpu_count() or 1
+        effective_workers = min(cpu_cnt, len(combos))
+
+    effective_workers = min(effective_workers, len(combos))
+
+    if effective_workers > 1:
+        tasks = [
+            (
+                combo_values,
+                expanding_keys,
+                is_linked,
+                base_seed,
+                dimensions,
+                linked_dims,
+                metrics,
+                linked_metrics,
+                timestamps,
+                scale_variance,
+                non_expanding_scalar_names,
+                non_expanding_linked_keys,
+            )
+            for combo_values in combos
+        ]
+        try:
+            with ProcessPoolExecutor(max_workers=effective_workers) as executor:
+                frames = list(executor.map(_generate_combo_worker, tasks))
+        except Exception:
+            frames = [
+                _generate_combo_dataframe(
+                    combo_values,
+                    expanding_keys,
+                    is_linked,
+                    base_seed,
+                    dimensions,
+                    linked_dims,
+                    metrics,
+                    linked_metrics,
+                    timestamps,
+                    scale_variance,
+                    non_expanding_scalar_names,
+                    non_expanding_linked_keys,
+                )
+                for combo_values in combos
+            ]
+    else:
+        frames = [
+            _generate_combo_dataframe(
+                combo_values,
+                expanding_keys,
+                is_linked,
+                base_seed,
+                dimensions,
+                linked_dims,
+                metrics,
+                linked_metrics,
+                timestamps,
+                scale_variance,
+                non_expanding_scalar_names,
+                non_expanding_linked_keys,
+            )
+            for combo_values in combos
+        ]
 
     # Ordering: one alphabetical slot per compound name; component columns sort
     # in declared MultiItems.names order.

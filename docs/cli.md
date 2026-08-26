@@ -56,6 +56,7 @@ The primary command for creating synthetic datasets and saving them to CSV.
 | `--anomalies` | `-a` | `str` | Anomaly specification keyed by metric. Can be repeated. | `None` |
 | `--expand-dimensions` / `--no-expand-dimensions` | | `bool` | Expand enumerable dimensions to their Cartesian product with independent per-combination metric series. | `False` |
 | `--scale-variance` | | `float` | Standard deviation for log-normal metric scaling across dimension combinations (`0.0` = disabled). | `0.0` |
+| `--workers` | `-w` | `int` | Number of worker processes for parallel generation (default: auto for multi-combinations, use `1` for sequential, `-1` for all CPUs). | `auto` / `1` |
 | `--seed` | `-s` | `int` | Seed for PCG64 deterministic generation. | `None` |
 | `--output` | `-o` | `str` | Destination path to save the generated CSV. | **Required** |
 | `--config` | `-c` | `str` | Path to a local JSON configuration file. | `None` |

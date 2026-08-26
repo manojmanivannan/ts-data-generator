@@ -119,6 +119,8 @@ class DataGen:
         scale_variance: Standard deviation of the log-normal factor that
             stochastically scales each dimension-combination slice when
             ``expand_dimensions`` is active. ``0.0`` (default) disables scaling.
+        workers: Optional number of parallel worker processes for
+            Cartesian-product data generation. ``None`` (default) runs sequentially.
 
     Example:
         >>> from ts_data_generator import DataGen
@@ -152,6 +154,7 @@ class DataGen:
         seed: int | None = None,
         expand_dimensions: bool = False,
         scale_variance: float = 0.0,
+        workers: int | None = None,
     ) -> None:
         self._dimensions = dimensions or []
         self._metrics = metrics or []
@@ -161,17 +164,44 @@ class DataGen:
         self._granularity = granularity
         self._normalizer: Normalizer | None = None
         self._timestamps: pd.DatetimeIndex | None = None
-        self._pending_regeneration = False
+        self._pending_regeneration = bool(start_datetime and end_datetime)
         self._rng: RNGProtocol = SeedableRNG(seed) if seed is not None else DefaultRNG()
         self._expand_dimensions = expand_dimensions
         self._scale_variance = float(scale_variance)
+        self._workers = workers
 
-        self.data: pd.DataFrame = pd.DataFrame()
+        self._data: pd.DataFrame = pd.DataFrame()
         self._baselines: dict[str, pd.DataFrame] = {}
         self._state: PipelineState = PipelineState.CONFIGURED
 
         if start_datetime and end_datetime:
             self._generate_data()
+
+    @property
+    def data(self) -> pd.DataFrame:
+        """The generated, timestamp-indexed DataFrame.
+
+        Returns the generated DataFrame. Assigning a new DataFrame overrides
+        the stored data directly.
+        """
+        return self._data
+
+    @data.setter
+    def data(self, value: pd.DataFrame) -> None:
+        self._data = value
+
+    @property
+    def workers(self) -> int | None:
+        """Number of parallel worker processes for data generation.
+
+        Returns the worker count, or ``None`` for sequential execution.
+        Assigning an integer sets the worker pool size.
+        """
+        return self._workers
+
+    @workers.setter
+    def workers(self, value: int | None) -> None:
+        self._workers = int(value) if value is not None else None
 
     @property
     def state(self) -> PipelineState:
@@ -566,7 +596,8 @@ class DataGen:
 
         """
         if name in self.dimensions:
-            self.data = self.data.drop([name], axis=1, errors="ignore")
+            if not self._data.empty and name in self._data.columns:
+                self._data = self._data.drop([name], axis=1, errors="ignore")
         self._dimensions = [d for d in self._dimensions if d.name != name]
 
     # ------------------------------------------------------------------
@@ -631,7 +662,8 @@ class DataGen:
 
         """
         if name in self.metrics:
-            self.data = self.data.drop([name], axis=1, errors="ignore")
+            if not self._data.empty and name in self._data.columns:
+                self._data = self._data.drop([name], axis=1, errors="ignore")
         self._metrics = [m for m in self._metrics if m.name != name]
 
     # ------------------------------------------------------------------
@@ -788,7 +820,8 @@ class DataGen:
         overlapping = [mt for mt in self._multi_items if name_set & set(mt.names)]
 
         for item in overlapping:
-            self.data.drop(item.names, axis=1, errors="ignore", inplace=True)
+            if not self._data.empty:
+                self._data = self._data.drop(item.names, axis=1, errors="ignore")
             self._multi_items = [mt for mt in self._multi_items if mt.names != item.names]
 
     # ------------------------------------------------------------------
@@ -837,40 +870,35 @@ class DataGen:
         self._timestamps = new_timestamps
 
         if self._should_expand():
-            self.data = self._generate_expanded_data(new_timestamps)
+            self._data = self._generate_expanded_data(new_timestamps)
+            self._pending_regeneration = False
             self._state = PipelineState.GENERATED
-            return self.data
+            return self._data
 
-        if reset_needed or self.data.empty:
-            self.data = pd.DataFrame(index=new_timestamps)
+        if reset_needed or self._data.empty:
+            self._data = pd.DataFrame(index=new_timestamps)
 
         existing_columns: set[str] = set()
-        if not self.data.empty:
-            existing_columns = set(self.data.columns)
+        if not self._data.empty:
+            existing_columns = set(self._data.columns)
 
         metric_df = self._build_metrics(new_timestamps, existing_columns)
         dimension_df = self._build_dimensions(new_timestamps, existing_columns)
         multi_item_df = self._build_multi_items(new_timestamps, existing_columns)
 
-        data = self.data
+        data = self._data
 
         for component in (dimension_df, metric_df, multi_item_df):
             if not component.empty:
                 data = pd.concat([data, component], axis=1)
 
         if "epoch" not in data.columns:
-            unix_timestamps = [int(ts.timestamp()) for ts in new_timestamps]
-            data = pd.concat(
-                [
-                    data,
-                    pd.DataFrame(unix_timestamps, columns=["epoch"], index=new_timestamps),
-                ],
-                axis=1,
-            )
+            data["epoch"] = new_timestamps.asi8 // 1_000_000_000
 
-        self.data = self._sort_columns(data)
+        self._data = self._sort_columns(data)
+        self._pending_regeneration = False
         self._state = PipelineState.GENERATED
-        return self.data
+        return self._data
 
     def _generate_expanded_data(self, timestamps: pd.DatetimeIndex) -> pd.DataFrame:
         """Build the expanded DataFrame: one row per (timestamp x combination).
@@ -919,25 +947,29 @@ class DataGen:
             global_expand=self._expand_dimensions,
             multi_items=self.multi_items,
             scale_variance=self._scale_variance,
+            workers=self._workers,
         )
 
         if "epoch" not in data.columns:
-            data = data.assign(epoch=data.index.map(lambda ts: int(ts.timestamp())))
+            data = data.assign(epoch=data.index.asi8 // 1_000_000_000)
 
         return self._sort_columns(data, dims_alphabetical=True)
 
     def _build_metrics(
         self, timestamps: pd.DatetimeIndex, existing_columns: set[str]
     ) -> pd.DataFrame:
-        df = pd.DataFrame(index=timestamps)
+        data_dict: dict[str, Any] = {}
         for metric in self.metrics.values():
             if metric.name not in existing_columns:
                 result = metric.generate(timestamps, rng=self._rng)
                 self._baselines[metric.name] = result.baseline
-                df = pd.concat([df, result.signal], axis=1)
+                data_dict[metric.name] = result.signal[metric.name].to_numpy()
                 if not result.labels.empty:
-                    df = pd.concat([df, result.labels], axis=1)
-        return df
+                    label_col = f"{metric.name}_anomaly"
+                    data_dict[label_col] = result.labels[label_col].to_numpy()
+        if not data_dict:
+            return pd.DataFrame(index=timestamps)
+        return pd.DataFrame(data_dict, index=timestamps)
 
     def _build_dimensions(
         self, timestamps: pd.DatetimeIndex, existing_columns: set[str]

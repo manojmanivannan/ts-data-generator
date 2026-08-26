@@ -83,7 +83,16 @@ class GeneratorConfig(BaseModel):
     )
     scale_variance: float = Field(
         default=0.0,
-        description="Standard deviation for log-normal scaling across dimension combinations in expand mode",
+        description=(
+            "Standard deviation for log-normal scaling across dimension combinations in expand mode"
+        ),
+    )
+    workers: int | None = Field(
+        default=None,
+        description=(
+            "Number of worker processes for parallel data generation "
+            "(default: auto for multi-combination, use 1 for sequential)"
+        ),
     )
     output: str = Field(..., description="Output CSV file path")
     aggregate: str | None = Field(
@@ -126,7 +135,11 @@ PRESETS: dict[str, dict] = {
         "end": "2024-01-01 16:00:00",
         "granularity": "min",
         "dimensions": ["ticker:AAPL,MSFT,GOOGL"],
-        "metrics": ["price:LinearTrend(offset=100,slope=0.2)+MarkovTrend(states=[bear,neutral,bull],values=[10,50,120],stickiness=0.98,noise_std=2.0)+StockTrend(amplitude=10.0,direction=up,noise_level=0.01)"],
+        "metrics": [
+            "price:LinearTrend(offset=100,slope=0.2)+"
+            "MarkovTrend(states=[bear,neutral,bull],values=[10,50,120],stickiness=0.98,noise_std=2.0)+"
+            "StockTrend(amplitude=10.0,direction=up,noise_level=0.01)"
+        ],
         "anomalies": ["price:PointAnomaly(probability=0.05,magnitude=5.0,mode=additive)"],
         "output": "minute_stock.csv",
         "expand_dimensions": False,
@@ -136,7 +149,12 @@ PRESETS: dict[str, dict] = {
         "end": "2025-12-31",
         "granularity": "W",
         "dimensions": ["department:ordered_choice:electronics,clothing,home"],
-        "metrics": ["revenue:LinearTrend(offset=10000,slope=10)+SinusoidalTrend(freq=365,amplitude=2000)+MarkovTrend(states=[low,normal,promo],values=[0,2000,8000],stickiness=0.85,noise_std=100)+ARNoiseTrend(decay=0.98,noise_std=50)"],
+        "metrics": [
+            "revenue:LinearTrend(offset=10000,slope=10)+"
+            "SinusoidalTrend(freq=365,amplitude=2000)+"
+            "MarkovTrend(states=[low,normal,promo],values=[0,2000,8000],stickiness=0.85,noise_std=100)+"
+            "ARNoiseTrend(decay=0.98,noise_std=50)"
+        ],
         "output": "weekly_revenue.csv",
         "expand_dimensions": False,
     },
@@ -145,8 +163,15 @@ PRESETS: dict[str, dict] = {
         "end": "2025-12-31",
         "granularity": "ME",
         "dimensions": ["tier:ordered_choice:basic,pro,enterprise"],
-        "metrics": ["mrr:LinearTrend(offset=50000,slope=10)+MarkovTrend(states=[slow,normal,fast],values=[1000,5000,15000],stickiness=0.9,noise_std=500)+ARNoiseTrend(decay=0.85,noise_std=1000)"],
-        "anomalies": ["mrr:ConceptDrift(start_timestamp=2022-01-31,target_mean=100000,target_std=5000,transition_window=15552000)"],
+        "metrics": [
+            "mrr:LinearTrend(offset=50000,slope=10)+"
+            "MarkovTrend(states=[slow,normal,fast],values=[1000,5000,15000],stickiness=0.9,noise_std=500)+"
+            "ARNoiseTrend(decay=0.85,noise_std=1000)"
+        ],
+        "anomalies": [
+            "mrr:ConceptDrift(start_timestamp=2022-01-31,target_mean=100000,target_std=5000,"
+            "transition_window=15552000)"
+        ],
         "output": "monthly_mrr.csv",
         "expand_dimensions": False,
     },
@@ -595,7 +620,16 @@ def main():
     "--scale-variance",
     type=float,
     default=None,
-    help="Standard deviation for log-normal scaling across dimension combinations in expand mode (0.0 = disabled)",
+    help="Standard deviation for log-normal scaling across dimension combinations "
+    "in expand mode (0.0 = disabled)",
+)
+@click.option(
+    "--workers",
+    "-w",
+    type=int,
+    default=None,
+    help="Number of worker processes for parallel generation (default: auto for "
+    "multi-combination, use 1 for sequential, -1 for all CPUs)",
 )
 @click.option(
     "--config",
@@ -645,6 +679,7 @@ def generate(
     show_sample_config: bool,
     aggregate: str | None,
     by: str | None,
+    workers: int | None = None,
 ) -> None:
     """Generate synthetic time series data and save to CSV.
 
@@ -801,6 +836,8 @@ def generate(
         if not anomalies:
             config_anomalies = config_data.get("anomalies", [])
             anomalies = tuple(config_anomalies)
+        if workers is None:
+            workers = config_data.get("workers")
         if aggregate is None:
             aggregate = config_data.get("aggregate")
         if by is None:
@@ -835,10 +872,10 @@ def generate(
         seed=seed,
         expand_dimensions=expand_dimensions,
         scale_variance=scale_variance,
+        granularity=granularity,
+        workers=workers,
     )
     data_gen.start_datetime = start
-    data_gen.end_datetime = end
-    data_gen.to_granularity(granularity)
 
     for dimension in dims_str.split(DIM_SEPARATOR):
         dim_name, func_name, values, expand, weights = _parse_dimension_spec(dimension)
@@ -923,6 +960,7 @@ def generate(
     if output_path.suffix.lower() != ".csv":
         raise click.BadParameter("Output file must have .csv extension.")
 
+    data_gen.end_datetime = end
     data = data_gen.data
 
     if aggregate:
