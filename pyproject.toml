@@ -15,7 +15,6 @@ dependencies = [
     "click>=8.0",
     "pandas>=1.5",
     "pydantic>=2.0",
-    "pydantic-ai>=0.4.3",
 ]
 readme = "README.md"
 authors = [{ name = "Manoj Manivannan", email = "manojm18@live.in" }]
