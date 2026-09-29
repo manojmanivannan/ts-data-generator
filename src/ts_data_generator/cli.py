@@ -864,7 +864,11 @@ def generate(
     dims_str = _normalize_to_string(dims)
     mets_str = _normalize_to_string(mets)
 
-    if not all([start, end, granularity, dims_str, mets_str, output]):
+    # dims_str is intentionally excluded: dimensions are optional (a metric-only,
+    # dimensionless dataset is a valid Python-API use case — DataGen.add_dimension()
+    # is never required), so an empty --dims/config "dimensions" must not be treated
+    # as a missing required argument.
+    if not all([start, end, granularity, mets_str, output]):
         click.echo(main.get_command(main, "generate").get_help(click.get_current_context()))
         return
 
@@ -877,7 +881,7 @@ def generate(
     )
     data_gen.start_datetime = start
 
-    for dimension in dims_str.split(DIM_SEPARATOR):
+    for dimension in dims_str.split(DIM_SEPARATOR) if dims_str else []:
         dim_name, func_name, values, expand, weights = _parse_dimension_spec(dimension)
         dim_fn = _get_dimension_function(func_name)
 
