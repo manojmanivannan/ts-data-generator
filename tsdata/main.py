@@ -547,7 +547,8 @@ def generate_from_preset(
 
     Available presets include minute-stock, weekly-revenue,
     monthly-recurring, scientific-mock, economics-cycle,
-    sociology-mobility, electronics-reliability, and epidemiology-wave.
+    sociology-mobility, electronics-reliability, epidemiology-wave,
+    electronics-paths, and mega-stacked-sinewaves.
     """
     if preset_name not in PRESETS:
         raise HTTPException(

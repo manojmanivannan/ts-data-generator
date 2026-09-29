@@ -298,6 +298,34 @@ PRESETS: dict[str, dict] = {
         "output": "epidemiology_wave.csv",
         "expand_dimensions": False,
     },
+    "electronics-paths": {
+        "start": "2024-03-28T00:00:00",
+        "end": "2024-04-05T00:00:00",
+        "granularity": "5min",
+        "dimensions": [],
+        "metrics": [
+            "paths:LinearTrend(offset=860,slope=0)+SinusoidalTrend(amplitude=4,freq=1,phase=6,noise_level=0)+ARNoiseTrend(decay=0.7,noise_std=3)",
+        ],
+        "anomalies": [
+            "paths:ConceptDrift(start_timestamp=2024-03-28T20:00:00,transition_window=10800,target_mean=852,target_std=6,hold_duration=54000,restore=true)+ConceptDrift(start_timestamp=2024-03-29T20:00:00,transition_window=10800,target_mean=845,target_std=9,hold_duration=72000,restore=true)+PointAnomaly(probability=0.004,magnitude=-30,mode=additive)+PointAnomaly(probability=0.0015,magnitude=-55,mode=additive)+PointAnomaly(probability=0.001,magnitude=18,mode=additive)+MissingData(mode=burst,burst_probability=0.0016,min_length=30,max_length=60)",
+        ],
+        "output": "electronics_paths.csv",
+        "expand_dimensions": False,
+    },
+    "mega-stacked-sinewaves": {
+        "start": "2024-01-01T00:00:00",
+        "end": "2024-01-15T00:00:00",
+        "granularity": "5min",
+        "dimensions": [],
+        "metrics": [
+            "mega_signal:LinearTrend(offset=60,slope=0,noise_level=0.3)+SinusoidalTrend(amplitude=22,freq=30,phase=0,noise_level=0.2)+SinusoidalTrend(amplitude=18,freq=14,phase=4,noise_level=0.2)+SinusoidalTrend(amplitude=15,freq=7,phase=2,noise_level=0.2)+SinusoidalTrend(amplitude=12,freq=3.5,phase=6,noise_level=0.2)+SinusoidalTrend(amplitude=10,freq=1.75,phase=1,noise_level=0.2)+SinusoidalTrend(amplitude=8,freq=1,phase=6,noise_level=0.2)+SinusoidalTrend(amplitude=6,freq=0.5,phase=3,noise_level=0.2)+SinusoidalTrend(amplitude=5,freq=0.25,phase=0,noise_level=0.15)+SinusoidalTrend(amplitude=4,freq=0.125,phase=9,noise_level=0.15)+SinusoidalTrend(amplitude=3,freq=0.0625,phase=5,noise_level=0.1)+SinusoidalTrend(amplitude=2,freq=0.05,phase=12,noise_level=0.1)+WeekendTrend(weekend_effect=10,direction=down,noise_level=1.0,limit=12)+MarkovTrend(states=[low,mid,high],values=[-8,0,8],stickiness=0.95,noise_std=1.5)+ARNoiseTrend(decay=0.55,noise_std=1.8)+StockTrend(amplitude=1.5,direction=up,noise_level=0.3)",
+        ],
+        "anomalies": [
+            "mega_signal:PointAnomaly(probability=0.006,magnitude=4,mode=additive)+PointAnomaly(probability=0.003,magnitude=-4,mode=additive)+MissingData(mode=burst,burst_probability=0.004,min_length=2,max_length=4)+ConceptDrift(start_timestamp=2024-01-08T12:00:00,transition_window=3600,target_mean=60,target_std=6,hold_duration=5400,restore=true)+PeriodicBurstAnomaly(period=200,duration=6,peak_magnitude=3,decay=0.3,tail_length=4,mode=additive)",
+        ],
+        "output": "mega_stacked_sinewaves.csv",
+        "expand_dimensions": False,
+    },
 }
 
 
