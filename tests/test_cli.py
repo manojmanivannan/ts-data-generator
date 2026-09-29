@@ -545,6 +545,60 @@ class TestEdgeCases:
             assert result.exit_code == 0, f"Error for granularity {gran}: {result.output}"
 
 
+class TestNoDimensionsGenerate:
+    """Regression tests: a metric-only, dimensionless dataset must generate
+    successfully via the CLI (dimensions are optional, matching the Python
+    API where DataGen.add_dimension() is never required)."""
+
+    @pytest.fixture
+    def runner(self):
+        return CliRunner()
+
+    @pytest.fixture
+    def temp_output(self, runner):
+        with tempfile.NamedTemporaryFile(suffix=".csv", delete=False) as f:
+            yield f.name
+        Path(f.name).unlink(missing_ok=True)
+
+    def test_flags_without_dims_succeeds(self, runner, temp_output):
+        result = runner.invoke(main, [
+            "generate",
+            "--start", "2019-01-01",
+            "--end", "2019-01-02",
+            "--granularity", "h",
+            "--mets", "sales:LinearTrend(offset=10,slope=0)",
+            "--output", temp_output
+        ])
+        assert result.exit_code == 0, f"Error: {result.output}"
+        df = pd.read_csv(temp_output)
+        assert "sales" in df.columns
+        assert len(df) > 0
+
+    def test_config_with_empty_dimensions_list_succeeds(self, runner, temp_output):
+        config = {
+            "start": "2019-01-01",
+            "end": "2019-01-02",
+            "granularity": "h",
+            "dimensions": [],
+            "metrics": ["sales:LinearTrend(offset=10,slope=0)"],
+            "output": temp_output,
+        }
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".json", delete=False
+        ) as config_file:
+            json.dump(config, config_file)
+            config_path = config_file.name
+
+        try:
+            result = runner.invoke(main, ["generate", "--config", config_path])
+            assert result.exit_code == 0, f"Error: {result.output}"
+            df = pd.read_csv(temp_output)
+            assert "sales" in df.columns
+            assert len(df) > 0
+        finally:
+            Path(config_path).unlink(missing_ok=True)
+
+
 class TestSeedFlag:
     """Tests for --seed flag determinism."""
 

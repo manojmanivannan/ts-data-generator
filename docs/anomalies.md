@@ -128,6 +128,64 @@ ConceptDrift(segments=[DriftSegment(start_timestamp='2024-01-05T12:00:00',transi
 
 ---
 
+### 4. `PeriodicBurstAnomaly` (with `EventSchedule`)
+Simulates recurring, duty-cycled failures — RF jammers, scheduled batch jobs, intermittent interference — where the effect **spikes at onset and decays back toward baseline** rather than switching cleanly on/off, and where several metrics must react on the **exact same timestamps**.
+
+Unlike `PointAnomaly` (memoryless, one timestamp at a time) or `ConceptDrift` (a single one-shot regime shift), `PeriodicBurstAnomaly` models a repeating renewal process: bursts fire roughly every `period` samples, each lasting `duration` samples, with an occasional skipped cycle to keep it from looking too mechanical.
+
+*   `schedule` (`EventSchedule`): A shared, precomputed burst timetable. Build **one** `EventSchedule` and pass it to several `PeriodicBurstAnomaly` instances (one per metric) so every metric spikes/recovers on identical windows. Mutually exclusive with `period`.
+*   `period` (int): Shorthand for standalone (single-metric) use — builds an internal `EventSchedule` from `period`/`duration`/`skip_probability`/`max_skip_periods`/`jitter`/`phase`. Mutually exclusive with `schedule`.
+*   `peak_magnitude` (float or tuple): Value injected at burst onset; a tuple samples uniformly per burst.
+*   `decay` (float): Exponential decay rate per sample from onset (`0` = constant for the whole burst, then a hard drop).
+*   `tail_length` (int): Extra samples appended after the flagged burst window over which the effect keeps decaying — this is what produces the "spike then fades out" shape seen in real BLER/SNR recovery curves.
+*   `mode` (`"additive"` or `"replacement"`): Same semantics as `PointAnomaly`.
+
+#### `EventSchedule` parameters
+*   `period` (int): Nominal samples between burst starts.
+*   `duration` (int or tuple): Burst length in samples, fixed or sampled uniformly per burst.
+*   `skip_probability` (float): Chance that a scheduled burst's *next* gap stretches to `2..max_skip_periods` periods instead of exactly one — models a device that occasionally misses a cycle.
+*   `max_skip_periods` (int): Upper bound on how many periods a skipped gap can span.
+*   `jitter` (int): Max random +/- sample offset applied to each burst's start.
+*   `phase` (int): Sample index of the first burst.
+
+```python
+# API: correlated jammer-style bursts across multiple metrics
+from ts_data_generator import DataGen
+from ts_data_generator.anomalies import EventSchedule, PeriodicBurstAnomaly
+from ts_data_generator.utils.trends import LinearTrend, ARNoiseTrend
+
+dg = DataGen(seed=42)
+dg.start_datetime = "2024-01-01"
+dg.end_datetime = "2024-01-01 00:30:00"
+dg.to_granularity("100ms")
+
+# One schedule shared by every affected metric — same on/off windows everywhere.
+jammer = EventSchedule(period=100, duration=(15, 20), phase=250, skip_probability=0.03)
+
+dg.add_metric(
+    "DL_BLER",
+    trends={LinearTrend(offset=0.01, slope=0.0), ARNoiseTrend(decay=0.3, noise_std=0.002)},
+    anomalies=[PeriodicBurstAnomaly(schedule=jammer, peak_magnitude=(0.03, 0.08), decay=0.3, tail_length=12)],
+)
+dg.add_metric(
+    "UL_SNR",
+    trends={LinearTrend(offset=21.0, slope=0.0)},
+    anomalies=[PeriodicBurstAnomaly(schedule=jammer, peak_magnitude=(-4.0, -1.0), decay=0.3, tail_length=12)],
+)
+# decay=0, tail_length=0, replacement -> a clean 0/1 event flag column
+dg.add_metric(
+    "Jamming",
+    trends={LinearTrend(offset=0.0, slope=0.0)},
+    anomalies=[PeriodicBurstAnomaly(schedule=jammer, peak_magnitude=1.0, decay=0.0, mode="replacement")],
+)
+```
+```bash
+# CLI Shorthand (standalone, single metric — use the Python API to share a schedule across metrics):
+PeriodicBurstAnomaly(period=100,duration=(15,20),skip_probability=0.03,peak_magnitude=(0.03,0.08),decay=0.3,tail_length=12)
+```
+
+---
+
 ## 🥞 Stacking Multiple Anomalies
 
 You can apply multiple anomalies to the same metric. The generation engine applies them sequentially in the order they are listed in your Python array or terminal command.
