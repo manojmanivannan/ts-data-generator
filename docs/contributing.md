@@ -139,4 +139,25 @@ Before submitting a Pull Request, please ensure you have completed the following
     ```
 2.  **Add Unit Tests**: If you are adding a new trend or anomaly, add unit tests in the `tests/` directory verifying it works with various datetime indices.
 3.  **Run Test Suite**: Confirm all tests pass (`uv run pytest`).
-4.  **Update Docs**: If you have modified or added any public API, make sure to update the corresponding `.md` file inside the `docs/` directory.
+4.  **Audit Dependencies**: Confirm the locked dependency set has no known advisories (`uv audit --locked`, powered by the OSV database).
+5.  **Update Docs**: If you have modified or added any public API, make sure to update the corresponding `.md` file inside the `docs/` directory.
+
+---
+
+## 🔒 Dependency Security
+
+CI runs `uv audit` against `uv.lock` on every push and pull request, and once a week on a schedule. Findings are uploaded to the repository's **Security → Code scanning** tab, and the job fails when any advisory is reported.
+
+Run the same check locally (requires uv 0.13.6 or newer):
+
+```bash
+uv audit --locked
+```
+
+Fix an advisory by upgrading the affected package and refreshing the lock:
+
+```bash
+uv lock --upgrade-package <package>
+```
+
+Dependabot is configured in `.github/dependabot.yml` to open weekly updates for the `uv` workspace and GitHub Actions.

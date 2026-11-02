@@ -1,0 +1,65 @@
+name: security
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+  schedule:
+    # New advisories are published continuously, so re-scan even when the
+    # repository has not changed. Weekly, Monday 04:31 UTC.
+    - cron: "31 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  dependency-audit:
+    name: Dependency audit (OSV)
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read # required by upload-sarif
+      contents: read
+      security-events: write # upload findings to the Security tab
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10
+        with:
+          # `uv audit` is an experimental command; pin the version that is
+          # known to emit SARIF so a future CLI change cannot break the gate.
+          version: "0.13.6"
+
+      - name: Audit locked dependencies
+        id: audit
+        # Keep this step green so the SARIF upload still runs; the last step
+        # turns a non-zero audit exit code into a failed job.
+        run: |
+          set +e
+          uv --preview-features audit-command audit --locked \
+            --output-format sarif > uv-audit.sarif
+          status=$?
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          if [ -s uv-audit.sarif ]; then
+            jq -r '.runs[].results[]? | "- `\(.ruleId)` \(.level): \(.message.text)"' \
+              uv-audit.sarif >> "$GITHUB_STEP_SUMMARY"
+          fi
+          exit 0
+
+      - name: Upload findings to code scanning
+        if: always() && hashFiles('uv-audit.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: uv-audit.sarif
+          category: uv-audit
+        # Fork PRs receive a read-only token, so the upload can be rejected.
+        # The gate below still enforces the audit result.
+        continue-on-error: true
+
+      - name: Fail on vulnerabilities
+        if: steps.audit.outputs.status != '0'
+        run: |
+          echo "::error::uv audit exited with ${{ steps.audit.outputs.status }}. See the job summary or Security > Code scanning for details."
+          exit 1
