@@ -21,7 +21,7 @@ jobs:
       suffix: ${{ steps.ci.outputs.suffix }}
       tag_name: ${{ steps.ci.outputs.tag_name }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Extract tag and Details
         id: ci
@@ -74,7 +74,7 @@ jobs:
     needs: [details, check_pypi]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -128,7 +128,7 @@ jobs:
       contents: write
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
