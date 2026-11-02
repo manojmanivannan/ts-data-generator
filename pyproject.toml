@@ -10,7 +10,7 @@ artifacts = ["src/ts_data_generator/data/*.json"]
 name = "ts-data-generator"
 version = "0.1.0"
 description = "A Python library for generating synthetic time series data"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 dependencies = [
     "click>=8.0",
     "pandas>=1.5",
@@ -26,7 +26,6 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
@@ -64,7 +63,7 @@ tsdata = "ts_data_generator.cli:main"
 dev = ["marimo>=0.24.0"]
 
 [tool.ruff]
-target-version = "py310"
+target-version = "py311"
 line-length = 100
 
 [tool.ruff.lint]
