@@ -23,7 +23,7 @@ jobs:
       contents: read
       security-events: write # upload findings to the Security tab
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Install uv
         uses: astral-sh/setup-uv@v10.3.3
