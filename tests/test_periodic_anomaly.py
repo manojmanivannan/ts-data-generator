@@ -7,7 +7,7 @@ import pytest
 from ts_data_generator import DataGen
 from ts_data_generator.anomalies import EventSchedule, PeriodicBurstAnomaly
 from ts_data_generator.random import DefaultRNG, SeedableRNG
-from ts_data_generator.utils.trends import LinearTrend
+from ts_data_generator.trends import LinearTrend
 
 
 class TestEventScheduleConstruction:

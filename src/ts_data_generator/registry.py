@@ -22,10 +22,10 @@ class Registry:
 
     Example:
         >>> registry = Registry(
-        ...     "ts_data_generator.utils.functions",
+        ...     "ts_data_generator.functions",
         ...     name_filter=lambda n: not n.startswith("_"),
         ... )
-        >>> fn = registry.get("linear")
+        >>> fn = registry.get("constant")
     """
 
     def __init__(
@@ -51,6 +51,14 @@ class Registry:
         Raises:
             RegistryError: If *name* is not found in the module.
         """
+        module_all = getattr(self._module, "__all__", None)
+        if module_all is not None and name not in module_all:
+            available = self.list_available()
+            logging.warning("'%s' not in __all__ of %s", name, self._module.__name__)
+            raise RegistryError(
+                f"'{name}' is not a valid option. Available: {', '.join(available)}"
+            )
+
         try:
             obj = getattr(self._module, name)
         except AttributeError:
@@ -71,8 +79,10 @@ class Registry:
 
     def list_available(self) -> list[str]:
         """List all public names in the module matching the filter."""
+        module_all = getattr(self._module, "__all__", None)
+        candidates = list(module_all) if module_all is not None else dir(self._module)
         items = []
-        for attr_name in dir(self._module):
+        for attr_name in candidates:
             if attr_name.startswith("_"):
                 continue
             if self._name_filter and not self._name_filter(attr_name):
@@ -83,3 +93,6 @@ class Registry:
                     continue
             items.append(attr_name)
         return sorted(items)
+
+
+__all__ = ["Registry"]

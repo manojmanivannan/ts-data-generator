@@ -9,10 +9,10 @@ from ts_data_generator.anomalies.base import Anomaly
 from ts_data_generator.anomalies.drift import ConceptDrift, DriftSegment
 from ts_data_generator.anomalies.missing import MissingData
 from ts_data_generator.anomalies.point import PointAnomaly
+from ts_data_generator.functions import random_choice
 from ts_data_generator.random import DefaultRNG, SeedableRNG
-from ts_data_generator.schema.models import Granularity, Metrics
-from ts_data_generator.utils.functions import random_choice
-from ts_data_generator.utils.trends import LinearTrend
+from ts_data_generator.schema.models import Granularity, Metric
+from ts_data_generator.trends import LinearTrend
 
 
 class TestAnomalyABC:
@@ -157,11 +157,11 @@ class TestPointAnomalyConstruction:
 class TestMetricsWithAnomalies:
     def test_metrics_accepts_anomalies_list(self):
         pa = PointAnomaly(probability=0.1, magnitude=5)
-        m = Metrics(name="test", trends=set(), anomalies=[pa])
+        m = Metric(name="test", trends=set(), anomalies=[pa])
         assert m.anomalies == [pa]
 
     def test_metrics_anomalies_defaults_to_empty(self):
-        m = Metrics(name="test")
+        m = Metric(name="test")
         assert m.anomalies == []
 
     def test_anomalies_applied_after_trends(self):
@@ -170,7 +170,7 @@ class TestMetricsWithAnomalies:
         trend = LinearTrend(offset=10, noise_level=0)
         pa = PointAnomaly(probability=0.1, magnitude=5, mode="additive")
 
-        m = Metrics(name="test", trends={trend}, anomalies=[pa])
+        m = Metric(name="test", trends={trend}, anomalies=[pa])
         result_df = m.generate(timestamps, rng=DefaultRNG()).signal
 
         values = result_df["test"].values
@@ -186,7 +186,7 @@ class TestDataGenAddMetricWithAnomalies:
         dg = DataGen(
             start_datetime="2024-01-01",
             end_datetime="2024-01-03",
-            granularity=Granularity.DAILY,
+            granularity=Granularity.DAY,
             seed=42,
         )
         pa = PointAnomaly(probability=0.5, magnitude=10, mode="additive")
@@ -200,7 +200,7 @@ class TestDataGenAddMetricWithAnomalies:
         dg = DataGen(
             start_datetime="2024-01-01",
             end_datetime="2024-01-03",
-            granularity=Granularity.DAILY,
+            granularity=Granularity.DAY,
             seed=42,
         )
         dg.add_metric("m", {LinearTrend(offset=5)})
@@ -210,7 +210,7 @@ class TestDataGenAddMetricWithAnomalies:
         dg = DataGen(
             start_datetime="2024-01-01",
             end_datetime="2024-01-03",
-            granularity=Granularity.DAILY,
+            granularity=Granularity.DAY,
             seed=42,
         )
         dg.add_metric(
@@ -234,7 +234,7 @@ class TestPipelineOrdering:
         # Second anomaly: add 100 at ~10%
         pa2 = PointAnomaly(probability=0.1, magnitude=100, mode="additive")
 
-        m = Metrics(name="test", trends=set(), anomalies=[pa1, pa2])
+        m = Metric(name="test", trends=set(), anomalies=[pa1, pa2])
         rng = SeedableRNG(42)
         result_df = m.generate(timestamps, rng=rng).signal
         values = result_df["test"].values
@@ -255,8 +255,8 @@ class TestPipelineOrdering:
         rng1 = SeedableRNG(42)
         rng2 = SeedableRNG(42)
 
-        m_forward = Metrics(name="test", trends=set(), anomalies=[pa1, pa2])
-        m_reverse = Metrics(name="test", trends=set(), anomalies=[pa2, pa1])
+        m_forward = Metric(name="test", trends=set(), anomalies=[pa1, pa2])
+        m_reverse = Metric(name="test", trends=set(), anomalies=[pa2, pa1])
 
         result_forward = m_forward.generate(timestamps, rng=rng1).signal
         result_reverse = m_reverse.generate(timestamps, rng=rng2).signal
@@ -573,7 +573,7 @@ class TestMissingDataPipelineWithPointAnomaly:
         pa = PointAnomaly(probability=0.1, magnitude=100, mode="replacement")
         md = MissingData(mode="random", probability=0.1)
 
-        m = Metrics(name="test", trends=set(), anomalies=[pa, md])
+        m = Metric(name="test", trends=set(), anomalies=[pa, md])
         rng = SeedableRNG(42)
         result_df = m.generate(timestamps, rng=rng).signal
         values = result_df["test"].values
@@ -594,7 +594,7 @@ class TestMissingDataPipelineWithPointAnomaly:
         pa = PointAnomaly(probability=0.3, magnitude=50, mode="replacement")
         md = MissingData(mode="random", probability=0.3)
 
-        m = Metrics(name="test", trends=set(), anomalies=[pa, md])
+        m = Metric(name="test", trends=set(), anomalies=[pa, md])
         rng = SeedableRNG(42)
         result_df = m.generate(timestamps, rng=rng).signal
         values = result_df["test"].values
@@ -1013,7 +1013,7 @@ class TestMetricResultLabels:
         timestamps = pd.date_range("2024-01-01", periods=n, freq="min")
         trend = LinearTrend(offset=10, noise_level=0)
         pa = PointAnomaly(probability=0.1, magnitude=5, mode="additive")
-        m = Metrics(name="test", trends={trend}, anomalies=[pa])
+        m = Metric(name="test", trends={trend}, anomalies=[pa])
 
         result = m.generate(timestamps, rng=SeedableRNG(42))
 
@@ -1024,7 +1024,7 @@ class TestMetricResultLabels:
     def test_without_anomalies_returns_empty_labels(self):
         n = 100
         timestamps = pd.date_range("2024-01-01", periods=n, freq="min")
-        m = Metrics(name="test", trends={LinearTrend(offset=10, noise_level=0)})
+        m = Metric(name="test", trends={LinearTrend(offset=10, noise_level=0)})
 
         result = m.generate(timestamps, rng=DefaultRNG())
 
@@ -1036,7 +1036,7 @@ class TestMetricResultLabels:
         timestamps = pd.date_range("2024-01-01", periods=n, freq="min")
         trend = LinearTrend(offset=10, noise_level=0)
         pa = PointAnomaly(probability=0.1, magnitude=5, mode="additive")
-        m = Metrics(name="test", trends={trend}, anomalies=[pa])
+        m = Metric(name="test", trends={trend}, anomalies=[pa])
 
         result = m.generate(timestamps, rng=SeedableRNG(42))
 
@@ -1056,7 +1056,7 @@ class TestPointAnomalyLabels:
         timestamps = pd.date_range("2024-01-01", periods=n, freq="min")
         trend = LinearTrend(offset=10, noise_level=0)
         pa = PointAnomaly(probability=0.1, magnitude=5, mode="additive")
-        m = Metrics(name="m", trends={trend}, anomalies=[pa])
+        m = Metric(name="m", trends={trend}, anomalies=[pa])
 
         result = m.generate(timestamps, rng=SeedableRNG(42))
         signal = result.signal["m"].to_numpy()
@@ -1074,7 +1074,7 @@ class TestPointAnomalyLabels:
         timestamps = pd.date_range("2024-01-01", periods=n, freq="min")
         trend = LinearTrend(offset=10, noise_level=0)
         pa = PointAnomaly(probability=0.1, magnitude=999, mode="replacement")
-        m = Metrics(name="m", trends={trend}, anomalies=[pa])
+        m = Metric(name="m", trends={trend}, anomalies=[pa])
 
         result = m.generate(timestamps, rng=SeedableRNG(42))
         signal = result.signal["m"].to_numpy()
@@ -1092,7 +1092,7 @@ class TestMissingDataLabels:
         timestamps = pd.date_range("2024-01-01", periods=n, freq="min")
         trend = LinearTrend(offset=10, noise_level=0)
         md = MissingData(mode="random", probability=0.05)
-        m = Metrics(name="m", trends={trend}, anomalies=[md])
+        m = Metric(name="m", trends={trend}, anomalies=[md])
 
         result = m.generate(timestamps, rng=SeedableRNG(42))
         signal = result.signal["m"].to_numpy()
@@ -1114,7 +1114,7 @@ class TestMissingDataLabels:
 
         trend = LinearTrend(offset=10, noise_level=0)
         md = MissingData(mode="patterned", schedule=schedule)
-        m = Metrics(name="m", trends={trend}, anomalies=[md])
+        m = Metric(name="m", trends={trend}, anomalies=[md])
 
         result = m.generate(timestamps, rng=DefaultRNG())
         label = result.labels["m_anomaly"].to_numpy()
@@ -1139,7 +1139,7 @@ class TestConceptDriftLabels:
             restore=True,
         )
         trend = LinearTrend(offset=base_val, noise_level=0)
-        m = Metrics(name="m", trends={trend}, anomalies=[ConceptDrift(segments=[seg])])
+        m = Metric(name="m", trends={trend}, anomalies=[ConceptDrift(segments=[seg])])
 
         result = m.generate(timestamps, rng=SeedableRNG(42))
         label = result.labels["m_anomaly"].to_numpy()
@@ -1167,7 +1167,7 @@ class TestConceptDriftLabels:
             restore=False,
         )
         trend = LinearTrend(offset=0.0, noise_level=0)
-        m = Metrics(name="m", trends={trend}, anomalies=[ConceptDrift(segments=[seg])])
+        m = Metric(name="m", trends={trend}, anomalies=[ConceptDrift(segments=[seg])])
 
         result = m.generate(timestamps, rng=SeedableRNG(42))
         label = result.labels["m_anomaly"].to_numpy()
@@ -1190,7 +1190,7 @@ class TestStackedAnomalyLabels:
 
         pa = PointAnomaly(probability=0.1, magnitude=100, mode="replacement")
         md = MissingData(mode="random", probability=0.1)
-        m = Metrics(name="m", trends={trend}, anomalies=[pa, md])
+        m = Metric(name="m", trends={trend}, anomalies=[pa, md])
 
         result = m.generate(timestamps, rng=SeedableRNG(42))
         signal = result.signal["m"].to_numpy()
@@ -1210,7 +1210,7 @@ class TestDataGenAnomalyLabelColumn:
         dg = DataGen(
             start_datetime="2024-01-01",
             end_datetime="2024-01-03",
-            granularity=Granularity.HOURLY,
+            granularity=Granularity.HOUR,
             seed=42,
         )
         dg.add_metric(
@@ -1227,7 +1227,7 @@ class TestDataGenAnomalyLabelColumn:
         dg = DataGen(
             start_datetime="2024-01-01",
             end_datetime="2024-01-03",
-            granularity=Granularity.HOURLY,
+            granularity=Granularity.HOUR,
             seed=42,
         )
         dg.add_metric(
@@ -1241,7 +1241,7 @@ class TestDataGenAnomalyLabelColumn:
         dg = DataGen(
             start_datetime="2024-01-01",
             end_datetime="2024-01-03",
-            granularity=Granularity.HOURLY,
+            granularity=Granularity.HOUR,
             seed=42,
         )
         dg.add_metric(
@@ -1259,7 +1259,7 @@ class TestDataGenAnomalyLabelColumn:
             dg = DataGen(
                 start_datetime="2024-01-01",
                 end_datetime="2024-01-02",
-                granularity=Granularity.HOURLY,
+                granularity=Granularity.HOUR,
                 seed=42,
             )
             dg.add_metric(
@@ -1277,7 +1277,7 @@ class TestAnomalyLabelAggregation:
         dg = DataGen(
             start_datetime="2024-01-01",
             end_datetime="2024-01-03",
-            granularity=Granularity.HOURLY,
+            granularity=Granularity.HOUR,
             seed=42,
         )
         dg.add_dimension("region", random_choice(["US", "EU"]))
@@ -1308,7 +1308,7 @@ class TestAnomalyLabelNormalization:
         dg = DataGen(
             start_datetime="2024-01-01",
             end_datetime="2024-01-03",
-            granularity=Granularity.HOURLY,
+            granularity=Granularity.HOUR,
             seed=42,
         )
         dg.add_metric(

@@ -7,9 +7,9 @@ import pandas as pd
 import numpy as np
 from ts_data_generator import DataGen
 from ts_data_generator.exceptions import AggregationError
-from ts_data_generator.schema.models import Granularity, AggregationType
-from ts_data_generator.utils.functions import random_choice
-from ts_data_generator.utils.trends import SinusoidalTrend, LinearTrend
+from ts_data_generator.functions import random_choice
+from ts_data_generator.schema.models import AggregationType, Granularity
+from ts_data_generator.trends import LinearTrend, SinusoidalTrend
 
 
 class TestAggregation:
@@ -21,7 +21,7 @@ class TestAggregation:
         data_gen = DataGen()
         data_gen.start_datetime = "2022-01-01 00:00:00"
         data_gen.end_datetime = "2022-01-01 02:00:00"  # 2 hours = 24 intervals at 5min
-        data_gen.granularity = Granularity.FIVE_MIN
+        data_gen.granularity = Granularity.FIVE_MINUTE
         data_gen.add_dimension(name="protocol", function=random_choice(["TCP", "UDP"]))
         data_gen.add_dimension(name="region", function=random_choice(["US", "EU"]))
 
@@ -40,7 +40,7 @@ class TestAggregation:
         data_gen = DataGen()
         data_gen.start_datetime = "2022-01-01 00:00:00"
         data_gen.end_datetime = "2022-01-01 12:00:00"
-        data_gen.granularity = Granularity.HOURLY
+        data_gen.granularity = Granularity.HOUR
         data_gen.add_dimension(name="product", function=random_choice(["A", "B"]))
 
         metric_trend = LinearTrend(name="linear", slope=20, offset=0, noise_level=0)
@@ -140,7 +140,7 @@ class TestAggregationWithMultiItems:
         data_gen = DataGen()
         data_gen.start_datetime = "2022-01-01 00:00:00"
         data_gen.end_datetime = "2022-01-01 01:00:00"
-        data_gen.granularity = Granularity.FIVE_MIN
+        data_gen.granularity = Granularity.FIVE_MINUTE
 
         # Need at least one dimension for aggregation to work
         data_gen.add_dimension(name="protocol", function=random_choice(["TCP", "UDP"]))
@@ -190,7 +190,7 @@ class TestAggregationEdgeCases:
         data_gen = DataGen()
         data_gen.start_datetime = "2022-01-01 00:00:00"
         data_gen.end_datetime = "2022-01-01 00:05:00"  # Only 1 interval
-        data_gen.granularity = Granularity.FIVE_MIN
+        data_gen.granularity = Granularity.FIVE_MINUTE
         # Need at least one dimension for aggregation
         data_gen.add_dimension(name="protocol", function=random_choice(["TCP"]))
 
@@ -212,7 +212,7 @@ class TestAggregationEdgeCases:
         data_gen = DataGen()
         data_gen.start_datetime = "2022-01-01 00:00:00"
         data_gen.end_datetime = "2022-01-01 02:00:00"
-        data_gen.granularity = Granularity.FIVE_MIN
+        data_gen.granularity = Granularity.FIVE_MINUTE
         data_gen.add_dimension(name="protocol", function=random_choice(["TCP"]))
 
         # Use a small limit with large offset for near-constant values
@@ -242,7 +242,7 @@ class TestAggregationMultipleDimensions:
         data_gen = DataGen()
         data_gen.start_datetime = "2022-01-01 00:00:00"
         data_gen.end_datetime = "2022-01-02 00:00:00"
-        data_gen.granularity = Granularity.HOURLY
+        data_gen.granularity = Granularity.HOUR
 
         data_gen.add_dimension(name="protocol", function=random_choice(["TCP", "UDP"]))
         data_gen.add_dimension(
@@ -307,7 +307,7 @@ class TestAggregationSubsetDimensions:
         dg = DataGen(
             start_datetime="2024-01-01 00:00:00",
             end_datetime="2024-01-03 23:00:00",
-            granularity=Granularity.HOURLY,
+            granularity=Granularity.HOUR,
             seed=42,
             expand_dimensions=True,
         )

@@ -42,6 +42,7 @@ from ts_data_generator.exceptions import (
     RegistryError,
     ValidationError,
 )
+from ts_data_generator.registry import Registry
 from ts_data_generator.schema.models import Granularity
 from ts_data_generator.schema.parser import (
     PRESETS,
@@ -50,21 +51,20 @@ from ts_data_generator.schema.parser import (
     parse_trend_spec,
 )
 from ts_data_generator.schema.types import DimensionSpec
-from ts_data_generator.utils.registry import Registry
-from ts_data_generator.utils.trends import Trends
+from ts_data_generator.trends import Trend
 
 # ---------------------------------------------------------------------------
 # Module-level registries (same as the CLI, but without Click dependency)
 # ---------------------------------------------------------------------------
 
 _dimension_registry = Registry(
-    "ts_data_generator.utils.functions",
+    "ts_data_generator.functions",
     name_filter=lambda n: not n.startswith("_"),
 )
 _trend_registry = Registry(
-    "ts_data_generator.utils.trends",
-    name_filter=lambda n: not n.startswith("_") and n != "Trends",
-    base_class=Trends,
+    "ts_data_generator.trends",
+    name_filter=lambda n: not n.startswith("_") and n != "Trend",
+    base_class=Trend,
 )
 _anomaly_registry = Registry(
     "ts_data_generator.anomalies",
@@ -218,6 +218,7 @@ _STATUS_MAP: dict[type, int] = {
     MultiItemError: 400,
     RegistryError: 400,
     AggregationError: 400,
+    ExpandError: 400,
     ConfigurationError: 422,
 }
 
@@ -375,7 +376,7 @@ def _build_datagen(request: GenerateRequest) -> DataGen:
         metric_name = parts[0]
         trend_specs = parts[1].split("+") if len(parts) > 1 else []
 
-        trends: list[Trends] = []
+        trends: list[Trend] = []
         for spec in trend_specs:
             try:
                 parsed = parse_trend_spec(spec)
@@ -524,6 +525,10 @@ def generate(request: GenerateRequest) -> GenerateResponse:
                     record[key] = value.isoformat()
     except HTTPException:
         raise
+    except DataGeneratorError as exc:
+        raise HTTPException(
+            status_code=_STATUS_MAP.get(type(exc), 400), detail=str(exc)
+        ) from exc
     except Exception as exc:
         raise HTTPException(
             status_code=500, detail=f"Data generation error: {exc}"
@@ -646,17 +651,10 @@ def get_preset(preset_name: str) -> PresetDetail:
 @app.get("/dimensions", response_model=list[FunctionInfo])
 def list_dimensions() -> list[FunctionInfo]:
     """List available dimension generator functions."""
-    excluded = {"TypeVar", "Generator", "Iterable", "Tuple", "Union", "cycle"}
-    from ts_data_generator.utils import functions as dim_mod
-
-    funcs = [
-        name
-        for name in dir(dim_mod)
-        if callable(getattr(dim_mod, name)) and not name.startswith("_") and name not in excluded
-    ]
+    funcs = _dimension_registry.list_available()
     result = []
-    for name in sorted(funcs):
-        fn = getattr(dim_mod, name)
+    for name in funcs:
+        fn = _dimension_registry.get(name)
         result.append(
             FunctionInfo(
                 name=name,

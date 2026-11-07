@@ -7,16 +7,17 @@ synthetic time series data generation.
 from __future__ import annotations
 
 import logging
-from collections.abc import Generator
-from enum import Enum
+from collections.abc import Generator, Sequence
+from enum import Enum, StrEnum
 from typing import TYPE_CHECKING, Any, NamedTuple, TypeAlias
 
 import numpy as np
 import pandas as pd
 
+from ts_data_generator.exceptions import MetricError
+from ts_data_generator.functions import auto_generate_name
 from ts_data_generator.random import RNGProtocol
-from ts_data_generator.utils.functions import auto_generate_name
-from ts_data_generator.utils.trends import Trends
+from ts_data_generator.trends import Trend
 
 if TYPE_CHECKING:
     from ts_data_generator.anomalies.base import Anomaly
@@ -25,17 +26,17 @@ logger = logging.getLogger(__name__)
 
 
 DimensionFunction: TypeAlias = int | str | float | Generator
-"""A value source for a ``Dimensions`` or ``MultiItems`` column.
+"""A value source for a ``Dimension`` or ``MultiItem`` column.
 
 A scalar (``int | str | float``) is a constant value emitted at every
-timestamp; a ``Generator`` (the ``utils.functions`` carrier helpers all return
+timestamp; a ``Generator`` (the ``functions`` carrier helpers all return
 ``DimensionCarrier[T]``, a ``Generator`` subclass) produces a fresh value per
 timestamp via ``next()``.
 """
 
 
 class MetricResult(NamedTuple):
-    """Result of ``Metrics.generate()``.
+    """Result of ``Metric.generate()``.
 
     Attributes:
         signal: DataFrame with anomalies applied (trends + anomalies).
@@ -51,17 +52,17 @@ class MetricResult(NamedTuple):
     labels: pd.DataFrame
 
 
-class Granularity(Enum):
+class Granularity(StrEnum):
     """Time granularity for generated data intervals."""
 
-    ONE_SECOND = "s"
-    ONE_MIN = "min"
-    FIVE_MIN = "5min"
-    HOURLY = "h"
-    DAILY = "D"
-    WEEKLY = "W"
-    MONTHLY = "ME"
-    YEARLY = "Y"
+    SECOND = "s"
+    MINUTE = "min"
+    FIVE_MINUTE = "5min"
+    HOUR = "h"
+    DAY = "D"
+    WEEK = "W"
+    MONTH = "ME"
+    YEAR = "Y"
 
     def order(self) -> int:
         """Return the rank of this granularity (lower = finer, higher = coarser).
@@ -94,29 +95,41 @@ class AggregationType(Enum):
     MIN = "min"
 
 
-class Metrics:
+class Metric:
     """A metric combines one or more trends additively to produce a numeric column.
 
     Args:
         name: Unique name for this metric. Defaults to an auto-generated name.
-        trends: Set of Trends instances that are summed to produce the metric.
+        trends: A Trend instance or collection of Trend instances summed to produce the metric.
         aggregation_type: Aggregation method when resampling.
 
     Example:
         >>> trend = SinusoidalTrend(amplitude=5, freq=24)
-        >>> metric = Metrics(name="temperature", trends={trend})
+        >>> metric = Metric(name="temperature", trends=[trend])
 
     """
 
     def __init__(
         self,
-        name: str = "default",
-        trends: set[Trends] | None = None,
+        name: str | None = "default",
+        trends: Trend | Sequence[Trend] | set[Trend] | None = None,
         aggregation_type: AggregationType = AggregationType.AVG,
         anomalies: list[Anomaly] | None = None,
     ) -> None:
-        self._name = next(auto_generate_name(category="metric")) if name == "default" else name
-        self._trends: set[Trends] = trends or set()
+        self._name = (
+            next(auto_generate_name(category="metric"))
+            if name == "default" or name is None
+            else name
+        )
+        if trends is None:
+            trend_list: list[Trend] = []
+        elif isinstance(trends, Trend):
+            trend_list = [trends]
+        else:
+            trend_list = list(trends)
+        if len(trend_list) != len(set(trend_list)):
+            raise MetricError("Duplicate trends are present.")
+        self._trends: list[Trend] = trend_list
         self._aggregation_type = aggregation_type
         self._anomalies: list[Anomaly] = anomalies or []
 
@@ -126,8 +139,8 @@ class Metrics:
         return self._name
 
     @property
-    def trends(self) -> set[Trends]:
-        """The set of trends that compose this metric."""
+    def trends(self) -> list[Trend]:
+        """The list of trends that compose this metric."""
         return self._trends
 
     @property
@@ -212,7 +225,7 @@ class Metrics:
         }
 
 
-class Dimensions:
+class Dimension:
     """A dimension generates categorical or continuous values for each timestamp.
 
     Args:
@@ -222,7 +235,7 @@ class Dimensions:
         weights: Optional mapping of dimension values to scale multipliers.
 
     Example:
-        >>> d = Dimensions(
+        >>> d = Dimension(
         ...     name="region",
         ...     function=random_choice(["US", "EU"]),
         ...     weights={"US": 5.0, "EU": 2.0},
@@ -330,7 +343,7 @@ class Dimensions:
         return str(self.to_json())
 
     def __eq__(self, other: object) -> bool:
-        if not isinstance(other, Dimensions):
+        if not isinstance(other, Dimension):
             return NotImplemented
         return self._name == other.name
 
@@ -347,7 +360,7 @@ class Dimensions:
         }
 
 
-class MultiItems:
+class MultiItem:
     """A group of linked columns generated simultaneously from one function.
 
     Useful when columns have dependencies (e.g., ``col3 = col1 + col2``).
@@ -364,7 +377,7 @@ class MultiItems:
         >>> def linked_gen():
         ...     while True:
         ...         yield (1, 2, 3)
-        >>> mi = MultiItems(names=["a", "b", "c"], function=linked_gen())
+        >>> mi = MultiItem(names=["a", "b", "c"], function=linked_gen())
 
     """
 
@@ -464,7 +477,7 @@ class MultiItems:
         return str(self.to_json())
 
     def __eq__(self, other: object) -> bool:
-        if not isinstance(other, MultiItems):
+        if not isinstance(other, MultiItem):
             return NotImplemented
         return self._names == other.names
 

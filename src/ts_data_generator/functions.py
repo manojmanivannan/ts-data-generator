@@ -10,18 +10,20 @@ syntax (e.g. ``name:random_choice:A,B,C``).
 
 from __future__ import annotations
 
-import random
-from collections.abc import Iterable
-from itertools import cycle
-from typing import TYPE_CHECKING, TypeVar
+import random as _random
+from collections.abc import Iterable as _Iterable
+from itertools import cycle as _cycle
+from typing import TYPE_CHECKING
+from typing import TypeVar as _TypeVar
 
-from ts_data_generator.carriers import DomainCarrier, NonExpandableCarrier
+from ts_data_generator.carriers import DomainCarrier as _DomainCarrier
+from ts_data_generator.carriers import NonExpandableCarrier as _NonExpandableCarrier
 
 if TYPE_CHECKING:
     from ts_data_generator.carriers import DimensionCarrier
     from ts_data_generator.random import RNGProtocol
 
-T = TypeVar("T")
+_T = _TypeVar("_T")
 
 
 def constant(
@@ -40,7 +42,7 @@ def constant(
         ``True``; ``next()`` yields the constant (or next cycled) value.
 
     Example:
-        >>> from ts_data_generator.utils.functions import constant
+        >>> from ts_data_generator.functions import constant
         >>> carrier = constant(10)
         >>> carrier.domain
         [10]
@@ -59,7 +61,7 @@ def constant(
         domain = list(value)
 
         def _source() -> int | str | float:
-            yield from cycle(value)
+            yield from _cycle(value)
 
     else:
         domain = [value]
@@ -68,13 +70,13 @@ def constant(
             while True:
                 yield value
 
-    return DomainCarrier(_source(), domain, "constant")
+    return _DomainCarrier(_source(), domain, "constant")
 
 
 constant._example = "name:constant:10"
 
 
-def random_choice(iterable: Iterable[T], rng: RNGProtocol | None = None) -> DimensionCarrier[T]:
+def random_choice(iterable: _Iterable[_T], rng: RNGProtocol | None = None) -> DimensionCarrier[_T]:
     """Yield a random element from the iterable at each step.
 
     Args:
@@ -94,17 +96,17 @@ def random_choice(iterable: Iterable[T], rng: RNGProtocol | None = None) -> Dime
     items = list(iterable)
     if rng is not None:
 
-        def _source() -> T:
+        def _source() -> _T:
             while True:
                 yield rng.choice(items)
 
     else:
 
-        def _source() -> T:
+        def _source() -> _T:
             while True:
-                yield random.choice(items)
+                yield _random.choice(items)
 
-    return DomainCarrier(_source(), items, "random_choice")
+    return _DomainCarrier(_source(), items, "random_choice")
 
 
 random_choice._example = "name:random_choice:A,B,C"
@@ -143,9 +145,9 @@ def random_int(start: int, end: int, rng: RNGProtocol | None = None) -> Dimensio
 
         def _source() -> int:
             while True:
-                yield random.randint(start, end)
+                yield _random.randint(start, end)
 
-    return NonExpandableCarrier(
+    return _NonExpandableCarrier(
         _source(),
         "random_int",
         "random_int() draws from a numeric range; use random_choice/ordered_choice "
@@ -192,9 +194,9 @@ def random_float(
 
         def _source() -> float:
             while True:
-                yield random.uniform(start, end)
+                yield _random.uniform(start, end)
 
-    return NonExpandableCarrier(
+    return _NonExpandableCarrier(
         _source(),
         "random_float",
         "random_float() draws from a numeric range; use random_choice/ordered_choice "
@@ -206,7 +208,7 @@ def random_float(
 random_float._example = "name:random_float:0.0,1.0"
 
 
-def ordered_choice(iterable: Iterable[T]) -> DimensionCarrier[T]:
+def ordered_choice(iterable: _Iterable[_T]) -> DimensionCarrier[_T]:
     """Yield elements from the iterable in repeating order.
 
     Args:
@@ -225,11 +227,11 @@ def ordered_choice(iterable: Iterable[T]) -> DimensionCarrier[T]:
     """
     items = list(iterable)
 
-    def _source() -> T:
+    def _source() -> _T:
         while True:
-            yield from cycle(items)
+            yield from _cycle(items)
 
-    return DomainCarrier(_source(), items, "ordered_choice")
+    return _DomainCarrier(_source(), items, "ordered_choice")
 
 
 ordered_choice._example = "name:ordered_choice:A,B,C"
@@ -257,13 +259,13 @@ def auto_generate_name(category: str, rng: RNGProtocol | None = None) -> Dimensi
     if rng is not None:
         name = f"{prefix}_{rng.integers(1, 101)}"
     else:
-        name = f"{prefix}_{random.randint(1, 100)}"
+        name = f"{prefix}_{_random.randint(1, 100)}"
 
     def _source() -> str:
         while True:
             yield name
 
-    return NonExpandableCarrier(
+    return _NonExpandableCarrier(
         _source(),
         "auto_generate_name",
         "auto_generate_name() is not a finite-domain dimension generator",
@@ -272,3 +274,12 @@ def auto_generate_name(category: str, rng: RNGProtocol | None = None) -> Dimensi
 
 
 auto_generate_name._example = "name:auto_generate_name:mycat"
+
+__all__ = [
+    "auto_generate_name",
+    "constant",
+    "ordered_choice",
+    "random_choice",
+    "random_float",
+    "random_int",
+]

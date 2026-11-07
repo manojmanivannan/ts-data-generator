@@ -17,9 +17,9 @@ import pytest
 
 from ts_data_generator import DataGen
 from ts_data_generator.anomalies.point import PointAnomaly
+from ts_data_generator.functions import ordered_choice, random_choice
 from ts_data_generator.schema.models import AggregationType, Granularity
-from ts_data_generator.utils.functions import ordered_choice, random_choice
-from ts_data_generator.utils.trends import LinearTrend, SinusoidalTrend
+from ts_data_generator.trends import LinearTrend, SinusoidalTrend
 
 
 class TestExplicitDimensionWeights:
@@ -27,7 +27,7 @@ class TestExplicitDimensionWeights:
         dg = DataGen(
             start_datetime="2024-01-01",
             end_datetime="2024-01-03",
-            granularity=Granularity.DAILY,
+            granularity=Granularity.DAY,
             seed=42,
             expand_dimensions=True,
         )
@@ -50,7 +50,7 @@ class TestExplicitDimensionWeights:
         dg = DataGen(
             start_datetime="2024-01-01",
             end_datetime="2024-01-03",
-            granularity=Granularity.DAILY,
+            granularity=Granularity.DAY,
             seed=42,
             expand_dimensions=True,
         )
@@ -72,7 +72,7 @@ class TestExplicitDimensionWeights:
         dg = DataGen(
             start_datetime="2024-01-01",
             end_datetime="2024-01-02",
-            granularity=Granularity.DAILY,
+            granularity=Granularity.DAY,
             seed=42,
             expand_dimensions=True,
         )
@@ -99,7 +99,7 @@ class TestExplicitDimensionWeights:
         dg = DataGen(
             start_datetime="2024-01-01",
             end_datetime="2024-01-02",
-            granularity=Granularity.DAILY,
+            granularity=Granularity.DAY,
             seed=42,
             expand_dimensions=True,
         )
@@ -120,7 +120,7 @@ class TestMultiItemsDimensionWeights:
         dg = DataGen(
             start_datetime="2024-01-01",
             end_datetime="2024-01-02",
-            granularity=Granularity.DAILY,
+            granularity=Granularity.DAY,
             seed=42,
             expand_dimensions=True,
         )
@@ -142,7 +142,7 @@ class TestMultiItemsDimensionWeights:
         dg = DataGen(
             start_datetime="2024-01-01",
             end_datetime="2024-01-02",
-            granularity=Granularity.DAILY,
+            granularity=Granularity.DAY,
             seed=42,
             expand_dimensions=True,
         )
@@ -175,7 +175,7 @@ class TestStochasticScaleVariance:
         dg = DataGen(
             start_datetime="2024-01-01",
             end_datetime="2024-01-03",
-            granularity=Granularity.DAILY,
+            granularity=Granularity.DAY,
             seed=42,
             expand_dimensions=True,
             scale_variance=0.5,
@@ -202,7 +202,7 @@ class TestStochasticScaleVariance:
             dg = DataGen(
                 start_datetime="2024-01-01",
                 end_datetime="2024-01-03",
-                granularity=Granularity.DAILY,
+                granularity=Granularity.DAY,
                 seed=seed,
                 expand_dimensions=True,
                 scale_variance=0.5,
@@ -221,7 +221,7 @@ class TestStochasticScaleVariance:
         dg = DataGen(
             start_datetime="2024-01-01",
             end_datetime="2024-01-03",
-            granularity=Granularity.DAILY,
+            granularity=Granularity.DAY,
             seed=42,
             expand_dimensions=True,
             scale_variance=0.3,
@@ -242,7 +242,7 @@ class TestAnomalyLabelsWithScaling:
         dg = DataGen(
             start_datetime="2024-01-01",
             end_datetime="2024-01-05",
-            granularity=Granularity.DAILY,
+            granularity=Granularity.DAY,
             seed=42,
             expand_dimensions=True,
         )
@@ -273,7 +273,7 @@ class TestLinkedMetricsScaling:
         dg = DataGen(
             start_datetime="2024-01-01",
             end_datetime="2024-01-02",
-            granularity=Granularity.DAILY,
+            granularity=Granularity.DAY,
             seed=42,
             expand_dimensions=True,
         )
@@ -307,7 +307,7 @@ class TestAggregationWithScaling:
         dg = DataGen(
             start_datetime="2024-01-01 00:00:00",
             end_datetime="2024-01-01 03:00:00",
-            granularity=Granularity.HOURLY,
+            granularity=Granularity.HOUR,
             seed=42,
             expand_dimensions=True,
         )
@@ -337,7 +337,7 @@ class TestBackwardsCompatibility:
         dg = DataGen(
             start_datetime="2024-01-01",
             end_datetime="2024-01-03",
-            granularity=Granularity.DAILY,
+            granularity=Granularity.DAY,
             seed=42,
             expand_dimensions=True,
         )

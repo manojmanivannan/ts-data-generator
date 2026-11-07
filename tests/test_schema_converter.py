@@ -6,7 +6,7 @@ import pytest
 import pandas as pd
 import numpy as np
 from ts_data_generator.analyzers.converter import SchemaConverter
-from ts_data_generator.utils.trends import SinusoidalTrend, LinearTrend
+from ts_data_generator.trends import LinearTrend, SinusoidalTrend
 
 
 class TestSchemaConverter:

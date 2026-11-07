@@ -2,21 +2,21 @@
 
 Exports:
     Granularity, AggregationType: Enum types for time granularity and aggregation.
-    Metrics, Dimensions, MultiItems: Data model classes.
+    Metric, Dimension, MultiItem: Data model classes.
 """
 
 from ts_data_generator.schema.models import (
     AggregationType,
-    Dimensions,
+    Dimension,
     Granularity,
-    Metrics,
-    MultiItems,
+    Metric,
+    MultiItem,
 )
 
 __all__ = [
     "AggregationType",
-    "Dimensions",
+    "Dimension",
     "Granularity",
-    "Metrics",
-    "MultiItems",
+    "Metric",
+    "MultiItem",
 ]

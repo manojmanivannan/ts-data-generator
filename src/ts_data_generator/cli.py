@@ -13,11 +13,9 @@ from pydantic import BaseModel, Field, field_validator
 from ts_data_generator import DataGen
 from ts_data_generator.anomalies.base import Anomaly
 from ts_data_generator.exceptions import AggregationError, RegistryError
+from ts_data_generator.registry import Registry
 from ts_data_generator.schema.models import Granularity
-from ts_data_generator.utils import functions as dimension_functions
-from ts_data_generator.utils import trends as trend_functions
-from ts_data_generator.utils.registry import Registry
-from ts_data_generator.utils.trends import Trends
+from ts_data_generator.trends import Trend
 
 logger = logging.getLogger(__name__)
 
@@ -31,13 +29,13 @@ DEFAULT_DIMENSION_FUNCTION = "random_choice"
 # ---------------------------------------------------------------------------
 
 _DIMENSION_REGISTRY = Registry(
-    "ts_data_generator.utils.functions",
+    "ts_data_generator.functions",
     name_filter=lambda n: not n.startswith("_"),
 )
 _TREND_REGISTRY = Registry(
-    "ts_data_generator.utils.trends",
-    name_filter=lambda n: not n.startswith("_") and n != "Trends",
-    base_class=Trends,
+    "ts_data_generator.trends",
+    name_filter=lambda n: not n.startswith("_") and n != "Trend",
+    base_class=Trend,
 )
 _ANOMALY_REGISTRY = Registry(
     "ts_data_generator.anomalies",
@@ -1015,16 +1013,11 @@ def generate(
 @main.command()
 def dimensions() -> None:
     """List available dimension functions."""
-    excluded = {"TypeVar", "Generator", "Iterable", "Tuple", "Union", "cycle"}
-    funcs = [
-        f
-        for f in dir(dimension_functions)
-        if callable(getattr(dimension_functions, f)) and not f.startswith("_") and f not in excluded
-    ]
+    funcs = _DIMENSION_REGISTRY.list_available()
 
     click.echo("Available dimension functions:\n")
-    for func_name in sorted(funcs):
-        func = getattr(dimension_functions, func_name)
+    for func_name in funcs:
+        func = _DIMENSION_REGISTRY.get(func_name)
         sig = str(inspect.signature(func))
         example = getattr(func, "_example", "")
         click.echo(f"  {func_name}{sig}")
@@ -1035,15 +1028,11 @@ def dimensions() -> None:
 @main.command()
 def metrics() -> None:
     """List available trend functions."""
-    funcs = [
-        f
-        for f in dir(trend_functions)
-        if callable(getattr(trend_functions, f)) and not f.startswith("_") and "Trend" in f
-    ]
+    funcs = _TREND_REGISTRY.list_available()
 
     click.echo("Available trend functions:\n")
-    for func_name in sorted(funcs):
-        func = getattr(trend_functions, func_name)
+    for func_name in funcs:
+        func = _TREND_REGISTRY.get(func_name)
         sig = str(inspect.signature(func))
         example = getattr(func, "_example", "")
         click.echo(f"  {func_name}{sig}")
