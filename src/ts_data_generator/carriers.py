@@ -142,7 +142,7 @@ def _reconstruct_domain_carrier(domain: list[Any], func_name: str) -> DomainCarr
 def _reconstruct_non_expandable_carrier(
     func_name: str, reason: str, func_args: tuple[Any, ...]
 ) -> NonExpandableCarrier:
-    from ts_data_generator.utils import functions as df_funcs
+    from ts_data_generator import functions as df_funcs
 
     if hasattr(df_funcs, func_name):
         fn = getattr(df_funcs, func_name)

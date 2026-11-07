@@ -7,7 +7,7 @@ import pytest
 from ts_data_generator import DataGen
 from ts_data_generator.random import DefaultRNG, RNGProtocol, SeedableRNG
 from ts_data_generator.schema.models import Granularity
-from ts_data_generator.utils.trends import (
+from ts_data_generator.trends import (
     LinearTrend,
     SinusoidalTrend,
     StockTrend,
@@ -145,7 +145,7 @@ class TestDataGenSeed:
         dg1 = DataGen(
             start_datetime="2024-01-01",
             end_datetime="2024-01-05",
-            granularity=Granularity.HOURLY,
+            granularity=Granularity.HOUR,
             seed=42,
         )
         dg1.add_metric("m1", {SinusoidalTrend(amplitude=5, freq=24, noise_level=0.5)})
@@ -154,7 +154,7 @@ class TestDataGenSeed:
         dg2 = DataGen(
             start_datetime="2024-01-01",
             end_datetime="2024-01-05",
-            granularity=Granularity.HOURLY,
+            granularity=Granularity.HOUR,
             seed=42,
         )
         dg2.add_metric("m1", {SinusoidalTrend(amplitude=5, freq=24, noise_level=0.5)})
@@ -166,7 +166,7 @@ class TestDataGenSeed:
         dg1 = DataGen(
             start_datetime="2024-01-01",
             end_datetime="2024-01-05",
-            granularity=Granularity.HOURLY,
+            granularity=Granularity.HOUR,
             seed=42,
         )
         dg1.add_metric("m", {SinusoidalTrend(amplitude=5, freq=24, noise_level=0.5)})
@@ -174,7 +174,7 @@ class TestDataGenSeed:
         dg2 = DataGen(
             start_datetime="2024-01-01",
             end_datetime="2024-01-05",
-            granularity=Granularity.HOURLY,
+            granularity=Granularity.HOUR,
             seed=99,
         )
         dg2.add_metric("m", {SinusoidalTrend(amplitude=5, freq=24, noise_level=0.5)})
@@ -186,7 +186,7 @@ class TestDataGenSeed:
         dg1 = DataGen(
             start_datetime="2024-01-01",
             end_datetime="2024-01-10",
-            granularity=Granularity.DAILY,
+            granularity=Granularity.DAY,
             seed=42,
         )
         dg1.add_metric("stock", {StockTrend(amplitude=15, noise_level=0.5)})
@@ -195,7 +195,7 @@ class TestDataGenSeed:
         dg2 = DataGen(
             start_datetime="2024-01-01",
             end_datetime="2024-01-10",
-            granularity=Granularity.DAILY,
+            granularity=Granularity.DAY,
             seed=42,
         )
         dg2.add_metric("stock", {StockTrend(amplitude=15, noise_level=0.5)})
@@ -207,7 +207,7 @@ class TestDataGenSeed:
         dg = DataGen(
             start_datetime="2024-01-01",
             end_datetime="2024-01-02",
-            granularity=Granularity.HOURLY,
+            granularity=Granularity.HOUR,
         )
         dg.add_metric("m", {SinusoidalTrend(amplitude=5, freq=24, noise_level=0.5)})
         assert "m" in dg.data.columns

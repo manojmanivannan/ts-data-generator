@@ -6,8 +6,8 @@ import pytest
 import pandas as pd
 from ts_data_generator import DataGen
 from ts_data_generator.exceptions import DimensionError
-from ts_data_generator.utils.functions import random_choice, random_int
-from ts_data_generator.utils.trends import SinusoidalTrend
+from ts_data_generator.functions import random_choice, random_int
+from ts_data_generator.trends import SinusoidalTrend
 
 
 class TestDataGenInitialization:

@@ -22,8 +22,7 @@ from ts_data_generator import DataGen
 from ts_data_generator.anomalies.point import PointAnomaly
 from ts_data_generator.exceptions import ExpandError, ValidationError
 from ts_data_generator.expand import combination_seed
-from ts_data_generator.schema.models import AggregationType, Granularity
-from ts_data_generator.utils.functions import (
+from ts_data_generator.functions import (
     auto_generate_name,
     constant,
     ordered_choice,
@@ -31,7 +30,8 @@ from ts_data_generator.utils.functions import (
     random_float,
     random_int,
 )
-from ts_data_generator.utils.trends import LinearTrend
+from ts_data_generator.schema.models import AggregationType, Granularity
+from ts_data_generator.trends import LinearTrend
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -43,7 +43,7 @@ def _expand_dg(seed: int | None = 42) -> DataGen:
     dg = DataGen(
         start_datetime="2024-01-01",
         end_datetime="2024-01-03",
-        granularity=Granularity.DAILY,
+        granularity=Granularity.DAY,
         seed=seed,
         expand_dimensions=True,
     )
@@ -128,7 +128,7 @@ class TestExpandRowShape:
         dg = DataGen(
             start_datetime="2024-01-01",
             end_datetime="2024-01-03",
-            granularity=Granularity.DAILY,
+            granularity=Granularity.DAY,
             seed=7,
             expand_dimensions=True,
         )
@@ -158,7 +158,7 @@ class TestExpandDeterminism:
             dg = DataGen(
                 start_datetime="2024-01-01",
                 end_datetime="2024-01-03",
-                granularity=Granularity.DAILY,
+                granularity=Granularity.DAY,
                 seed=42,
                 expand_dimensions=True,
             )
@@ -204,65 +204,70 @@ class TestExpandNonEnumerable:
         dg = DataGen(
             start_datetime="2024-01-01",
             end_datetime="2024-01-03",
-            granularity=Granularity.DAILY,
+            granularity=Granularity.DAY,
             seed=1,
             expand_dimensions=True,
         )
+        dg.add_dimension("port", random_int(1, 100))
         with pytest.raises(ExpandError, match="port"):
-            dg.add_dimension("port", random_int(1, 100))
+            _ = dg.data
 
     def test_random_float_raises(self) -> None:
         dg = DataGen(
             start_datetime="2024-01-01",
             end_datetime="2024-01-03",
-            granularity=Granularity.DAILY,
+            granularity=Granularity.DAY,
             seed=1,
             expand_dimensions=True,
         )
+        dg.add_dimension("lat", random_float(0.0, 1.0))
         with pytest.raises(ExpandError, match="lat"):
-            dg.add_dimension("lat", random_float(0.0, 1.0))
+            _ = dg.data
 
     def test_auto_generate_name_raises(self) -> None:
-        from ts_data_generator.utils.functions import auto_generate_name
+        from ts_data_generator.functions import auto_generate_name
 
         dg = DataGen(
             start_datetime="2024-01-01",
             end_datetime="2024-01-03",
-            granularity=Granularity.DAILY,
+            granularity=Granularity.DAY,
             seed=1,
             expand_dimensions=True,
         )
+        dg.add_dimension("name", auto_generate_name("dimension"))
         with pytest.raises(ExpandError, match="name"):
-            dg.add_dimension("name", auto_generate_name("dimension"))
+            _ = dg.data
 
     def test_opaque_generator_without_domain_raises(self) -> None:
         dg = DataGen(
             start_datetime="2024-01-01",
             end_datetime="2024-01-03",
-            granularity=Granularity.DAILY,
+            granularity=Granularity.DAY,
             seed=1,
             expand_dimensions=True,
         )
+        dg.add_dimension("custom", _opaque_gen())
         with pytest.raises(ExpandError, match="custom"):
-            dg.add_dimension("custom", _opaque_gen())
+            _ = dg.data
 
     def test_error_message_names_reason(self) -> None:
         dg = DataGen(
             start_datetime="2024-01-01",
             end_datetime="2024-01-03",
-            granularity=Granularity.DAILY,
+            granularity=Granularity.DAY,
             seed=1,
             expand_dimensions=True,
         )
+        dg.add_dimension("port", random_int(1, 100))
         with pytest.raises(ExpandError, match="random_int"):
-            dg.add_dimension("port", random_int(1, 100))
+            _ = dg.data
 
     def test_non_enumerable_ok_when_flag_off(self) -> None:
         # Same non-enumerable dimension generates normally without the flag.
         dg = DataGen(
             start_datetime="2024-01-01",
             end_datetime="2024-01-03",
-            granularity=Granularity.DAILY,
+            granularity=Granularity.DAY,
             seed=1,
             expand_dimensions=False,
         )
@@ -282,7 +287,7 @@ class TestExpandDefaultSeed:
         dg = DataGen(
             start_datetime="2024-01-01",
             end_datetime="2024-01-03",
-            granularity=Granularity.DAILY,
+            granularity=Granularity.DAY,
             expand_dimensions=True,  # no seed
         )
         dg.add_dimension("region", random_choice(["US", "EU"]))
@@ -294,7 +299,7 @@ class TestExpandDefaultSeed:
         dg = DataGen(
             start_datetime="2024-01-01",
             end_datetime="2024-01-03",
-            granularity=Granularity.DAILY,
+            granularity=Granularity.DAY,
             expand_dimensions=True,
         )
         dg.add_dimension("region", random_choice(["US", "EU"]))
@@ -308,7 +313,7 @@ class TestExpandDefaultSeed:
             dg = DataGen(
                 start_datetime="2024-01-01",
                 end_datetime="2024-01-03",
-                granularity=Granularity.DAILY,
+                granularity=Granularity.DAY,
                 expand_dimensions=True,
             )
             dg.add_dimension("region", random_choice(["US", "EU"]))
@@ -329,7 +334,7 @@ class TestExpandAggregationRegression:
         dg = DataGen(
             start_datetime="2024-01-01",
             end_datetime="2024-01-07",
-            granularity=Granularity.DAILY,
+            granularity=Granularity.DAY,
             seed=42,
             expand_dimensions=True,
         )
@@ -357,7 +362,7 @@ class TestExpandAggregationRegression:
         dg = DataGen(
             start_datetime="2024-01-01",
             end_datetime="2024-01-07",
-            granularity=Granularity.DAILY,
+            granularity=Granularity.DAY,
             seed=42,
             expand_dimensions=True,
         )
@@ -390,7 +395,7 @@ class TestExpandAnomalyLabelsPerSeries:
         dg = DataGen(
             start_datetime="2024-01-01",
             end_datetime="2024-01-10",
-            granularity=Granularity.DAILY,
+            granularity=Granularity.DAY,
             seed=42,
             expand_dimensions=True,
         )
@@ -412,7 +417,7 @@ class TestExpandAnomalyLabelsPerSeries:
         dg = DataGen(
             start_datetime="2024-01-01",
             end_datetime="2024-01-10",
-            granularity=Granularity.DAILY,
+            granularity=Granularity.DAY,
             seed=42,
             expand_dimensions=True,
         )
@@ -440,7 +445,7 @@ class TestExpandLinkedMetrics:
         dg = DataGen(
             start_datetime="2024-01-01",
             end_datetime="2024-01-03",
-            granularity=Granularity.DAILY,
+            granularity=Granularity.DAY,
             seed=42,
             expand_dimensions=True,
         )
@@ -477,7 +482,7 @@ class TestExpandLinkedMetrics:
         dg = DataGen(
             start_datetime="2024-01-01",
             end_datetime="2024-01-03",
-            granularity=Granularity.DAILY,
+            granularity=Granularity.DAY,
             seed=100,
             expand_dimensions=True,
         )
@@ -511,7 +516,7 @@ class TestExpandLinkedDimensions:
         dg = DataGen(
             start_datetime="2024-01-01",
             end_datetime="2024-01-03",
-            granularity=Granularity.DAILY,
+            granularity=Granularity.DAY,
             seed=42,
             expand_dimensions=True,
         )
@@ -540,7 +545,7 @@ class TestExpandLinkedDimensions:
         dg = DataGen(
             start_datetime="2024-01-01",
             end_datetime="2024-01-02",
-            granularity=Granularity.DAILY,
+            granularity=Granularity.DAY,
             seed=42,
             expand_dimensions=True,
         )
@@ -569,7 +574,7 @@ class TestExpandLinkedDimensions:
         dg = DataGen(
             start_datetime="2024-01-01",
             end_datetime="2024-01-05",
-            granularity=Granularity.DAILY,
+            granularity=Granularity.DAY,
             seed=42,
             expand_dimensions=True,
         )
@@ -593,7 +598,7 @@ class TestExpandLinkedDimensions:
         dg = DataGen(
             start_datetime="2024-01-01",
             end_datetime="2024-01-02",
-            granularity=Granularity.DAILY,
+            granularity=Granularity.DAY,
             seed=1,
             expand_dimensions=True,
         )
@@ -606,7 +611,7 @@ class TestExpandLinkedDimensions:
         dg = DataGen(
             start_datetime="2024-01-01",
             end_datetime="2024-01-02",
-            granularity=Granularity.DAILY,
+            granularity=Granularity.DAY,
             seed=1,
             expand_dimensions=True,
         )
@@ -646,7 +651,7 @@ class TestExpandCompoundKeySeedAndOrdering:
         dg = DataGen(
             start_datetime="2024-01-01",
             end_datetime="2024-01-02",
-            granularity=Granularity.DAILY,
+            granularity=Granularity.DAY,
             seed=42,
             expand_dimensions=True,
         )
@@ -669,7 +674,7 @@ class TestExpandCompoundKeySeedAndOrdering:
         dg1 = DataGen(
             start_datetime="2024-01-01",
             end_datetime="2024-01-03",
-            granularity=Granularity.DAILY,
+            granularity=Granularity.DAY,
             seed=42,
             expand_dimensions=True,
         )
@@ -681,7 +686,7 @@ class TestExpandCompoundKeySeedAndOrdering:
         dg2 = DataGen(
             start_datetime="2024-01-01",
             end_datetime="2024-01-03",
-            granularity=Granularity.DAILY,
+            granularity=Granularity.DAY,
             seed=42,
             expand_dimensions=True,
         )
@@ -700,7 +705,7 @@ class TestExpandLinkedDimensionsErrorHandling:
         dg = DataGen(
             start_datetime="2024-01-01",
             end_datetime="2024-01-02",
-            granularity=Granularity.DAILY,
+            granularity=Granularity.DAY,
             seed=1,
             expand_dimensions=True,
         )
@@ -709,19 +714,21 @@ class TestExpandLinkedDimensionsErrorHandling:
             while True:
                 yield (1, 2)
 
+        dg.add_multi_items(["a", "b"], custom_gen())
         with pytest.raises(ExpandError, match="dimension 'a,b' cannot be expanded"):
-            dg.add_multi_items(["a", "b"], custom_gen())
+            _ = dg.data
 
     def test_non_enumerable_carrier_raises_expand_error(self) -> None:
         dg = DataGen(
             start_datetime="2024-01-01",
             end_datetime="2024-01-02",
-            granularity=Granularity.DAILY,
+            granularity=Granularity.DAY,
             seed=1,
             expand_dimensions=True,
         )
+        dg.add_multi_items(["id"], auto_generate_name("id"))
         with pytest.raises(ExpandError):
-            dg.add_multi_items(["id"], auto_generate_name("id"))
+            _ = dg.data
 
     def test_domain_supplied_to_carrier_raises_validation_error(self) -> None:
         dg = DataGen()
@@ -733,7 +740,7 @@ class TestExpandLinkedDimensionsErrorHandling:
         dg = DataGen(
             start_datetime="2024-01-01",
             end_datetime="2024-01-03",
-            granularity=Granularity.DAILY,
+            granularity=Granularity.DAY,
             seed=42,
             expand_dimensions=True,
         )
@@ -761,7 +768,7 @@ class TestExpandMultiItemsAggregationAndAnomalies:
         dg = DataGen(
             start_datetime="2024-01-01 00:00:00",
             end_datetime="2024-01-01 03:00:00",
-            granularity=Granularity.HOURLY,
+            granularity=Granularity.HOUR,
             seed=42,
             expand_dimensions=True,
         )
@@ -806,7 +813,7 @@ class TestExpandMultiItemsAggregationAndAnomalies:
         dg = DataGen(
             start_datetime="2024-01-01",
             end_datetime="2024-01-05",
-            granularity=Granularity.DAILY,
+            granularity=Granularity.DAY,
             seed=42,
             expand_dimensions=True,
         )
@@ -841,7 +848,7 @@ class TestExpandDimensionsProperty:
         dg = DataGen(
             start_datetime="2024-01-01",
             end_datetime="2024-01-03",
-            granularity=Granularity.DAILY,
+            granularity=Granularity.DAY,
         )
         assert dg.expand_dimensions is False
 
@@ -849,7 +856,7 @@ class TestExpandDimensionsProperty:
         dg = DataGen(
             start_datetime="2024-01-01",
             end_datetime="2024-01-03",
-            granularity=Granularity.DAILY,
+            granularity=Granularity.DAY,
             seed=42,
         )
         dg.add_dimension("region", random_choice(["US", "EU"]))
@@ -892,7 +899,7 @@ class TestPerDimensionExpand:
         dg = DataGen(
             start_datetime="2024-01-01",
             end_datetime="2024-01-03",
-            granularity=Granularity.DAILY,
+            granularity=Granularity.DAY,
             seed=42,
             expand_dimensions=True,
         )
@@ -905,7 +912,7 @@ class TestPerDimensionExpand:
         dg = DataGen(
             start_datetime="2024-01-01",
             end_datetime="2024-01-03",
-            granularity=Granularity.DAILY,
+            granularity=Granularity.DAY,
             seed=42,
             expand_dimensions=False,
         )
@@ -919,7 +926,7 @@ class TestPerDimensionExpand:
         dg = DataGen(
             start_datetime="2024-01-01",
             end_datetime="2024-01-03",
-            granularity=Granularity.DAILY,
+            granularity=Granularity.DAY,
             seed=42,
             expand_dimensions=True,
         )
@@ -940,7 +947,7 @@ class TestPerDimensionExpand:
         dg = DataGen(
             start_datetime="2024-01-01",
             end_datetime="2024-01-03",
-            granularity=Granularity.DAILY,
+            granularity=Granularity.DAY,
             seed=1,
             expand_dimensions=True,
         )
@@ -958,12 +965,13 @@ class TestPerDimensionExpand:
         dg = DataGen(
             start_datetime="2024-01-01",
             end_datetime="2024-01-03",
-            granularity=Granularity.DAILY,
+            granularity=Granularity.DAY,
             seed=1,
             expand_dimensions=True,
         )
+        dg.add_dimension("port", random_int(1, 100))  # expand=None -> inherit True
         with pytest.raises(ExpandError, match="port"):
-            dg.add_dimension("port", random_int(1, 100))  # expand=None -> inherit True
+            _ = dg.data
 
     def test_non_expanding_dim_varies_within_series_across_combos(self) -> None:
         # A non-expanding dimension regenerates one-value-per-timestamp within each
@@ -972,7 +980,7 @@ class TestPerDimensionExpand:
         dg = DataGen(
             start_datetime="2024-01-01",
             end_datetime="2024-01-03",
-            granularity=Granularity.DAILY,
+            granularity=Granularity.DAY,
             seed=42,
             expand_dimensions=True,
         )
@@ -999,7 +1007,7 @@ class TestPerDimensionExpand:
         dg = DataGen(
             start_datetime="2024-01-01",
             end_datetime="2024-01-03",
-            granularity=Granularity.DAILY,
+            granularity=Granularity.DAY,
             seed=42,
             expand_dimensions=True,
         )
@@ -1011,7 +1019,7 @@ class TestPerDimensionExpand:
         dg = DataGen(
             start_datetime="2024-01-01",
             end_datetime="2024-01-03",
-            granularity=Granularity.DAILY,
+            granularity=Granularity.DAY,
             seed=42,
         )
         dg.add_dimension("a", random_choice(["x", "y"]))
@@ -1028,7 +1036,7 @@ class TestExpandParallelWorkers:
             dg = DataGen(
                 start_datetime="2024-01-01",
                 end_datetime="2024-01-03",
-                granularity=Granularity.HOURLY,
+                granularity=Granularity.HOUR,
                 seed=42,
                 expand_dimensions=True,
                 workers=workers,

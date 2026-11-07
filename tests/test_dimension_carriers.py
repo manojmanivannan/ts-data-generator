@@ -12,8 +12,7 @@ import pytest
 
 from ts_data_generator import DataGen
 from ts_data_generator.exceptions import ValidationError
-from ts_data_generator.random import SeedableRNG
-from ts_data_generator.utils.functions import (
+from ts_data_generator.functions import (
     auto_generate_name,
     constant,
     ordered_choice,
@@ -21,6 +20,7 @@ from ts_data_generator.utils.functions import (
     random_float,
     random_int,
 )
+from ts_data_generator.random import SeedableRNG
 
 
 @pytest.fixture
