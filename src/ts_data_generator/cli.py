@@ -10,7 +10,7 @@ from typing import Any
 import click
 from pydantic import BaseModel, Field, field_validator
 
-from ts_data_generator import DataGen
+from ts_data_generator import DataGenerator
 from ts_data_generator.anomalies.base import Anomaly
 from ts_data_generator.exceptions import AggregationError, RegistryError
 from ts_data_generator.registry import Registry
@@ -891,14 +891,14 @@ def generate(
     mets_str = _normalize_to_string(mets)
 
     # dims_str is intentionally excluded: dimensions are optional (a metric-only,
-    # dimensionless dataset is a valid Python-API use case — DataGen.add_dimension()
+    # dimensionless dataset is a valid Python-API use case — DataGenerator.add_dimension()
     # is never required), so an empty --dims/config "dimensions" must not be treated
     # as a missing required argument.
     if not all([start, end, granularity, mets_str, output]):
         click.echo(main.get_command(main, "generate").get_help(click.get_current_context()))
         return
 
-    data_gen = DataGen(
+    data_gen = DataGenerator(
         seed=seed,
         expand_dimensions=expand_dimensions,
         scale_variance=scale_variance,

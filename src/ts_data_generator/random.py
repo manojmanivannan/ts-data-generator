@@ -85,7 +85,7 @@ class SeedableRNG(RNGProtocol):
 class DefaultRNG(RNGProtocol):
     """Unseeded RNG backed by numpy's default_rng() (non-deterministic).
 
-    Used when no seed is provided to DataGen. Satisfies RNGProtocol so all
+    Used when no seed is provided to DataGenerator. Satisfies RNGProtocol so all
     code paths can use the same interface regardless of seeding.
     """
 

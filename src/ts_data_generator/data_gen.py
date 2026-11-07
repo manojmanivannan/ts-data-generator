@@ -180,25 +180,41 @@ class DataGenerator:
         self._baselines: dict[str, pd.DataFrame] = {}
         self._state: PipelineState = PipelineState.CONFIGURED
 
-        has_start = start_datetime is not None and not (
-            isinstance(start_datetime, str) and start_datetime == ""
-        )
-        has_end = end_datetime is not None and not (
-            isinstance(end_datetime, str) and end_datetime == ""
-        )
+        has_start = self._has_datetime(start_datetime)
+        has_end = self._has_datetime(end_datetime)
         if has_start:
             self._coerce_timestamp(start_datetime)
         if has_end:
             self._coerce_timestamp(end_datetime)
         if has_start and has_end:
-            if self._coerce_timestamp(start_datetime) > self._coerce_timestamp(end_datetime):
-                raise ValidationError("start_datetime cannot be after end_datetime.")
+            self._validate_date_order(start_datetime, end_datetime)
 
     def generate(self) -> pd.DataFrame:
         """Run the generation pipeline if pending and return the DataFrame.
 
+        Executes the generation pipeline lazily when configuration changes are
+        pending, the pipeline is still in ``CONFIGURED`` state, or the stored
+        frame is empty; otherwise returns the cached DataFrame without
+        recomputing. Equivalent to reading :attr:`data`.
+
         Returns:
-            The generated, timestamp-indexed DataFrame.
+            A ``pd.DataFrame`` indexed by a ``pd.DatetimeIndex`` over the
+            configured time range and granularity, containing ``epoch`` plus
+            columns for all configured dimensions, metrics (including any
+            ``<metric>_anomaly`` label columns), and multi-items.
+
+        Example:
+            >>> from ts_data_generator import DataGenerator, Granularity, LinearTrend
+            >>> dg = DataGenerator(
+            ...     start_datetime="2024-01-01",
+            ...     end_datetime="2024-01-02",
+            ...     granularity=Granularity.HOUR,
+            ...     seed=42,
+            ... )
+            >>> dg.add_metric("sales", LinearTrend(offset=100.0, slope=0))
+            >>> df = dg.generate()
+            >>> "sales" in df.columns and df.shape[0] > 0
+            True
 
         """
         if (
@@ -216,6 +232,13 @@ class DataGenerator:
         Evaluates the generation pipeline lazily when pending. Assigning a new
         DataFrame overrides the stored data directly and marks the pipeline as
         generated.
+
+        Returns:
+            A ``pd.DataFrame`` indexed by a ``pd.DatetimeIndex`` over the
+            configured time range and granularity, containing ``epoch`` plus
+            columns for all configured dimensions, metrics (including any
+            ``<metric>_anomaly`` label columns), and multi-items.
+
         """
         if self._pending_regeneration:
             self._generate_data()
@@ -246,7 +269,7 @@ class DataGenerator:
         return self._state
 
     def __repr__(self) -> str:
-        lines = ["DataGen("]
+        lines = ["DataGenerator("]
         for d in self._dimensions:
             lines.append(f"    dimension={json.dumps(d.to_json())},")
         for m in self._metrics:
@@ -322,15 +345,16 @@ class DataGenerator:
 
         Returns the granularity's string value (the :class:`Granularity` enum's
         ``.value``). Assigning to this property re-binds the granularity and
-        regenerates the data; pass a :class:`Granularity` member or a pandas-style
-        offset string (``"h"``, ``"D"``). A string that ``Granularity`` cannot
-        parse raises ``ValueError``.
+        marks the data for lazy regeneration on the next :attr:`data` or
+        :meth:`generate` access; pass a :class:`Granularity` member or a
+        pandas-style offset string (``"h"``, ``"D"``). A string that
+        ``Granularity`` cannot parse raises ``ValueError``.
 
         Example:
-            Read and rebind the granularity, regenerating immediately::
+            Read and rebind the granularity, marking the generator for lazy regeneration::
 
-                dg = DataGen(start_datetime="2024-01-01",
-                             end_datetime="2024-01-02", seed=1)
+                dg = DataGenerator(start_datetime="2024-01-01",
+                                   end_datetime="2024-01-02", seed=1)
                 dg.granularity            # "5min"
                 dg.granularity = "h"
                 dg.granularity            # "h"
@@ -358,7 +382,8 @@ class DataGenerator:
         When ``True``, generation emits one row per
         *(timestamp x product of all enumerable dimensions' distinct values)*,
         each combination carrying its own independently regenerated metric
-        series. Setting it triggers a regeneration.
+        series. Setting it marks the data for lazy regeneration on the next
+        :attr:`data` or :meth:`generate` access.
         """
         return self._expand_dimensions
 
@@ -373,7 +398,8 @@ class DataGenerator:
 
         When > 0 and ``expand_dimensions`` is active, each unique combination
         slice is scaled by a deterministic factor sampled from
-        ``LogNormal(0, scale_variance)``. Assigning regenerates the data.
+        ``LogNormal(0, scale_variance)``. Assigning marks the data for lazy
+        regeneration on the next :attr:`data` or :meth:`generate` access.
         Defaults to ``0.0`` (disabled).
         """
         return self._scale_variance
@@ -406,6 +432,11 @@ class DataGenerator:
     # ------------------------------------------------------------------
 
     @staticmethod
+    def _has_datetime(value: str | datetime | pd.Timestamp | None) -> bool:
+        """Return True if *value* is a non-empty datetime specification."""
+        return value is not None and not (isinstance(value, str) and value == "")
+
+    @staticmethod
     def _coerce_timestamp(value: str | datetime | pd.Timestamp) -> pd.Timestamp:
         """Convert an ISO date string, datetime, or Timestamp into a pd.Timestamp."""
         if isinstance(value, pd.Timestamp):
@@ -419,6 +450,16 @@ class DataGenerator:
                 raise ValidationError("Dates must be in ISO format (YYYY-MM-DD).") from exc
         raise ValidationError("Dates must be in ISO format (YYYY-MM-DD).")
 
+    @classmethod
+    def _validate_date_order(
+        cls,
+        start: str | datetime | pd.Timestamp,
+        end: str | datetime | pd.Timestamp,
+    ) -> None:
+        """Raise ValidationError if *start* is after *end*."""
+        if cls._coerce_timestamp(start) > cls._coerce_timestamp(end):
+            raise ValidationError("start_datetime cannot be after end_datetime.")
+
     @property
     def start_datetime(self) -> str | datetime | pd.Timestamp:
         """Start bound of the generated time range.
@@ -431,13 +472,9 @@ class DataGenerator:
 
     @start_datetime.setter
     def start_datetime(self, value: str | datetime | pd.Timestamp) -> None:
-        start_ts = self._coerce_timestamp(value)
-        if self._end_datetime is not None and not (
-            isinstance(self._end_datetime, str) and self._end_datetime == ""
-        ):
-            end_ts = self._coerce_timestamp(self._end_datetime)
-            if start_ts > end_ts:
-                raise ValidationError("start_datetime cannot be after end_datetime.")
+        self._coerce_timestamp(value)
+        if self._has_datetime(self._end_datetime):
+            self._validate_date_order(value, self._end_datetime)
         self._start_datetime = value
         self._request_regeneration()
 
@@ -453,13 +490,9 @@ class DataGenerator:
 
     @end_datetime.setter
     def end_datetime(self, value: str | datetime | pd.Timestamp) -> None:
-        end_ts = self._coerce_timestamp(value)
-        if self._start_datetime is not None and not (
-            isinstance(self._start_datetime, str) and self._start_datetime == ""
-        ):
-            start_ts = self._coerce_timestamp(self._start_datetime)
-            if start_ts > end_ts:
-                raise ValidationError("start_datetime cannot be after end_datetime.")
+        self._coerce_timestamp(value)
+        if self._has_datetime(self._start_datetime):
+            self._validate_date_order(self._start_datetime, value)
         self._end_datetime = value
         self._request_regeneration()
 
@@ -555,6 +588,24 @@ class DataGenerator:
             True
 
         """
+        coerced_fn, weights = self._coerce_dimension_function(name, function, weights)
+        coerced_fn = self._apply_domain(name, coerced_fn, domain)
+
+        dimension = Dimension(name=name, function=coerced_fn, expand=expand, weights=weights)
+
+        if dimension in self._dimensions:
+            raise DimensionError(f"Dimension with name {dimension.name!r} already exists.")
+
+        self._dimensions.append(dimension)
+        self._request_regeneration()
+
+    @staticmethod
+    def _coerce_dimension_function(
+        name: str,
+        function: int | float | str | list[Any] | dict[Any, float] | Generator[Any, None, None],
+        weights: dict[Any, float] | None = None,
+    ) -> tuple[DimensionCarrier | Generator[Any, None, None], dict[Any, float] | None]:
+        """Validate and coerce a dimension function specification into a carrier or generator."""
         if isinstance(function, dict):
             if not function:
                 raise ValidationError("Dimension values dict must not be empty.")
@@ -568,22 +619,14 @@ class DataGenerator:
             )
 
         if isinstance(function, (int, float, str)):
-            function = constant(function)
+            return constant(function), weights
 
         if isinstance(function, list):
             if not function:
                 raise ValidationError("Dimension values list must not be empty.")
-            function = _list_carrier(function)
+            return _list_carrier(function), weights
 
-        function = self._apply_domain(name, function, domain)
-
-        dimension = Dimension(name=name, function=function, expand=expand, weights=weights)
-
-        if dimension in self._dimensions:
-            raise DimensionError(f"Dimension with name {dimension.name!r} already exists.")
-
-        self._dimensions.append(dimension)
-        self._request_regeneration()
+        return function, weights
 
     @staticmethod
     def _apply_domain(
@@ -646,24 +689,10 @@ class DataGenerator:
             return
 
         dimension = self.dimensions[name]
-        if isinstance(function, dict):
-            if not function:
-                raise ValidationError("Dimension values dict must not be empty.")
-            dimension.weights = dict(function)
-            function = list(function.keys())
-
-        if not isinstance(function, (int, str, float, list, Generator)):
-            raise ValidationError("Function must be a generator, int, float, str, list, or dict.")
-
-        if isinstance(function, (int, float, str)):
-            function = constant(function)
-
-        if isinstance(function, list):
-            if not function:
-                raise ValidationError("Dimension values list must not be empty.")
-            function = _list_carrier(function)
-
-        dimension.function = function
+        coerced_fn, coerced_weights = self._coerce_dimension_function(name, function)
+        if coerced_weights is not None:
+            dimension.weights = coerced_weights
+        dimension.function = coerced_fn
         self._request_regeneration()
 
     def remove_dimension(self, name: str) -> None:
@@ -716,17 +745,9 @@ class DataGenerator:
             True
 
         """
-        if isinstance(trends, Trend):
-            trend_list = [trends]
-        else:
-            trend_list = list(trends)
-
-        if len(trend_list) != len(set(trend_list)):
-            raise MetricError("Duplicate trends are present.")
-
         metric = Metric(
             name=name,
-            trends=trend_list,
+            trends=trends,
             aggregation_type=aggregation_type,
             anomalies=anomalies,
         )
@@ -915,19 +936,11 @@ class DataGenerator:
             ValidationError: If dates are missing or start is after end.
 
         """
-        if self._start_datetime is None or (
-            isinstance(self._start_datetime, str) and not self._start_datetime
-        ):
+        if not self._has_datetime(self._start_datetime):
             raise ValidationError("start_datetime must be set.")
-        if self._end_datetime is None or (
-            isinstance(self._end_datetime, str) and not self._end_datetime
-        ):
+        if not self._has_datetime(self._end_datetime):
             raise ValidationError("end_datetime must be set.")
-
-        start = self._coerce_timestamp(self._start_datetime)
-        end = self._coerce_timestamp(self._end_datetime)
-        if start > end:
-            raise ValidationError("start_datetime cannot be after end_datetime.")
+        self._validate_date_order(self._start_datetime, self._end_datetime)
 
     def _generate_data(self) -> pd.DataFrame:
         """Build or rebuild the full generated DataFrame.

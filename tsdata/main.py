@@ -1,7 +1,7 @@
 """FastAPI application for generating synthetic time series data over HTTP.
 
 Provides REST endpoints that expose the ts-data-generator library's
-:class:`DataGen` engine for use via FastAPI Cloud or any ASGI host.
+:class:`DataGenerator` engine for use via FastAPI Cloud or any ASGI host.
 
 Install the cloud extra to get FastAPI dependencies::
 
@@ -28,7 +28,7 @@ from pydantic import BaseModel, Field
 from pydantic import ValidationError as PydanticValidationError
 from pydantic import field_validator
 
-from ts_data_generator import DataGen, __version__
+from ts_data_generator import DataGenerator, __version__
 from ts_data_generator.anomalies.base import Anomaly
 from ts_data_generator.anomalies.drift import ConceptDrift, DriftSegment
 from ts_data_generator.exceptions import (
@@ -299,13 +299,13 @@ async def generic_error_handler(request, exc):  # noqa: ARG001
 
 
 # ---------------------------------------------------------------------------
-# Helper: build a DataGen instance from a GenerateRequest
+# Helper: build a DataGenerator instance from a GenerateRequest
 # ---------------------------------------------------------------------------
 
 _DIM_SEPARATOR = ";"
 
 
-def _add_dimension(dg: DataGen, parsed: DimensionSpec, dim_fn: Any) -> None:
+def _add_dimension(dg: DataGenerator, parsed: DimensionSpec, dim_fn: Any) -> None:
     """Add a dimension, mirroring the CLI's single-arg then expanded-args call dance.
 
     Translates a ``TypeError`` from a bad parameter count into a 400
@@ -334,13 +334,13 @@ def _add_dimension(dg: DataGen, parsed: DimensionSpec, dim_fn: Any) -> None:
             ) from inner_exc
 
 
-def _build_datagen(request: GenerateRequest) -> DataGen:
-    """Construct and configure a :class:`DataGen` from a request body.
+def _build_datagen(request: GenerateRequest) -> DataGenerator:
+    """Construct and configure a :class:`DataGenerator` from a request body.
 
     Mirrors the CLI ``generate`` command logic but raises
     :class:`HTTPException` on validation or registry errors.
     """
-    dg = DataGen(
+    dg = DataGenerator(
         seed=request.seed,
         expand_dimensions=request.expand_dimensions,
         scale_variance=request.scale_variance,
@@ -444,7 +444,7 @@ def _build_datagen(request: GenerateRequest) -> DataGen:
                         detail=f"Invalid parameters for anomaly '{parsed.name}': {exc}",
                     ) from exc
 
-    # --- Add metrics to DataGen ---
+    # --- Add metrics to DataGenerator ---
     for metric_name, data in metrics_data.items():
         try:
             dg.add_metric(

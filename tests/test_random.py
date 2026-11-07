@@ -1,10 +1,10 @@
-"""Tests for SeedableRNG determinism and seed propagation through DataGen."""
+"""Tests for SeedableRNG determinism and seed propagation through DataGenerator."""
 
 import numpy as np
 import pandas as pd
 import pytest
 
-from ts_data_generator import DataGen
+from ts_data_generator import DataGenerator
 from ts_data_generator.random import DefaultRNG, RNGProtocol, SeedableRNG
 from ts_data_generator.schema.models import Granularity
 from ts_data_generator.trends import (
@@ -138,11 +138,11 @@ class TestTrendsWithRNG:
             trend.generate(timestamps)
 
 
-class TestDataGenSeed:
-    """Verify DataGen(seed=...) produces identical DataFrames."""
+class TestDataGeneratorSeed:
+    """Verify DataGenerator(seed=...) produces identical DataFrames."""
 
     def test_seeded_datagen_produces_identical_dataframes(self):
-        dg1 = DataGen(
+        dg1 = DataGenerator(
             start_datetime="2024-01-01",
             end_datetime="2024-01-05",
             granularity=Granularity.HOUR,
@@ -151,7 +151,7 @@ class TestDataGenSeed:
         dg1.add_metric("m1", {SinusoidalTrend(amplitude=5, freq=24, noise_level=0.5)})
         dg1.add_metric("m2", {LinearTrend(offset=10, noise_level=1, slope=20)})
 
-        dg2 = DataGen(
+        dg2 = DataGenerator(
             start_datetime="2024-01-01",
             end_datetime="2024-01-05",
             granularity=Granularity.HOUR,
@@ -163,7 +163,7 @@ class TestDataGenSeed:
         pd.testing.assert_frame_equal(dg1.data, dg2.data)
 
     def test_different_seeds_produce_different_dataframes(self):
-        dg1 = DataGen(
+        dg1 = DataGenerator(
             start_datetime="2024-01-01",
             end_datetime="2024-01-05",
             granularity=Granularity.HOUR,
@@ -171,7 +171,7 @@ class TestDataGenSeed:
         )
         dg1.add_metric("m", {SinusoidalTrend(amplitude=5, freq=24, noise_level=0.5)})
 
-        dg2 = DataGen(
+        dg2 = DataGenerator(
             start_datetime="2024-01-01",
             end_datetime="2024-01-05",
             granularity=Granularity.HOUR,
@@ -183,7 +183,7 @@ class TestDataGenSeed:
             pd.testing.assert_frame_equal(dg1.data, dg2.data)
 
     def test_seeded_datagen_with_stock_and_weekend_trends(self):
-        dg1 = DataGen(
+        dg1 = DataGenerator(
             start_datetime="2024-01-01",
             end_datetime="2024-01-10",
             granularity=Granularity.DAY,
@@ -192,7 +192,7 @@ class TestDataGenSeed:
         dg1.add_metric("stock", {StockTrend(amplitude=15, noise_level=0.5)})
         dg1.add_metric("weekend", {WeekendTrend(weekend_effect=8, noise_level=1)})
 
-        dg2 = DataGen(
+        dg2 = DataGenerator(
             start_datetime="2024-01-01",
             end_datetime="2024-01-10",
             granularity=Granularity.DAY,
@@ -204,7 +204,7 @@ class TestDataGenSeed:
         pd.testing.assert_frame_equal(dg1.data, dg2.data)
 
     def test_no_seed_still_produces_data(self):
-        dg = DataGen(
+        dg = DataGenerator(
             start_datetime="2024-01-01",
             end_datetime="2024-01-02",
             granularity=Granularity.HOUR,

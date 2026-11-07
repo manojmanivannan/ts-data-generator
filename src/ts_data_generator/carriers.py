@@ -17,7 +17,7 @@ parse call site / ``add_dimension`` already holds is carried *on* the dimension
 rather than thrown into an opaque generator and introspected back out.
 
 The ``.domain`` shape is deliberately the 1-tuple case of the tuple-domain
-detector that linked-dimension composition (MultiItems) will depend on.
+detector that linked-dimension composition (MultiItem) will depend on.
 """
 
 from __future__ import annotations

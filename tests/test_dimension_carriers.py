@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import pytest
 
-from ts_data_generator import DataGen
+from ts_data_generator import DataGenerator
 from ts_data_generator.exceptions import ValidationError
 from ts_data_generator.functions import (
     auto_generate_name,
@@ -25,8 +25,8 @@ from ts_data_generator.random import SeedableRNG
 
 @pytest.fixture
 def data_gen():
-    """A minimal hourly DataGen for add_dimension carrier tests."""
-    dg = DataGen()
+    """A minimal hourly DataGenerator for add_dimension carrier tests."""
+    dg = DataGenerator()
     dg.start_datetime = "2022-01-01"
     dg.end_datetime = "2022-01-02"
     dg.granularity = "h"

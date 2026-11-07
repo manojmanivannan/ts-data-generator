@@ -95,6 +95,26 @@ class AggregationType(Enum):
     MIN = "min"
 
 
+def _normalize_trends(
+    trends: Trend | Sequence[Trend] | set[Trend] | None,
+) -> list[Trend]:
+    """Normalize a single Trend, sequence, or set of Trends into a validated list."""
+    if trends is None:
+        return []
+    if isinstance(trends, Trend):
+        return [trends]
+    if isinstance(trends, set) or not isinstance(trends, Sequence):
+        trend_list = sorted(
+            trends,
+            key=lambda t: (type(t).__qualname__, str(vars(t)), repr(t)),
+        )
+    else:
+        trend_list = list(trends)
+    if len(trend_list) != len(set(trend_list)):
+        raise MetricError("Duplicate trends are present.")
+    return trend_list
+
+
 class Metric:
     """A metric combines one or more trends additively to produce a numeric column.
 
@@ -121,15 +141,7 @@ class Metric:
             if name == "default" or name is None
             else name
         )
-        if trends is None:
-            trend_list: list[Trend] = []
-        elif isinstance(trends, Trend):
-            trend_list = [trends]
-        else:
-            trend_list = list(trends)
-        if len(trend_list) != len(set(trend_list)):
-            raise MetricError("Duplicate trends are present.")
-        self._trends: list[Trend] = trend_list
+        self._trends: list[Trend] = _normalize_trends(trends)
         self._aggregation_type = aggregation_type
         self._anomalies: list[Anomaly] = anomalies or []
 

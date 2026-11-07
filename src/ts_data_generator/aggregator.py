@@ -87,7 +87,7 @@ def aggregate_dataframe(
             agg_dict[label_col] = "max"
 
     # Full set of groupable columns: scalar dimension names plus the
-    # component columns of linked dimensions (MultiItems without an
+    # component columns of linked dimensions (MultiItem without an
     # aggregation_type). Multi-items *with* an aggregation_type are linked
     # metrics and join agg_dict instead.
     groupable: list[str] = list(dimensions.keys())

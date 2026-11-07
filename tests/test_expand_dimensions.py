@@ -1,6 +1,6 @@
 """Tests for the ``expand_dimensions`` core engine mechanics (#54).
 
-``DataGen(..., expand_dimensions=True)`` turns the output from one row per
+``DataGenerator(..., expand_dimensions=True)`` turns the output from one row per
 timestamp into one row per *(timestamp x Cartesian product of all enumerable
 dimensions' distinct values)*, each combination carrying its own independently
 regenerated, reproducible metric series. The domain comes from the carriers'
@@ -18,7 +18,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from ts_data_generator import DataGen
+from ts_data_generator import DataGenerator
 from ts_data_generator.anomalies.point import PointAnomaly
 from ts_data_generator.exceptions import ExpandError, ValidationError
 from ts_data_generator.expand import combination_seed
@@ -38,9 +38,9 @@ from ts_data_generator.trends import LinearTrend
 # ---------------------------------------------------------------------------
 
 
-def _expand_dg(seed: int | None = 42) -> DataGen:
+def _expand_dg(seed: int | None = 42) -> DataGenerator:
     """Two enumerable dimensions (2 x 2 = 4 combos) + one metric, expand on."""
-    dg = DataGen(
+    dg = DataGenerator(
         start_datetime="2024-01-01",
         end_datetime="2024-01-03",
         granularity=Granularity.DAY,
@@ -125,7 +125,7 @@ class TestExpandRowShape:
             assert group["env"].nunique() == 1
 
     def test_constant_list_dimension_expands(self) -> None:
-        dg = DataGen(
+        dg = DataGenerator(
             start_datetime="2024-01-01",
             end_datetime="2024-01-03",
             granularity=Granularity.DAY,
@@ -154,8 +154,8 @@ class TestExpandDeterminism:
         assert not np.array_equal(a, b)
 
     def test_dimension_add_order_insensitive(self) -> None:
-        def build(order: str) -> DataGen:
-            dg = DataGen(
+        def build(order: str) -> DataGenerator:
+            dg = DataGenerator(
                 start_datetime="2024-01-01",
                 end_datetime="2024-01-03",
                 granularity=Granularity.DAY,
@@ -201,7 +201,7 @@ class TestExpandOrdering:
 
 class TestExpandNonEnumerable:
     def test_random_int_raises(self) -> None:
-        dg = DataGen(
+        dg = DataGenerator(
             start_datetime="2024-01-01",
             end_datetime="2024-01-03",
             granularity=Granularity.DAY,
@@ -213,7 +213,7 @@ class TestExpandNonEnumerable:
             _ = dg.data
 
     def test_random_float_raises(self) -> None:
-        dg = DataGen(
+        dg = DataGenerator(
             start_datetime="2024-01-01",
             end_datetime="2024-01-03",
             granularity=Granularity.DAY,
@@ -227,7 +227,7 @@ class TestExpandNonEnumerable:
     def test_auto_generate_name_raises(self) -> None:
         from ts_data_generator.functions import auto_generate_name
 
-        dg = DataGen(
+        dg = DataGenerator(
             start_datetime="2024-01-01",
             end_datetime="2024-01-03",
             granularity=Granularity.DAY,
@@ -239,7 +239,7 @@ class TestExpandNonEnumerable:
             _ = dg.data
 
     def test_opaque_generator_without_domain_raises(self) -> None:
-        dg = DataGen(
+        dg = DataGenerator(
             start_datetime="2024-01-01",
             end_datetime="2024-01-03",
             granularity=Granularity.DAY,
@@ -251,7 +251,7 @@ class TestExpandNonEnumerable:
             _ = dg.data
 
     def test_error_message_names_reason(self) -> None:
-        dg = DataGen(
+        dg = DataGenerator(
             start_datetime="2024-01-01",
             end_datetime="2024-01-03",
             granularity=Granularity.DAY,
@@ -264,7 +264,7 @@ class TestExpandNonEnumerable:
 
     def test_non_enumerable_ok_when_flag_off(self) -> None:
         # Same non-enumerable dimension generates normally without the flag.
-        dg = DataGen(
+        dg = DataGenerator(
             start_datetime="2024-01-01",
             end_datetime="2024-01-03",
             granularity=Granularity.DAY,
@@ -278,13 +278,13 @@ class TestExpandNonEnumerable:
 
 
 # ---------------------------------------------------------------------------
-# Default-seed behaviour: unseeded DataGen + flag on
+# Default-seed behaviour: unseeded DataGenerator + flag on
 # ---------------------------------------------------------------------------
 
 
 class TestExpandDefaultSeed:
     def test_unseeded_expand_runs(self) -> None:
-        dg = DataGen(
+        dg = DataGenerator(
             start_datetime="2024-01-01",
             end_datetime="2024-01-03",
             granularity=Granularity.DAY,
@@ -296,7 +296,7 @@ class TestExpandDefaultSeed:
         assert len(dg.data) == 6
 
     def test_unseeded_filter_yields_intact_series(self) -> None:
-        dg = DataGen(
+        dg = DataGenerator(
             start_datetime="2024-01-01",
             end_datetime="2024-01-03",
             granularity=Granularity.DAY,
@@ -310,7 +310,7 @@ class TestExpandDefaultSeed:
 
     def test_unseeded_nondeterministic_across_runs(self) -> None:
         def build() -> np.ndarray:
-            dg = DataGen(
+            dg = DataGenerator(
                 start_datetime="2024-01-01",
                 end_datetime="2024-01-03",
                 granularity=Granularity.DAY,
@@ -331,7 +331,7 @@ class TestExpandDefaultSeed:
 
 class TestExpandAggregationRegression:
     def test_aggregation_per_combination(self) -> None:
-        dg = DataGen(
+        dg = DataGenerator(
             start_datetime="2024-01-01",
             end_datetime="2024-01-07",
             granularity=Granularity.DAY,
@@ -359,7 +359,7 @@ class TestExpandAggregationRegression:
         )
 
     def test_anomaly_label_or_rule_per_series_after_aggregation(self) -> None:
-        dg = DataGen(
+        dg = DataGenerator(
             start_datetime="2024-01-01",
             end_datetime="2024-01-07",
             granularity=Granularity.DAY,
@@ -392,7 +392,7 @@ class TestExpandAggregationRegression:
 
 class TestExpandAnomalyLabelsPerSeries:
     def test_label_column_present_per_series(self) -> None:
-        dg = DataGen(
+        dg = DataGenerator(
             start_datetime="2024-01-01",
             end_datetime="2024-01-10",
             granularity=Granularity.DAY,
@@ -414,7 +414,7 @@ class TestExpandAnomalyLabelsPerSeries:
             assert len(group["cpu_anomaly"]) == 10
 
     def test_label_true_where_signal_differs_from_baseline_per_series(self) -> None:
-        dg = DataGen(
+        dg = DataGenerator(
             start_datetime="2024-01-01",
             end_datetime="2024-01-10",
             granularity=Granularity.DAY,
@@ -434,7 +434,7 @@ class TestExpandAnomalyLabelsPerSeries:
 
 
 # ---------------------------------------------------------------------------
-# MultiItems composition (#58, decision #50): linked metrics + linked dimensions
+# MultiItem composition (#58, decision #50): linked metrics + linked dimensions
 # ---------------------------------------------------------------------------
 
 
@@ -442,7 +442,7 @@ class TestExpandLinkedMetrics:
     """Linked metrics (aggregation_type set) regenerate once per combination."""
 
     def test_linked_metrics_regenerate_per_combination(self) -> None:
-        dg = DataGen(
+        dg = DataGenerator(
             start_datetime="2024-01-01",
             end_datetime="2024-01-03",
             granularity=Granularity.DAY,
@@ -479,7 +479,7 @@ class TestExpandLinkedMetrics:
         assert not np.array_equal(us_m1, eu_m1)
 
     def test_linked_metrics_with_regular_metrics_and_dimensions(self) -> None:
-        dg = DataGen(
+        dg = DataGenerator(
             start_datetime="2024-01-01",
             end_datetime="2024-01-03",
             granularity=Granularity.DAY,
@@ -513,7 +513,7 @@ class TestExpandLinkedDimensions:
     """Linked dimensions (aggregation_type=None) expand over distinct-tuple domain."""
 
     def test_linked_dim_expands_over_distinct_tuple_domain(self) -> None:
-        dg = DataGen(
+        dg = DataGenerator(
             start_datetime="2024-01-01",
             end_datetime="2024-01-03",
             granularity=Granularity.DAY,
@@ -542,7 +542,7 @@ class TestExpandLinkedDimensions:
             assert group.index.is_monotonic_increasing
 
     def test_multiple_linked_dimensions_cross_independently(self) -> None:
-        dg = DataGen(
+        dg = DataGenerator(
             start_datetime="2024-01-01",
             end_datetime="2024-01-02",
             granularity=Granularity.DAY,
@@ -571,7 +571,7 @@ class TestExpandLinkedDimensions:
         assert combos == 8
 
     def test_filtering_by_linked_dim_yields_complete_series(self) -> None:
-        dg = DataGen(
+        dg = DataGenerator(
             start_datetime="2024-01-01",
             end_datetime="2024-01-05",
             granularity=Granularity.DAY,
@@ -595,7 +595,7 @@ class TestExpandLinkedDimensions:
             assert list(group["model"]) == ["Corolla"] * 5
 
     def test_linked_dim_static_list_of_lists(self) -> None:
-        dg = DataGen(
+        dg = DataGenerator(
             start_datetime="2024-01-01",
             end_datetime="2024-01-02",
             granularity=Granularity.DAY,
@@ -608,7 +608,7 @@ class TestExpandLinkedDimensions:
         assert len(df) == 4  # 2 timestamps x 2 tuples
 
     def test_linked_dim_with_explicit_domain_escape_hatch(self) -> None:
-        dg = DataGen(
+        dg = DataGenerator(
             start_datetime="2024-01-01",
             end_datetime="2024-01-02",
             granularity=Granularity.DAY,
@@ -648,7 +648,7 @@ class TestExpandCompoundKeySeedAndOrdering:
         assert seed1 != seed3
 
     def test_compound_key_ordering_slot_and_declared_component_order(self) -> None:
-        dg = DataGen(
+        dg = DataGenerator(
             start_datetime="2024-01-01",
             end_datetime="2024-01-02",
             granularity=Granularity.DAY,
@@ -671,7 +671,7 @@ class TestExpandCompoundKeySeedAndOrdering:
 
     def test_order_insensitivity_to_add_order(self) -> None:
         # dg1: add dimension first, then multi-items
-        dg1 = DataGen(
+        dg1 = DataGenerator(
             start_datetime="2024-01-01",
             end_datetime="2024-01-03",
             granularity=Granularity.DAY,
@@ -683,7 +683,7 @@ class TestExpandCompoundKeySeedAndOrdering:
         dg1.add_metric("sales", {LinearTrend(offset=10, noise_level=0)})
 
         # dg2: add multi-items first, then dimension
-        dg2 = DataGen(
+        dg2 = DataGenerator(
             start_datetime="2024-01-01",
             end_datetime="2024-01-03",
             granularity=Granularity.DAY,
@@ -702,7 +702,7 @@ class TestExpandLinkedDimensionsErrorHandling:
     """Enumerable / error rule applies to tuple domains."""
 
     def test_opaque_generator_without_domain_raises_expand_error(self) -> None:
-        dg = DataGen(
+        dg = DataGenerator(
             start_datetime="2024-01-01",
             end_datetime="2024-01-02",
             granularity=Granularity.DAY,
@@ -719,7 +719,7 @@ class TestExpandLinkedDimensionsErrorHandling:
             _ = dg.data
 
     def test_non_enumerable_carrier_raises_expand_error(self) -> None:
-        dg = DataGen(
+        dg = DataGenerator(
             start_datetime="2024-01-01",
             end_datetime="2024-01-02",
             granularity=Granularity.DAY,
@@ -731,13 +731,13 @@ class TestExpandLinkedDimensionsErrorHandling:
             _ = dg.data
 
     def test_domain_supplied_to_carrier_raises_validation_error(self) -> None:
-        dg = DataGen()
+        dg = DataGenerator()
         carrier = constant([(1, 2)])
         with pytest.raises(ValidationError, match="domain= is only for opaque generators"):
             dg.add_multi_items(["a", "b"], carrier, domain=[(1, 2)])
 
     def test_expand_false_on_non_enumerable_linked_dim(self) -> None:
-        dg = DataGen(
+        dg = DataGenerator(
             start_datetime="2024-01-01",
             end_datetime="2024-01-03",
             granularity=Granularity.DAY,
@@ -761,11 +761,11 @@ class TestExpandLinkedDimensionsErrorHandling:
         assert "c2" in df.columns
 
 
-class TestExpandMultiItemsAggregationAndAnomalies:
-    """Aggregation and anomaly labels hold per series across MultiItems composition."""
+class TestExpandMultiItemAggregationAndAnomalies:
+    """Aggregation and anomaly labels hold per series across MultiItem composition."""
 
     def test_aggregation_with_linked_dims_and_linked_metrics(self) -> None:
-        dg = DataGen(
+        dg = DataGenerator(
             start_datetime="2024-01-01 00:00:00",
             end_datetime="2024-01-01 03:00:00",
             granularity=Granularity.HOUR,
@@ -810,7 +810,7 @@ class TestExpandMultiItemsAggregationAndAnomalies:
         assert (agg["m2"] == 10.0).all()
 
     def test_anomaly_labels_with_multi_items(self) -> None:
-        dg = DataGen(
+        dg = DataGenerator(
             start_datetime="2024-01-01",
             end_datetime="2024-01-05",
             granularity=Granularity.DAY,
@@ -845,7 +845,7 @@ class TestExpandMultiItemsAggregationAndAnomalies:
 
 class TestExpandDimensionsProperty:
     def test_default_off(self) -> None:
-        dg = DataGen(
+        dg = DataGenerator(
             start_datetime="2024-01-01",
             end_datetime="2024-01-03",
             granularity=Granularity.DAY,
@@ -853,7 +853,7 @@ class TestExpandDimensionsProperty:
         assert dg.expand_dimensions is False
 
     def test_setter_reflected_in_output(self) -> None:
-        dg = DataGen(
+        dg = DataGenerator(
             start_datetime="2024-01-01",
             end_datetime="2024-01-03",
             granularity=Granularity.DAY,
@@ -896,7 +896,7 @@ class TestPerDimensionExpand:
 
     def test_expand_none_inherits_global_on(self) -> None:
         # expand=None (default) + global on -> expanding (unchanged #54 behavior).
-        dg = DataGen(
+        dg = DataGenerator(
             start_datetime="2024-01-01",
             end_datetime="2024-01-03",
             granularity=Granularity.DAY,
@@ -909,7 +909,7 @@ class TestPerDimensionExpand:
 
     def test_expand_true_forces_expansion_when_global_off(self) -> None:
         # expand=True overrides a False global flag -> forces expansion.
-        dg = DataGen(
+        dg = DataGenerator(
             start_datetime="2024-01-01",
             end_datetime="2024-01-03",
             granularity=Granularity.DAY,
@@ -923,7 +923,7 @@ class TestPerDimensionExpand:
     def test_expand_false_on_enumerable_opts_out(self) -> None:
         # expand=False on an enumerable dim opts it out of the product; it becomes
         # a within-series field instead of a broadcast combo key.
-        dg = DataGen(
+        dg = DataGenerator(
             start_datetime="2024-01-01",
             end_datetime="2024-01-03",
             granularity=Granularity.DAY,
@@ -944,7 +944,7 @@ class TestPerDimensionExpand:
     def test_expand_false_escape_hatch_on_non_enumerable(self) -> None:
         # expand=False on a non-enumerable dim excludes it from the product and
         # does NOT error, even with the global flag on (#57 sharpens spec #5).
-        dg = DataGen(
+        dg = DataGenerator(
             start_datetime="2024-01-01",
             end_datetime="2024-01-03",
             granularity=Granularity.DAY,
@@ -962,7 +962,7 @@ class TestPerDimensionExpand:
     def test_error_fires_only_for_actually_expanding_non_enumerable(self) -> None:
         # A non-enumerable dim that inherits expansion (expand=None, global on)
         # IS actually expanding -> raises. The escape hatch above is what avoids it.
-        dg = DataGen(
+        dg = DataGenerator(
             start_datetime="2024-01-01",
             end_datetime="2024-01-03",
             granularity=Granularity.DAY,
@@ -977,7 +977,7 @@ class TestPerDimensionExpand:
         # A non-expanding dimension regenerates one-value-per-timestamp within each
         # series and varies independently across combos (a categorical within-series
         # field, not a broadcast) — Shape 1 in the #52 decision.
-        dg = DataGen(
+        dg = DataGenerator(
             start_datetime="2024-01-01",
             end_datetime="2024-01-03",
             granularity=Granularity.DAY,
@@ -1004,7 +1004,7 @@ class TestPerDimensionExpand:
 
     def test_all_dims_opt_out_falls_back_to_one_row_per_timestamp(self) -> None:
         # Global on but every dim expand=False -> nothing expands -> normal path.
-        dg = DataGen(
+        dg = DataGenerator(
             start_datetime="2024-01-01",
             end_datetime="2024-01-03",
             granularity=Granularity.DAY,
@@ -1016,7 +1016,7 @@ class TestPerDimensionExpand:
         assert len(dg.data) == 3  # one row per timestamp, no expansion
 
     def test_dimension_exposes_expand_attribute(self) -> None:
-        dg = DataGen(
+        dg = DataGenerator(
             start_datetime="2024-01-01",
             end_datetime="2024-01-03",
             granularity=Granularity.DAY,
@@ -1032,8 +1032,8 @@ class TestPerDimensionExpand:
 
 class TestExpandParallelWorkers:
     def test_workers_equivalence_sequential_vs_parallel(self) -> None:
-        def make_dg(workers: int | None) -> DataGen:
-            dg = DataGen(
+        def make_dg(workers: int | None) -> DataGenerator:
+            dg = DataGenerator(
                 start_datetime="2024-01-01",
                 end_datetime="2024-01-03",
                 granularity=Granularity.HOUR,
@@ -1054,7 +1054,7 @@ class TestExpandParallelWorkers:
         pd.testing.assert_frame_equal(df_seq, df_auto)
 
     def test_workers_property_getter_setter(self) -> None:
-        dg = DataGen(workers=4)
+        dg = DataGenerator(workers=4)
         assert dg.workers == 4
         dg.workers = 8
         assert dg.workers == 8

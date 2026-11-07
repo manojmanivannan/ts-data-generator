@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from ts_data_generator import DataGen
+from ts_data_generator import DataGenerator
 from ts_data_generator.anomalies.base import Anomaly
 from ts_data_generator.anomalies.drift import ConceptDrift, DriftSegment
 from ts_data_generator.anomalies.missing import MissingData
@@ -181,9 +181,9 @@ class TestMetricsWithAnomalies:
         assert np.mean(values) > 10  # anomalies push mean above base
 
 
-class TestDataGenAddMetricWithAnomalies:
+class TestDataGeneratorAddMetricWithAnomalies:
     def test_add_metric_passes_anomalies_through(self):
-        dg = DataGen(
+        dg = DataGenerator(
             start_datetime="2024-01-01",
             end_datetime="2024-01-03",
             granularity=Granularity.DAY,
@@ -197,7 +197,7 @@ class TestDataGenAddMetricWithAnomalies:
         assert isinstance(metric.anomalies[0], PointAnomaly)
 
     def test_add_metric_anomalies_default_to_empty(self):
-        dg = DataGen(
+        dg = DataGenerator(
             start_datetime="2024-01-01",
             end_datetime="2024-01-03",
             granularity=Granularity.DAY,
@@ -207,7 +207,7 @@ class TestDataGenAddMetricWithAnomalies:
         assert dg.metrics["m"].anomalies == []
 
     def test_end_to_end_anomalies_in_dataframe(self):
-        dg = DataGen(
+        dg = DataGenerator(
             start_datetime="2024-01-01",
             end_datetime="2024-01-03",
             granularity=Granularity.DAY,
@@ -1205,9 +1205,9 @@ class TestStackedAnomalyLabels:
         assert int(label.sum()) >= int(nan_mask.sum())
 
 
-class TestDataGenAnomalyLabelColumn:
+class TestDataGeneratorAnomalyLabelColumn:
     def test_label_column_present_only_for_anomalous_metrics(self):
-        dg = DataGen(
+        dg = DataGenerator(
             start_datetime="2024-01-01",
             end_datetime="2024-01-03",
             granularity=Granularity.HOUR,
@@ -1224,7 +1224,7 @@ class TestDataGenAnomalyLabelColumn:
         assert "clean_anomaly" not in dg.data.columns
 
     def test_label_column_is_bool_dtype(self):
-        dg = DataGen(
+        dg = DataGenerator(
             start_datetime="2024-01-01",
             end_datetime="2024-01-03",
             granularity=Granularity.HOUR,
@@ -1238,7 +1238,7 @@ class TestDataGenAnomalyLabelColumn:
         assert dg.data["cpu_anomaly"].dtype == bool
 
     def test_label_column_positioned_right_after_metric(self):
-        dg = DataGen(
+        dg = DataGenerator(
             start_datetime="2024-01-01",
             end_datetime="2024-01-03",
             granularity=Granularity.HOUR,
@@ -1256,7 +1256,7 @@ class TestDataGenAnomalyLabelColumn:
 
     def test_same_seed_produces_identical_label_columns(self):
         def build():
-            dg = DataGen(
+            dg = DataGenerator(
                 start_datetime="2024-01-01",
                 end_datetime="2024-01-02",
                 granularity=Granularity.HOUR,
@@ -1274,7 +1274,7 @@ class TestDataGenAnomalyLabelColumn:
 
 class TestAnomalyLabelAggregation:
     def test_label_survives_aggregation_as_or(self):
-        dg = DataGen(
+        dg = DataGenerator(
             start_datetime="2024-01-01",
             end_datetime="2024-01-03",
             granularity=Granularity.HOUR,
@@ -1305,7 +1305,7 @@ class TestAnomalyLabelAggregation:
 
 class TestAnomalyLabelNormalization:
     def test_normalizer_skips_bool_label_column(self):
-        dg = DataGen(
+        dg = DataGenerator(
             start_datetime="2024-01-01",
             end_datetime="2024-01-03",
             granularity=Granularity.HOUR,

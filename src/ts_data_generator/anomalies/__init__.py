@@ -5,7 +5,7 @@ Defines the abstract :class:`Anomaly` base and the built-in injectors:
 (gradual distribution-level regime shifts via :class:`DriftSegment`),
 :class:`MissingData` (NaN gaps), and :class:`PeriodicBurstAnomaly` (recurring,
 cross-metric-correlated bursts driven by a shared :class:`EventSchedule`).
-Pass instances to :meth:`~ts_data_generator.DataGen.add_metric` through
+Pass instances to :meth:`~ts_data_generator.DataGenerator.add_metric` through
 ``anomalies=`` to apply them after trend composition.
 """
 

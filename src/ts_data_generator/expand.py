@@ -398,7 +398,7 @@ def build_expanded_dataframe(
         ]
 
     # Ordering: one alphabetical slot per compound name; component columns sort
-    # in declared MultiItems.names order.
+    # in declared MultiItem.names order.
     sort_cols: list[str] = ["_ts"]
     for key in all_dim_keys:
         if key in dimensions:

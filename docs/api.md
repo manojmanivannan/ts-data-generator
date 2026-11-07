@@ -27,7 +27,6 @@ dg = DataGenerator(seed=42)
 
 ```python
 DataGenerator(
-    *,
     dimensions: list[Dimension] | None = None,
     metrics: list[Metric] | None = None,
     multi_items: list[MultiItem] | None = None,
@@ -36,7 +35,7 @@ DataGenerator(
     granularity: Granularity | str = Granularity.FIVE_MINUTE,
     seed: int | None = None,
     expand_dimensions: bool = False,
-    scale_variance: float | None = None,
+    scale_variance: float = 0.0,
     workers: int | None = None,
 ) -> None
 ```
@@ -74,11 +73,11 @@ Every `DataGenerator` method lives in [`data_gen.py`](https://github.com/manojma
 | [`to_granularity`](https://github.com/manojmanivannan/ts-data-generator/blob/main/src/ts_data_generator/data_gen.py) | Set the data granularity. |
 | [`add_dimension`](https://github.com/manojmanivannan/ts-data-generator/blob/main/src/ts_data_generator/data_gen.py) | Add a new dimension column. |
 | [`update_dimension`](https://github.com/manojmanivannan/ts-data-generator/blob/main/src/ts_data_generator/data_gen.py) | Update an existing dimension's generator function. |
-| [`remove_dimension`](https://github.com/manojmanivannan/ts-data-generator/blob/main/src/ts_data_generator/data_gen.py) | Remove a dimension and its column from the data. |
+| [`remove_dimension`](https://github.com/manojmanivannan/ts-data-generator/blob/main/src/ts_data_generator/data_gen.py) | Remove a dimension and mark data for lazy regeneration. |
 | [`add_metric`](https://github.com/manojmanivannan/ts-data-generator/blob/main/src/ts_data_generator/data_gen.py) | Add a new metric column composed of one or more trends (`Trend | Sequence[Trend] | set[Trend]`). |
-| [`remove_metric`](https://github.com/manojmanivannan/ts-data-generator/blob/main/src/ts_data_generator/data_gen.py) | Remove a metric and its column from the data. |
+| [`remove_metric`](https://github.com/manojmanivannan/ts-data-generator/blob/main/src/ts_data_generator/data_gen.py) | Remove a metric and mark data for lazy regeneration. |
 | [`add_multi_items`](https://github.com/manojmanivannan/ts-data-generator/blob/main/src/ts_data_generator/data_gen.py) | Add a group of linked columns generated from a single function. |
-| [`remove_multi_item`](https://github.com/manojmanivannan/ts-data-generator/blob/main/src/ts_data_generator/data_gen.py) | Remove a multi-item group and its columns. |
+| [`remove_multi_item`](https://github.com/manojmanivannan/ts-data-generator/blob/main/src/ts_data_generator/data_gen.py) | Remove a multi-item group and mark data for lazy regeneration. |
 
 ### Retrieve / transform / visualize
 

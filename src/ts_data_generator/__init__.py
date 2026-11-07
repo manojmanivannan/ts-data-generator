@@ -1,7 +1,18 @@
 """ts-data-generator — Synthetic time series data generation library.
 
 Generate realistic time series datasets with configurable dimensions,
-metrics, and trends. Provides both a Python API (:class:`DataGenerator`)
+metrics, trends, and anomalies. Re-exports the primary orchestrator
+:class:`DataGenerator` (and its backwards-compatible alias :class:`DataGen`),
+schema models (:class:`Granularity`, :class:`AggregationType`, :class:`Metric`,
+:class:`Dimension`, :class:`MultiItem`), trend classes (:class:`Trend`,
+:class:`LinearTrend`, :class:`SinusoidalTrend`, :class:`MarkovTrend`,
+:class:`ARNoiseTrend`, :class:`StockTrend`, :class:`WeekendTrend`,
+:class:`HolidayTrend`), dimension carrier functions (:func:`random_choice`,
+:func:`ordered_choice`, :func:`constant`, :func:`random_int`,
+:func:`random_float`, :func:`auto_generate_name`), and anomaly injectors
+(:class:`Anomaly`, :class:`PointAnomaly`, :class:`ConceptDrift`,
+:class:`DriftSegment`, :class:`MissingData`, :class:`PeriodicBurstAnomaly`,
+:class:`EventSchedule`). Provides both a Python API (:class:`DataGenerator`)
 and a CLI (``tsdata``).
 
 Quickstart::

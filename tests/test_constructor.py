@@ -1,22 +1,22 @@
 """
-Tests for the DataGen class
+Tests for the DataGenerator class
 """
 import random
 import pytest
 import pandas as pd
-from ts_data_generator import DataGen
+from ts_data_generator import DataGenerator
 from ts_data_generator.exceptions import DimensionError
 from ts_data_generator.functions import random_choice, random_int
 from ts_data_generator.trends import SinusoidalTrend
 
 
-class TestDataGenInitialization:
+class TestDataGeneratorInitialization:
     # Setup method to initialize the Calculator instance
     
     @pytest.fixture
     def data_gen_instance(self):
-        """Fixture to create a DataGen instance"""
-        data_gen = DataGen()
+        """Fixture to create a DataGenerator instance"""
+        data_gen = DataGenerator()
         data_gen.start_datetime = "2022-01-01"
         data_gen.end_datetime = "2022-12-31"
         data_gen.granularity = "5min"
@@ -30,7 +30,7 @@ class TestDataGenInitialization:
         return data_gen
 
     def test_setting_dates(self, data_gen_instance):
-        """Test initialization of DataGen"""
+        """Test initialization of DataGenerator"""
         assert data_gen_instance.start_datetime == "2022-01-01"
         assert data_gen_instance.end_datetime == "2022-12-31"
         

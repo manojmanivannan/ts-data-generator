@@ -1,4 +1,4 @@
-"""Tests for Dimensions, MultiItems, and Metrics model classes."""
+"""Tests for Dimension, MultiItem, and Metric model classes."""
 
 from __future__ import annotations
 
@@ -19,11 +19,11 @@ def _timestamps(n: int = 10) -> pd.DatetimeIndex:
     return pd.date_range("2024-01-01", periods=n, freq="h")
 
 
-# ── Dimensions ──────────────────────────────────────────────────────────
+# ── Dimension ───────────────────────────────────────────────────────────
 
 
-class TestDimensionsInit:
-    """Tests for Dimensions.__init__."""
+class TestDimensionInit:
+    """Tests for Dimension.__init__."""
 
     def test_accepts_generator(self) -> None:
         d = Dimension(name="color", function=random_choice(["red", "blue"]))
@@ -38,8 +38,8 @@ class TestDimensionsInit:
         assert d.data is None
 
 
-class TestDimensionsGenerate:
-    """Tests for Dimensions.generate()."""
+class TestDimensionGenerate:
+    """Tests for Dimension.generate()."""
 
     def test_returns_dataframe(self) -> None:
         d = Dimension(name="protocol", function=random_choice(["TCP", "UDP"]))
@@ -87,8 +87,8 @@ class TestDimensionsGenerate:
         assert len(result) == 5
 
 
-class TestDimensionsFunctionSetter:
-    """Tests for Dimensions.function setter."""
+class TestDimensionFunctionSetter:
+    """Tests for Dimension.function setter."""
 
     def test_valid_types_accepted(self) -> None:
         d = Dimension(name="x", function=random_choice(["a", "b"]))
@@ -113,8 +113,8 @@ class TestDimensionsFunctionSetter:
             d.function = [1, 2, 3]
 
 
-class TestDimensionsExpandSetter:
-    """Tests for Dimensions.expand setter."""
+class TestDimensionExpandSetter:
+    """Tests for Dimension.expand setter."""
 
     def test_assignment_updates_override(self) -> None:
         d = Dimension(name="region", function=random_choice(["US", "EU"]))
@@ -124,8 +124,8 @@ class TestDimensionsExpandSetter:
         assert d.expand is True
 
 
-class TestMultiItemsExpandSetter:
-    """Tests for MultiItems.expand setter."""
+class TestMultiItemExpandSetter:
+    """Tests for MultiItem.expand setter."""
 
     def test_assignment_updates_override(self) -> None:
         def gen():
@@ -139,8 +139,8 @@ class TestMultiItemsExpandSetter:
         assert mi.expand is True
 
 
-class TestDimensionsEquality:
-    """Tests for Dimensions.__eq__ and __hash__."""
+class TestDimensionEquality:
+    """Tests for Dimension.__eq__ and __hash__."""
 
     def test_equal_by_name(self) -> None:
         d1 = Dimension(name="store", function=random_choice(["A", "B"]))
@@ -173,8 +173,8 @@ class TestDimensionsEquality:
         assert hash(d1) == hash(d2)
 
 
-class TestDimensionsToJson:
-    """Tests for Dimensions.to_json()."""
+class TestDimensionToJson:
+    """Tests for Dimension.to_json()."""
 
     def test_returns_dict(self) -> None:
         d = Dimension(name="port", function=random_int(1, 100))
@@ -203,11 +203,11 @@ class TestDimensionsToJson:
         assert "EU" in text
 
 
-# ── MultiItems ──────────────────────────────────────────────────────────
+# ── MultiItem ───────────────────────────────────────────────────────────
 
 
-class TestMultiItemsInit:
-    """Tests for MultiItems.__init__."""
+class TestMultiItemInit:
+    """Tests for MultiItem.__init__."""
 
     def test_accepts_generator(self) -> None:
         def gen():
@@ -274,8 +274,8 @@ class TestMultiItemsInit:
         assert mi_false.expand is False
 
 
-class TestMultiItemsGenerate:
-    """Tests for MultiItems.generate()."""
+class TestMultiItemGenerate:
+    """Tests for MultiItem.generate()."""
 
     def test_returns_dataframe(self) -> None:
         def gen():
@@ -331,8 +331,8 @@ class TestMultiItemsGenerate:
         assert len(result) == 5
 
 
-class TestMultiItemsFunctionSetter:
-    """Tests for MultiItems.function setter."""
+class TestMultiItemFunctionSetter:
+    """Tests for MultiItem.function setter."""
 
     def test_valid_types_accepted(self) -> None:
         def gen():
@@ -358,8 +358,8 @@ class TestMultiItemsFunctionSetter:
             mi.function = [1, 2, 3]
 
 
-class TestMultiItemsEquality:
-    """Tests for MultiItems.__eq__ and __hash__."""
+class TestMultiItemEquality:
+    """Tests for MultiItem.__eq__ and __hash__."""
 
     def test_equal_by_names(self) -> None:
         def gen():
@@ -411,8 +411,8 @@ class TestMultiItemsEquality:
         assert hash(m1) == hash(m2)
 
 
-class TestMultiItemsToJson:
-    """Tests for MultiItems.to_json()."""
+class TestMultiItemToJson:
+    """Tests for MultiItem.to_json()."""
 
     def test_returns_dict(self) -> None:
         def gen():
@@ -426,11 +426,11 @@ class TestMultiItemsToJson:
         assert "function" in js
 
 
-# ── Metrics ──────────────────────────────────────────────────────────────
+# ── Metric ───────────────────────────────────────────────────────────────
 
 
-class TestMetricsGenerateReturnsMetricResult:
-    """Phase 2A: Metrics.generate() returns MetricResult with .signal and .baseline."""
+class TestMetricGenerateReturnsMetricResult:
+    """Phase 2A: Metric.generate() returns MetricResult with .signal and .baseline."""
 
     def test_generate_returns_metric_result(self) -> None:
         from ts_data_generator.schema.models import MetricResult
@@ -500,6 +500,21 @@ class TestMetricsGenerateReturnsMetricResult:
 
         with pytest.raises(MetricError, match="Duplicate trends are present"):
             Metric(name="m_dup", trends=[t1, t1])
+
+    def test_metric_set_of_trends_is_sorted_deterministically(self) -> None:
+        from ts_data_generator.trends import SinusoidalTrend, WeekendTrend
+
+        t_sin = SinusoidalTrend(amplitude=5)
+        t_lin = LinearTrend(offset=10)
+        t_wknd = WeekendTrend(weekend_effect=20)
+
+        m = Metric(name="m_set_order", trends={t_wknd, t_sin, t_lin})
+        # Sorted by class qualname: LinearTrend < SinusoidalTrend < WeekendTrend
+        assert m.trends == [t_lin, t_sin, t_wknd]
+
+        # Sequence preserves caller order even when not alphabetical by class name
+        m_seq = Metric(name="m_seq_order", trends=[t_wknd, t_sin, t_lin])
+        assert m_seq.trends == [t_wknd, t_sin, t_lin]
 
 
 class TestGranularityStrEnum:

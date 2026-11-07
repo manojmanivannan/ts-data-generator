@@ -114,7 +114,7 @@ class StandardStrategy(NormalizationStrategy):
 
 
 class Normalizer:
-    """Applies a normalization strategy to DataGen data."""
+    """Applies a normalization strategy to DataGenerator data."""
 
     def __init__(self, strategy: NormalizationStrategy) -> None:
         """Initialize with a normalization strategy.
