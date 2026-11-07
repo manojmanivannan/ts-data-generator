@@ -40,6 +40,8 @@ from ts_data_generator.transforms.normalizer import Normalizer, create_normalize
 from ts_data_generator.trends import Trend
 
 if TYPE_CHECKING:
+    from matplotlib.axes import Axes
+
     from ts_data_generator.anomalies.base import Anomaly
 
 logger = logging.getLogger(__name__)
@@ -1205,7 +1207,7 @@ class DataGenerator:
         exclude: list[str] | None = None,
         include: list[str] | None = None,
         **matplotlib_kwargs: Any,
-    ) -> None:
+    ) -> Axes:
         """Plot numeric columns using matplotlib.
 
         Delegates to :func:`ts_data_generator.plotting.plot_time_series`.
@@ -1216,12 +1218,15 @@ class DataGenerator:
                 numeric columns (except ``epoch``) are plotted.
             matplotlib_kwargs: Additional keyword arguments for matplotlib's plot function.
 
+        Returns:
+            The matplotlib Axes containing the plot.
+
         Raises:
             ValidationError: If both exclude and include are provided, or
                 if no numeric columns are available.
 
         """
-        plot_time_series(
+        return plot_time_series(
             self.data,
             exclude=exclude,
             include=include,

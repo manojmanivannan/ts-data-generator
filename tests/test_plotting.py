@@ -13,7 +13,7 @@ from ts_data_generator.plotting import plot_time_series
 
 @pytest.fixture
 def sample_df() -> pd.DataFrame:
-    """A simple time-indexed DataFrame with numeric and non-numeric columns."""
+    """Create a simple time-indexed DataFrame with numeric and non-numeric columns."""
     return pd.DataFrame(
         {
             "temperature": [20.0, 22.5, 25.0],
@@ -34,13 +34,13 @@ class TestPlotTimeSeries:
             plot_time_series(sample_df, exclude=["temp"], include=["humid"])
 
     def test_exclude_epoch_by_default(self, sample_df: pd.DataFrame) -> None:
-        """epoch is automatically excluded from numeric columns."""
+        """Epoch is automatically excluded from numeric columns."""
         # If epoch weren't excluded, there would be 3 numeric cols
         numeric = sample_df.select_dtypes(include=["number"]).columns.tolist()
         assert "epoch" in numeric  # sanity check
 
     def test_exclude_removes_column(self, sample_df: pd.DataFrame) -> None:
-        """exclude parameter removes named columns from the plot."""
+        """Exclude parameter removes named columns from the plot."""
         with mock.patch.object(sample_df, "plot") as mock_plot:
             plot_time_series(sample_df, exclude=["humidity"])
             y_arg = mock_plot.call_args[1]["y"]
@@ -48,14 +48,14 @@ class TestPlotTimeSeries:
             assert "temperature" in y_arg
 
     def test_include_only_selected(self, sample_df: pd.DataFrame) -> None:
-        """include parameter plots only the named columns."""
+        """Include parameter plots only the named columns."""
         with mock.patch.object(sample_df, "plot") as mock_plot:
             plot_time_series(sample_df, include=["temperature"])
             y_arg = mock_plot.call_args[1]["y"]
             assert y_arg == ["temperature"]
 
     def test_epoch_always_excluded(self, sample_df: pd.DataFrame) -> None:
-        """epoch is always excluded, even when explicitly included."""
+        """Epoch is always excluded, even when explicitly included."""
         with mock.patch.object(sample_df, "plot") as mock_plot:
             plot_time_series(sample_df, include=["epoch", "temperature"])
             y_arg = mock_plot.call_args[1]["y"]
@@ -92,9 +92,7 @@ class TestPlotTimeSeries:
                 y=["temperature", "humidity"], color="red", linestyle="--"
             )
 
-    def test_default_plots_all_numeric_excluding_epoch(
-        self, sample_df: pd.DataFrame
-    ) -> None:
+    def test_default_plots_all_numeric_excluding_epoch(self, sample_df: pd.DataFrame) -> None:
         """With no exclude/include, plot all numeric cols except epoch."""
         with mock.patch.object(sample_df, "plot") as mock_plot:
             plot_time_series(sample_df)
@@ -102,3 +100,43 @@ class TestPlotTimeSeries:
             assert "temperature" in y_arg
             assert "humidity" in y_arg
             assert "epoch" not in y_arg
+
+    def test_returns_pandas_plot_result(self, sample_df: pd.DataFrame) -> None:
+        """plot_time_series returns the Axes produced by DataFrame.plot."""
+        with mock.patch.object(sample_df, "plot") as mock_plot:
+            result = plot_time_series(sample_df, figsize=(12, 3))
+            assert result is mock_plot.return_value
+
+    def test_returns_real_axes(self, sample_df: pd.DataFrame) -> None:
+        """plot_time_series returns a real Axes attached to a figure."""
+        pytest.importorskip("matplotlib")
+        import matplotlib
+
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+
+        ax = plot_time_series(sample_df, figsize=(12, 3))
+        assert ax is not None
+        assert isinstance(ax, plt.Axes)
+        assert ax.get_figure() is not None
+        plt.close("all")
+
+
+class TestDataGeneratorPlot:
+    """Tests for DataGenerator.plot() delegation."""
+
+    def test_plot_returns_delegated_result(self) -> None:
+        """plot() returns the Axes returned by plot_time_series."""
+        from unittest.mock import patch
+
+        from ts_data_generator import DataGenerator
+
+        data_gen = DataGenerator()
+        data_gen.start_datetime = "2019-01-01"
+        data_gen.end_datetime = "2019-01-12"
+        with patch("ts_data_generator.data_gen.plot_time_series") as mock_pts:
+            result = data_gen.plot(figsize=(12, 3))
+            assert result is mock_pts.return_value
+            mock_pts.assert_called_once_with(
+                data_gen.data, exclude=None, include=None, figsize=(12, 3)
+            )
