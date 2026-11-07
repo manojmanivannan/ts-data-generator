@@ -1,7 +1,7 @@
 """FastAPI application for generating synthetic time series data over HTTP.
 
 Provides REST endpoints that expose the ts-data-generator library's
-:class:`DataGen` engine for use via FastAPI Cloud or any ASGI host.
+:class:`DataGenerator` engine for use via FastAPI Cloud or any ASGI host.
 
 Install the cloud extra to get FastAPI dependencies::
 
@@ -28,7 +28,7 @@ from pydantic import BaseModel, Field
 from pydantic import ValidationError as PydanticValidationError
 from pydantic import field_validator
 
-from ts_data_generator import DataGen, __version__
+from ts_data_generator import DataGenerator, __version__
 from ts_data_generator.anomalies.base import Anomaly
 from ts_data_generator.anomalies.drift import ConceptDrift, DriftSegment
 from ts_data_generator.exceptions import (
@@ -42,6 +42,7 @@ from ts_data_generator.exceptions import (
     RegistryError,
     ValidationError,
 )
+from ts_data_generator.registry import Registry
 from ts_data_generator.schema.models import Granularity
 from ts_data_generator.schema.parser import (
     PRESETS,
@@ -50,21 +51,20 @@ from ts_data_generator.schema.parser import (
     parse_trend_spec,
 )
 from ts_data_generator.schema.types import DimensionSpec
-from ts_data_generator.utils.registry import Registry
-from ts_data_generator.utils.trends import Trends
+from ts_data_generator.trends import Trend
 
 # ---------------------------------------------------------------------------
 # Module-level registries (same as the CLI, but without Click dependency)
 # ---------------------------------------------------------------------------
 
 _dimension_registry = Registry(
-    "ts_data_generator.utils.functions",
+    "ts_data_generator.functions",
     name_filter=lambda n: not n.startswith("_"),
 )
 _trend_registry = Registry(
-    "ts_data_generator.utils.trends",
-    name_filter=lambda n: not n.startswith("_") and n != "Trends",
-    base_class=Trends,
+    "ts_data_generator.trends",
+    name_filter=lambda n: not n.startswith("_") and n != "Trend",
+    base_class=Trend,
 )
 _anomaly_registry = Registry(
     "ts_data_generator.anomalies",
@@ -218,6 +218,7 @@ _STATUS_MAP: dict[type, int] = {
     MultiItemError: 400,
     RegistryError: 400,
     AggregationError: 400,
+    ExpandError: 400,
     ConfigurationError: 422,
 }
 
@@ -298,13 +299,13 @@ async def generic_error_handler(request, exc):  # noqa: ARG001
 
 
 # ---------------------------------------------------------------------------
-# Helper: build a DataGen instance from a GenerateRequest
+# Helper: build a DataGenerator instance from a GenerateRequest
 # ---------------------------------------------------------------------------
 
 _DIM_SEPARATOR = ";"
 
 
-def _add_dimension(dg: DataGen, parsed: DimensionSpec, dim_fn: Any) -> None:
+def _add_dimension(dg: DataGenerator, parsed: DimensionSpec, dim_fn: Any) -> None:
     """Add a dimension, mirroring the CLI's single-arg then expanded-args call dance.
 
     Translates a ``TypeError`` from a bad parameter count into a 400
@@ -333,13 +334,13 @@ def _add_dimension(dg: DataGen, parsed: DimensionSpec, dim_fn: Any) -> None:
             ) from inner_exc
 
 
-def _build_datagen(request: GenerateRequest) -> DataGen:
-    """Construct and configure a :class:`DataGen` from a request body.
+def _build_datagen(request: GenerateRequest) -> DataGenerator:
+    """Construct and configure a :class:`DataGenerator` from a request body.
 
     Mirrors the CLI ``generate`` command logic but raises
     :class:`HTTPException` on validation or registry errors.
     """
-    dg = DataGen(
+    dg = DataGenerator(
         seed=request.seed,
         expand_dimensions=request.expand_dimensions,
         scale_variance=request.scale_variance,
@@ -375,7 +376,7 @@ def _build_datagen(request: GenerateRequest) -> DataGen:
         metric_name = parts[0]
         trend_specs = parts[1].split("+") if len(parts) > 1 else []
 
-        trends: list[Trends] = []
+        trends: list[Trend] = []
         for spec in trend_specs:
             try:
                 parsed = parse_trend_spec(spec)
@@ -443,7 +444,7 @@ def _build_datagen(request: GenerateRequest) -> DataGen:
                         detail=f"Invalid parameters for anomaly '{parsed.name}': {exc}",
                     ) from exc
 
-    # --- Add metrics to DataGen ---
+    # --- Add metrics to DataGenerator ---
     for metric_name, data in metrics_data.items():
         try:
             dg.add_metric(
@@ -524,6 +525,10 @@ def generate(request: GenerateRequest) -> GenerateResponse:
                     record[key] = value.isoformat()
     except HTTPException:
         raise
+    except DataGeneratorError as exc:
+        raise HTTPException(
+            status_code=_STATUS_MAP.get(type(exc), 400), detail=str(exc)
+        ) from exc
     except Exception as exc:
         raise HTTPException(
             status_code=500, detail=f"Data generation error: {exc}"
@@ -646,17 +651,10 @@ def get_preset(preset_name: str) -> PresetDetail:
 @app.get("/dimensions", response_model=list[FunctionInfo])
 def list_dimensions() -> list[FunctionInfo]:
     """List available dimension generator functions."""
-    excluded = {"TypeVar", "Generator", "Iterable", "Tuple", "Union", "cycle"}
-    from ts_data_generator.utils import functions as dim_mod
-
-    funcs = [
-        name
-        for name in dir(dim_mod)
-        if callable(getattr(dim_mod, name)) and not name.startswith("_") and name not in excluded
-    ]
+    funcs = _dimension_registry.list_available()
     result = []
-    for name in sorted(funcs):
-        fn = getattr(dim_mod, name)
+    for name in funcs:
+        fn = _dimension_registry.get(name)
         result.append(
             FunctionInfo(
                 name=name,

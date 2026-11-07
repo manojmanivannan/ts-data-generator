@@ -1,5 +1,5 @@
 """
-Tests for the DataGen class
+Tests for the DataGenerator class
 """
 
 
@@ -7,19 +7,19 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from ts_data_generator import DataGen
+from ts_data_generator import DataGenerator
 from ts_data_generator.exceptions import (
     MetricError,
     MultiItemError,
     ValidationError,
 )
-from ts_data_generator.schema.models import Granularity
-from ts_data_generator.utils.functions import (
+from ts_data_generator.functions import (
     random_choice,
     random_int,
 )
 from ts_data_generator.random import DefaultRNG, SeedableRNG
-from ts_data_generator.utils.trends import (
+from ts_data_generator.schema.models import Granularity
+from ts_data_generator.trends import (
     ARNoiseTrend,
     HolidayTrend,
     LinearTrend,
@@ -29,16 +29,16 @@ from ts_data_generator.utils.trends import (
 )
 
 
-class TestDataGen5minGenerator:
+class TestDataGenerator5minGenerator:
     # Setup method to initialize the Calculator instance
 
     @pytest.fixture
     def data_gen_instance(self):
-        """Fixture to create a DataGen instance"""
-        data_gen = DataGen()
+        """Fixture to create a DataGenerator instance"""
+        data_gen = DataGenerator()
         data_gen.start_datetime = "2022-01-01"
         data_gen.end_datetime = "2022-01-02"
-        data_gen.granularity = Granularity.FIVE_MIN
+        data_gen.granularity = Granularity.FIVE_MINUTE
         # Create function that will return random choice from list
         data_gen.add_dimension(name="protocol", function=random_choice(["TCP", "UDP"]))
         data_gen.add_dimension(name="port", function=random_int(1, 65536))
@@ -87,16 +87,16 @@ class TestDataGen5minGenerator:
         data_gen_instance.remove_metric(name=metric_to_remove)
 
 
-class TestDataGenHourlyGenerator:
+class TestDataGeneratorHourlyGenerator:
     # Setup method to initialize the Calculator instance
 
     @pytest.fixture
     def data_gen_instance(self):
-        """Fixture to create a DataGen instance"""
-        data_gen = DataGen()
+        """Fixture to create a DataGenerator instance"""
+        data_gen = DataGenerator()
         data_gen.start_datetime = "2022-01-01"
         data_gen.end_datetime = "2022-01-02"
-        data_gen.granularity = Granularity.HOURLY
+        data_gen.granularity = Granularity.HOUR
         # Create function that will return random choice from list
         protocol_choices = random_choice(["TCP", "UDP"])
         data_gen.add_dimension(name="protocol", function=protocol_choices)
@@ -112,16 +112,16 @@ class TestDataGenHourlyGenerator:
             data_gen_instance.add_dimension(name="random", function=[])
 
 
-class TestDataGenDailyGenerator:
+class TestDataGeneratorDailyGenerator:
     # Setup method to initialize the Calculator instance
 
     @pytest.fixture
     def data_gen_instance(self):
-        """Fixture to create a DataGen instance"""
-        data_gen = DataGen()
+        """Fixture to create a DataGenerator instance"""
+        data_gen = DataGenerator()
         data_gen.start_datetime = "2022-01-01"
         data_gen.end_datetime = "2022-01-02"
-        data_gen.granularity = Granularity.DAILY
+        data_gen.granularity = Granularity.DAY
         # Create function that will return random choice from list
         protocol_choices = random_choice(["TCP", "UDP"])
         data_gen.add_dimension(name="protocol", function=protocol_choices)
@@ -137,16 +137,16 @@ class TestDataGenDailyGenerator:
             data_gen_instance.add_dimension(name="random", function=[])
 
 
-class TestDataGenSecondlyGenerator:
+class TestDataGeneratorSecondlyGenerator:
     # Setup method to initialize the Calculator instance
 
     @pytest.fixture
     def data_gen_instance(self):
-        """Fixture to create a DataGen instance"""
-        data_gen = DataGen()
+        """Fixture to create a DataGenerator instance"""
+        data_gen = DataGenerator()
         data_gen.start_datetime = "2022-01-01"
         data_gen.end_datetime = "2022-01-02"
-        data_gen.granularity = Granularity.ONE_SECOND
+        data_gen.granularity = Granularity.SECOND
         # Create function that will return random choice from list
         protocol_choices = random_choice(["TCP", "UDP"])
         data_gen.add_dimension(name="protocol", function=protocol_choices)
@@ -168,11 +168,11 @@ class TestDataScaleGenerator:
 
     @pytest.fixture
     def data_gen_instance(self):
-        """Fixture to create a DataGen instance"""
-        data_gen = DataGen()
+        """Fixture to create a DataGenerator instance"""
+        data_gen = DataGenerator()
         data_gen.start_datetime = "2022-01-01"
         data_gen.end_datetime = "2022-01-02"
-        data_gen.granularity = Granularity.HOURLY
+        data_gen.granularity = Granularity.HOUR
         # Create function that will return random choice from list
         data_gen.add_dimension(
             name="protocol", function=random_choice("TCP UDP".split())
@@ -190,6 +190,7 @@ class TestDataScaleGenerator:
         ].iloc[0] == np.int64(3600)
 
     def test_scale(self, data_gen_instance):
+        _ = data_gen_instance.data
         with pytest.raises(ValidationError):
             data_gen_instance.normalize(method="invalid")
 
@@ -241,11 +242,11 @@ class TestDataAggregation:
 
     @pytest.fixture
     def data_gen_instance(self):
-        """Fixture to create a DataGen instance"""
-        data_gen = DataGen()
+        """Fixture to create a DataGenerator instance"""
+        data_gen = DataGenerator()
         data_gen.start_datetime = "2022-01-01 00:00:00"
         data_gen.end_datetime = "2022-01-01 00:15:00"
-        data_gen.granularity = Granularity.FIVE_MIN
+        data_gen.granularity = Granularity.FIVE_MINUTE
         # Create function that will return random choice from list
         data_gen.add_dimension(
             name="protocol", function=random_choice("TCP UDP".split())
@@ -271,10 +272,10 @@ class TestDataAggregation:
 
 
 def test_add_metric_duplicate_trends():
-    data_gen = DataGen(
+    data_gen = DataGenerator(
         start_datetime="2023-01-01",
         end_datetime="2023-01-02",
-        granularity=Granularity.DAILY,
+        granularity=Granularity.DAY,
     )
     trend = LinearTrend(offset=0.5)
 
@@ -289,14 +290,14 @@ def test_add_metric_duplicate_trends():
 class TestToGranularity:
     @pytest.fixture
     def data_gen_instance(self):
-        """Fixture to create a DataGen instance"""
-        data_gen = DataGen()
+        """Fixture to create a DataGenerator instance"""
+        data_gen = DataGenerator()
         data_gen.start_datetime = "2022-01-01"
         data_gen.end_datetime = "2022-01-02"
         return data_gen
 
     def test_to_granularity_with_enum(self, data_gen_instance):
-        data_gen_instance.to_granularity(Granularity.HOURLY)
+        data_gen_instance.to_granularity(Granularity.HOUR)
         assert data_gen_instance.granularity == "h"
 
     def test_to_granularity_with_string(self, data_gen_instance):
@@ -497,7 +498,7 @@ class TestARNoiseTrend:
 
     def test_explicit_coefficients_order_2(self):
         """ARNoiseTrend with explicit coefficients produces AR(2) noise."""
-        from ts_data_generator.utils.trends import ARNoiseTrend
+        from ts_data_generator.trends import ARNoiseTrend
 
         trend = ARNoiseTrend(coefficients=[0.5, -0.2], noise_std=0.5)
         timestamps = self._make_timestamps(500)
@@ -510,7 +511,7 @@ class TestARNoiseTrend:
 
     def test_decay_auto_generates_coefficients(self):
         """decay + order auto-generates stable coefficients."""
-        from ts_data_generator.utils.trends import ARNoiseTrend
+        from ts_data_generator.trends import ARNoiseTrend
 
         trend = ARNoiseTrend(decay=0.8, order=3, noise_std=0.5)
         timestamps = self._make_timestamps(1000)
@@ -523,7 +524,7 @@ class TestARNoiseTrend:
 
     def test_auto_coefficients_stationarity(self):
         """Auto-generated coefficients have roots inside the unit circle."""
-        from ts_data_generator.utils.trends import ARNoiseTrend
+        from ts_data_generator.trends import ARNoiseTrend
 
         for decay in [0.3, 0.5, 0.8]:
             for order in [1, 2, 3, 5]:
@@ -546,7 +547,7 @@ class TestARNoiseTrend:
 
     def test_explicit_coefficients_acceptance(self):
         """Explicit coefficients are stored and used as-is."""
-        from ts_data_generator.utils.trends import ARNoiseTrend
+        from ts_data_generator.trends import ARNoiseTrend
 
         coeffs = [0.7, -0.3, 0.1]
         trend = ARNoiseTrend(coefficients=coeffs)
@@ -556,7 +557,7 @@ class TestARNoiseTrend:
     def test_seed_determinism(self):
         """With a fixed rng seed, output is deterministic."""
         from ts_data_generator.random import SeedableRNG
-        from ts_data_generator.utils.trends import ARNoiseTrend
+        from ts_data_generator.trends import ARNoiseTrend
 
         coeffs = [0.5, -0.2]
         timestamps = self._make_timestamps(100)
@@ -571,7 +572,7 @@ class TestARNoiseTrend:
 
     def test_warmup_correct_output_count(self):
         """Warm-up produces exactly len(timestamps) output values."""
-        from ts_data_generator.utils.trends import ARNoiseTrend
+        from ts_data_generator.trends import ARNoiseTrend
 
         for n in [10, 50, 100, 1000]:
             for order in [1, 3, 5]:
@@ -582,7 +583,7 @@ class TestARNoiseTrend:
 
     def test_autocorrelation_matches_coefficients(self):
         """Output exhibits autocorrelation consistent with AR(1) coefficient."""
-        from ts_data_generator.utils.trends import ARNoiseTrend
+        from ts_data_generator.trends import ARNoiseTrend
 
         # AR(1): value[t] = phi * value[t-1] + noise
         # Theoretical lag-1 autocorrelation ≈ phi
@@ -600,7 +601,7 @@ class TestARNoiseTrend:
 
     def test_noise_std_controls_variance(self):
         """Higher noise_std produces proportionally larger variance."""
-        from ts_data_generator.utils.trends import ARNoiseTrend
+        from ts_data_generator.trends import ARNoiseTrend
 
         timestamps = self._make_timestamps(2000)
 
@@ -616,7 +617,7 @@ class TestARNoiseTrend:
 
     def test_decay_deterministic_coefficients(self):
         """Same decay+order always produces same coefficients."""
-        from ts_data_generator.utils.trends import ARNoiseTrend
+        from ts_data_generator.trends import ARNoiseTrend
 
         coeffs1 = ARNoiseTrend(decay=0.8, order=4).coefficients
         coeffs2 = ARNoiseTrend(decay=0.8, order=4).coefficients
@@ -625,7 +626,7 @@ class TestARNoiseTrend:
 
     def test_invalid_args_raise(self):
         """Invalid argument combinations raise ValueError."""
-        from ts_data_generator.utils.trends import ARNoiseTrend
+        from ts_data_generator.trends import ARNoiseTrend
 
         # Missing both
         with pytest.raises(ValueError, match="Either"):
@@ -652,7 +653,7 @@ class TestMarkovTrend:
 
     def test_stickiness_produces_valid_output(self):
         """MarkovTrend with stickiness produces output of the correct length."""
-        from ts_data_generator.utils.trends import MarkovTrend
+        from ts_data_generator.trends import MarkovTrend
 
         trend = MarkovTrend(
             states=["low", "high"], values=[10, 100], stickiness=0.9, noise_std=5,
@@ -666,7 +667,7 @@ class TestMarkovTrend:
     def test_high_stickiness_mostly_stays(self):
         """stickiness=0.95 produces long runs in the same state."""
         from ts_data_generator.random import SeedableRNG
-        from ts_data_generator.utils.trends import MarkovTrend
+        from ts_data_generator.trends import MarkovTrend
 
         trend = MarkovTrend(
             states=["a", "b"], values=[0, 1], stickiness=0.95, noise_std=0,
@@ -682,7 +683,7 @@ class TestMarkovTrend:
     def test_low_stickiness_frequent_switching(self):
         """stickiness=0.5 produces frequent state switching."""
         from ts_data_generator.random import SeedableRNG
-        from ts_data_generator.utils.trends import MarkovTrend
+        from ts_data_generator.trends import MarkovTrend
 
         trend = MarkovTrend(
             states=["a", "b"], values=[0, 1], stickiness=0.5, noise_std=0,
@@ -697,7 +698,7 @@ class TestMarkovTrend:
 
     def test_explicit_transition_matrix(self):
         """MarkovTrend accepts an explicit transition matrix."""
-        from ts_data_generator.utils.trends import MarkovTrend
+        from ts_data_generator.trends import MarkovTrend
 
         trend = MarkovTrend(
             states=["low", "high"],
@@ -716,7 +717,7 @@ class TestMarkovTrend:
     def test_seed_determinism(self):
         """With a fixed rng seed, state sequence and output are deterministic."""
         from ts_data_generator.random import SeedableRNG
-        from ts_data_generator.utils.trends import MarkovTrend
+        from ts_data_generator.trends import MarkovTrend
 
         trend = MarkovTrend(
             states=["low", "high"], values=[10, 100], stickiness=0.9, noise_std=5,
@@ -734,7 +735,7 @@ class TestMarkovTrend:
     def test_state_values_match(self):
         """Output values match state_value + noise for the current state."""
         from ts_data_generator.random import SeedableRNG
-        from ts_data_generator.utils.trends import MarkovTrend
+        from ts_data_generator.trends import MarkovTrend
 
         trend = MarkovTrend(
             states=["a", "b"], values=[50, 200], stickiness=0.5, noise_std=0,
@@ -750,7 +751,7 @@ class TestMarkovTrend:
     def test_transition_frequency_matches_probability(self):
         """Transition frequencies are consistent with the specified matrix."""
         from ts_data_generator.random import SeedableRNG
-        from ts_data_generator.utils.trends import MarkovTrend
+        from ts_data_generator.trends import MarkovTrend
 
         # Define a matrix where state 0 -> 1 has probability 0.3
         trend = MarkovTrend(
@@ -778,7 +779,7 @@ class TestMarkovTrend:
 
     def test_invalid_args_raise(self):
         """Invalid argument combinations raise ValueError."""
-        from ts_data_generator.utils.trends import MarkovTrend
+        from ts_data_generator.trends import MarkovTrend
 
         # Missing both stickiness and transition_matrix
         with pytest.raises(ValueError, match="Either"):
@@ -820,7 +821,7 @@ class TestMarkovTrend:
     def test_three_states(self):
         """MarkovTrend works with more than 2 states."""
         from ts_data_generator.random import SeedableRNG
-        from ts_data_generator.utils.trends import MarkovTrend
+        from ts_data_generator.trends import MarkovTrend
 
         trend = MarkovTrend(
             states=["low", "mid", "high"],
@@ -838,14 +839,14 @@ class TestMarkovTrend:
         assert unique & {10.0, 50.0, 100.0}
 
 
-class TestDataGenBaselines:
-    """Phase 2A-3: DataGen exposes clean baselines for each metric."""
+class TestDataGeneratorBaselines:
+    """Phase 2A-3: DataGenerator exposes clean baselines for each metric."""
 
     def test_baselines_returns_dict(self):
-        dg = DataGen(
+        dg = DataGenerator(
             start_datetime="2024-01-01",
             end_datetime="2024-01-03",
-            granularity=Granularity.DAILY,
+            granularity=Granularity.DAY,
             seed=42,
         )
         dg.add_metric(name="temp", trends={SinusoidalTrend(amplitude=10, freq=24)})
@@ -857,10 +858,10 @@ class TestDataGenBaselines:
     def test_baseline_is_dataframe(self):
         import pandas as pd
 
-        dg = DataGen(
+        dg = DataGenerator(
             start_datetime="2024-01-01",
             end_datetime="2024-01-03",
-            granularity=Granularity.DAILY,
+            granularity=Granularity.DAY,
             seed=42,
         )
         dg.add_metric(name="temp", trends={SinusoidalTrend(amplitude=10, freq=24)})
@@ -870,10 +871,10 @@ class TestDataGenBaselines:
     def test_baseline_matches_clean_signal_without_anomalies(self):
         import numpy as np
 
-        dg = DataGen(
+        dg = DataGenerator(
             start_datetime="2024-01-01",
             end_datetime="2024-01-03",
-            granularity=Granularity.DAILY,
+            granularity=Granularity.DAY,
             seed=42,
         )
         dg.add_metric(name="temp", trends={SinusoidalTrend(amplitude=10, freq=24)})
@@ -883,11 +884,11 @@ class TestDataGenBaselines:
         baseline_values = dg.baselines["temp"]["temp"].values
         np.testing.assert_array_equal(generated_values, baseline_values)
 
-class TestDataGenBuildLogic:
-    """Phase 3 tests: Verify build logic folded into DataGen works correctly."""
+class TestDataGeneratorBuildLogic:
+    """Phase 3 tests: Verify build logic folded into DataGenerator works correctly."""
     
     def test_generate_data_produces_epoch_column(self):
-        dg = DataGen()
+        dg = DataGenerator()
         dg.start_datetime = "2020-01-01"
         dg.end_datetime = "2020-01-02"
         dg.granularity = "D"
@@ -897,7 +898,7 @@ class TestDataGenBuildLogic:
         assert df["epoch"].dtype in (int, float)
 
     def test_generate_data_skips_existing_columns(self):
-        dg = DataGen()
+        dg = DataGenerator()
         dg.start_datetime = "2020-01-01"
         dg.end_datetime = "2020-01-02"
         dg.granularity = "D"
@@ -910,11 +911,11 @@ class TestDataGenBuildLogic:
         # It probably skips existing columns in df.columns.
 
     def test_generate_data_column_order(self):
-        dg = DataGen()
+        dg = DataGenerator()
         dg.start_datetime = "2020-01-01"
         dg.end_datetime = "2020-01-02"
         dg.granularity = "D"
-        from ts_data_generator.utils.trends import LinearTrend
+        from ts_data_generator.trends import LinearTrend
         dg.add_metric("m1", [LinearTrend(slope=1)])
         dg.add_dimension("d1", "val")
         df = dg.data
@@ -924,24 +925,24 @@ class TestDataGenBuildLogic:
         assert cols == ["epoch", "d1", "m1"]
 
     def test_generate_data_with_no_models_returns_epoch_only(self):
-        dg = DataGen()
+        dg = DataGenerator()
         dg.start_datetime = "2020-01-01"
         dg.end_datetime = "2020-01-02"
         dg.granularity = "D"
         df = dg.data
         assert list(df.columns) == ["epoch"]
 
-class TestDataGenStateGuards:
+class TestDataGeneratorStateGuards:
     """Phase 4 tests: Verify state guards work correctly."""
     
     def test_datagen_initial_state_is_configured(self):
         from ts_data_generator.data_gen import PipelineState
-        dg = DataGen()
+        dg = DataGenerator()
         assert dg.state == PipelineState.CONFIGURED
 
     def test_datagen_generate_transitions_to_generated(self):
         from ts_data_generator.data_gen import PipelineState
-        dg = DataGen()
+        dg = DataGenerator()
         dg.start_datetime = "2020-01-01"
         dg.end_datetime = "2020-01-02"
         dg.granularity = "D"
@@ -950,14 +951,14 @@ class TestDataGenStateGuards:
 
     def test_datagen_normalize_before_generate_raises(self):
         from ts_data_generator.exceptions import ConfigurationError
-        dg = DataGen()
+        dg = DataGenerator()
         with pytest.raises(ConfigurationError):
             dg.normalize("mean-std")
 
     def test_datagen_denormalize_before_normalize_warns(self, caplog):
         from ts_data_generator.data_gen import PipelineState
         import logging
-        dg = DataGen()
+        dg = DataGenerator()
         dg.start_datetime = "2020-01-01"
         dg.end_datetime = "2020-01-02"
         dg.granularity = "D"
@@ -972,8 +973,8 @@ class TestDataGenStateGuards:
 
     def test_datagen_normalize_transitions_to_normalized(self):
         from ts_data_generator.data_gen import PipelineState
-        from ts_data_generator.utils.trends import LinearTrend
-        dg = DataGen()
+        from ts_data_generator.trends import LinearTrend
+        dg = DataGenerator()
         dg.start_datetime = "2020-01-01"
         dg.end_datetime = "2020-01-02"
         dg.granularity = "D"
@@ -985,8 +986,8 @@ class TestDataGenStateGuards:
 
     def test_datagen_denormalize_transitions_to_generated(self):
         from ts_data_generator.data_gen import PipelineState
-        from ts_data_generator.utils.trends import LinearTrend
-        dg = DataGen()
+        from ts_data_generator.trends import LinearTrend
+        dg = DataGenerator()
         dg.start_datetime = "2020-01-01"
         dg.end_datetime = "2020-01-02"
         dg.granularity = "D"
@@ -996,4 +997,170 @@ class TestDataGenStateGuards:
         dg.normalize("mean-std")
         dg.denormalize()
         assert dg.state == PipelineState.GENERATED
+
+
+class TestPublicAPIAndLazyExecution:
+    """Tests for top-level exports, py.typed, date types, trend ergonomics, and lazy evaluation."""
+
+    def test_top_level_exports_and_py_typed(self) -> None:
+        from pathlib import Path
+
+        import ts_data_generator
+        import ts_data_generator.schema as schema_pkg
+        from ts_data_generator import DataGen, DataGenerator
+
+        expected_all = {
+            "ARNoiseTrend",
+            "AggregationType",
+            "Anomaly",
+            "ConceptDrift",
+            "DataGen",
+            "DataGenerator",
+            "Dimension",
+            "DriftSegment",
+            "EventSchedule",
+            "Granularity",
+            "HolidayTrend",
+            "LinearTrend",
+            "MarkovTrend",
+            "Metric",
+            "MissingData",
+            "MultiItem",
+            "PeriodicBurstAnomaly",
+            "PointAnomaly",
+            "SinusoidalTrend",
+            "StockTrend",
+            "Trend",
+            "WeekendTrend",
+            "__version__",
+            "auto_generate_name",
+            "constant",
+            "ordered_choice",
+            "random_choice",
+            "random_float",
+            "random_int",
+        }
+        assert set(ts_data_generator.__all__) == expected_all
+        assert len(ts_data_generator.__all__) == 29
+        for name in expected_all:
+            assert hasattr(ts_data_generator, name)
+        assert DataGen is DataGenerator
+
+        dg = DataGenerator(start_datetime="2024-01-01", end_datetime="2024-01-02")
+        assert repr(dg).startswith("DataGenerator(")
+
+        assert set(schema_pkg.__all__) == {
+            "AggregationType",
+            "Dimension",
+            "Granularity",
+            "Metric",
+            "MultiItem",
+        }
+
+        py_typed = Path(ts_data_generator.__file__).parent / "py.typed"
+        assert py_typed.is_file()
+
+    def test_datetime_and_timestamp_inputs_and_eager_validation(self) -> None:
+        from datetime import datetime
+
+        from ts_data_generator import DataGenerator
+
+        dg = DataGenerator(
+            start_datetime=datetime(2024, 1, 1),
+            end_datetime=pd.Timestamp("2024-01-03"),
+            granularity="D",
+            seed=42,
+        )
+        dg.add_metric("sales", LinearTrend(offset=10, slope=0, noise_level=0))
+        assert len(dg.data) == 3
+
+        dg.start_datetime = pd.Timestamp("2024-01-02")
+        assert len(dg.data) == 2
+
+        with pytest.raises(ValidationError, match="start_datetime cannot be after end_datetime"):
+            dg.start_datetime = datetime(2024, 1, 10)
+
+        with pytest.raises(ValidationError, match="start_datetime cannot be after end_datetime"):
+            DataGenerator(
+                start_datetime="2024-01-10",
+                end_datetime="2024-01-01",
+            )
+
+    def test_add_metric_accepts_single_trend_sequence_and_set(self) -> None:
+        from ts_data_generator import DataGenerator
+
+        dg = DataGenerator(
+            start_datetime="2024-01-01",
+            end_datetime="2024-01-02",
+            granularity=Granularity.DAY,
+            seed=42,
+        )
+        t1 = LinearTrend(offset=10, slope=0)
+        t2 = SinusoidalTrend(amplitude=5, freq=24)
+        t3 = WeekendTrend(weekend_effect=20)
+
+        dg.add_metric("single", t1)
+        dg.add_metric("seq", (t3, t2, t1))
+        dg.add_metric("set_in", {t3, t2, t1})
+
+        assert dg.metrics["single"].trends == [t1]
+        assert dg.metrics["seq"].trends == [t3, t2, t1]
+        assert dg.metrics["set_in"].trends == [t1, t2, t3]
+
+    def test_lazy_evaluation_and_cache_invalidation(self, monkeypatch) -> None:
+        from ts_data_generator import DataGenerator
+        from ts_data_generator.data_gen import PipelineState
+
+        call_count = 0
+        orig_generate = DataGenerator._generate_data
+
+        def counting_generate(self):
+            nonlocal call_count
+            call_count += 1
+            return orig_generate(self)
+
+        monkeypatch.setattr(DataGenerator, "_generate_data", counting_generate)
+
+        dg = DataGenerator(
+            start_datetime="2024-01-01",
+            end_datetime="2024-01-03",
+            granularity=Granularity.DAY,
+            seed=42,
+        )
+        dg.add_dimension("region", ["US", "EU"])
+        dg.add_metric("sales", LinearTrend(offset=10, slope=0))
+
+        # No generation has occurred yet!
+        assert call_count == 0
+        assert dg.state == PipelineState.CONFIGURED
+
+        # First access triggers generation
+        df1 = dg.data
+        assert call_count == 1
+        assert dg.state == PipelineState.GENERATED
+
+        # Subsequent accesses return cached DataFrame without regenerating
+        df2 = dg.data
+        df3 = dg.generate()
+        _ = dg.baselines
+        assert call_count == 1
+        assert df1 is df2 is df3
+
+        # Mutating dimension updates configuration lazily and rebuilds on next read
+        dg.update_dimension("region", "APAC")
+        assert call_count == 1
+        assert dg.state == PipelineState.CONFIGURED
+
+        df4 = dg.generate()
+        assert call_count == 2
+        assert (df4["region"] == "APAC").all()
+
+        # Assigning custom DataFrame transitions state to GENERATED and clears pending flag
+        custom_df = df4.copy()
+        dg.update_dimension("region", "LATAM")
+        assert dg.state == PipelineState.CONFIGURED
+        dg.data = custom_df
+        assert dg.state == PipelineState.GENERATED
+        assert dg.data is custom_df
+        assert call_count == 2
 

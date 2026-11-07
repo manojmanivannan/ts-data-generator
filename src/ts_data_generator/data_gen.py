@@ -1,4 +1,4 @@
-"""Core :class:`DataGen` engine for synthetic time series generation.
+"""Core :class:`DataGenerator` engine for synthetic time series generation.
 
 Orchestrates dimension, metric, and multi-item models to produce a
 timestamp-indexed DataFrame.
@@ -8,11 +8,11 @@ from __future__ import annotations
 
 import json
 import logging
-from collections.abc import Generator
+from collections.abc import Generator, Sequence
 from datetime import datetime
 from enum import Enum
 from itertools import chain, cycle
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 
 import pandas as pd
 
@@ -26,21 +26,21 @@ from ts_data_generator.exceptions import (
     ValidationError,
 )
 from ts_data_generator.expand import build_expanded_dataframe
+from ts_data_generator.functions import constant
 from ts_data_generator.plotting import plot_time_series
 from ts_data_generator.random import DefaultRNG, RNGProtocol, SeedableRNG
 from ts_data_generator.schema.models import (
     AggregationType,
-    Dimensions,
+    Dimension,
     Granularity,
-    Metrics,
-    MultiItems,
+    Metric,
+    MultiItem,
 )
-from ts_data_generator.utils.trends import Trends
+from ts_data_generator.transforms.normalizer import Normalizer, create_normalizer
+from ts_data_generator.trends import Trend
 
 if TYPE_CHECKING:
     from ts_data_generator.anomalies.base import Anomaly
-from ts_data_generator.transforms.normalizer import Normalizer, create_normalizer
-from ts_data_generator.utils.functions import constant
 
 logger = logging.getLogger(__name__)
 
@@ -76,30 +76,32 @@ def _tuple_list_carrier(values: list[tuple[Any, ...]]) -> DimensionCarrier:
 
 
 class PipelineState(Enum):
-    """Lifecycle stage of the DataGen pipeline: ``CONFIGURED`` → ``GENERATED`` → ``NORMALIZED``."""
+    """Lifecycle stage of the pipeline: ``CONFIGURED`` → ``GENERATED`` → ``NORMALIZED``."""
 
     CONFIGURED = "configured"
     GENERATED = "generated"
     NORMALIZED = "normalized"
 
 
-class DataGen:
+class DataGenerator:
     """Generate synthetic time series data with dimensions, metrics, and trends.
 
-    A DataGen engine orchestrates dimension, metric, and multi-item models to
+    A DataGenerator engine orchestrates dimension, metric, and multi-item models to
     produce a timestamp-indexed DataFrame. Configure it up-front via the
-    constructor's pre-built :class:`Dimensions`/:class:`Metrics`/:class:`MultiItems`
+    constructor's pre-built :class:`Dimension`/:class:`Metric`/:class:`MultiItem`
     lists, or incrementally with :meth:`add_dimension`, :meth:`add_metric`, and
-    :meth:`add_multi_items`. Data is generated up front once both datetimes are
-    set and regenerated automatically whenever configuration changes; :attr:`data`
-    is the read-out attribute holding the current DataFrame.
+    :meth:`add_multi_items`. Data is generated lazily when :attr:`data` (or
+    :meth:`generate`) is accessed and regenerated on the next read after
+    configuration changes.
 
     Args:
-        dimensions: Initial list of :class:`Dimensions` instances.
-        metrics: Initial list of :class:`Metrics` instances.
-        multi_items: Initial list of :class:`MultiItems` instances.
-        start_datetime: Start date/time string (ISO format: ``YYYY-MM-DD``).
-        end_datetime: End date/time string (ISO format: ``YYYY-MM-DD``).
+        dimensions: Initial list of :class:`Dimension` instances.
+        metrics: Initial list of :class:`Metric` instances.
+        multi_items: Initial list of :class:`MultiItem` instances.
+        start_datetime: Start date/time (ISO string ``YYYY-MM-DD``,
+            ``datetime``, or ``pd.Timestamp``).
+        end_datetime: End date/time (ISO string ``YYYY-MM-DD``,
+            ``datetime``, or ``pd.Timestamp``).
         granularity: Time granularity for the generated data.
         seed: Optional integer seed for deterministic generation.
             When set, all randomness flows through a PCG64-backed RNG.
@@ -123,18 +125,20 @@ class DataGen:
             Cartesian-product data generation. ``None`` (default) runs sequentially.
 
     Example:
-        >>> from ts_data_generator import DataGen
-        >>> from ts_data_generator.schema import Granularity
-        >>> from ts_data_generator.utils.functions import random_choice
-        >>> from ts_data_generator.utils.trends import LinearTrend
-        >>> dg = DataGen(
+        >>> from ts_data_generator import (
+        ...     DataGenerator,
+        ...     Granularity,
+        ...     LinearTrend,
+        ...     random_choice,
+        ... )
+        >>> dg = DataGenerator(
         ...     start_datetime="2024-01-01",
         ...     end_datetime="2024-01-02",
-        ...     granularity=Granularity.HOURLY,
+        ...     granularity=Granularity.HOUR,
         ...     seed=42,
         ... )
         >>> dg.add_dimension("region", random_choice(["north", "south"]))
-        >>> dg.add_metric("sales", {LinearTrend(offset=100.0, slope=0)})
+        >>> dg.add_metric("sales", [LinearTrend(offset=100.0, slope=0)])
         >>> dg.data.shape[0] > 0
         True
         >>> daily = dg.aggregate("D", by=["region"])
@@ -145,12 +149,12 @@ class DataGen:
 
     def __init__(
         self,
-        dimensions: list[Dimensions] | None = None,
-        metrics: list[Metrics] | None = None,
-        multi_items: list[MultiItems] | None = None,
+        dimensions: list[Dimension] | None = None,
+        metrics: list[Metric] | None = None,
+        multi_items: list[MultiItem] | None = None,
         start_datetime: str | datetime | pd.Timestamp = "",
         end_datetime: str | datetime | pd.Timestamp = "",
-        granularity: Granularity = Granularity.FIVE_MIN,
+        granularity: Granularity | str = Granularity.FIVE_MINUTE,
         seed: int | None = None,
         expand_dimensions: bool = False,
         scale_variance: float = 0.0,
@@ -161,10 +165,12 @@ class DataGen:
         self._multi_items = multi_items or []
         self._start_datetime = start_datetime
         self._end_datetime = end_datetime
-        self._granularity = granularity
+        self._granularity: Granularity | str = (
+            Granularity(granularity) if granularity is not None else Granularity.FIVE_MINUTE
+        )
         self._normalizer: Normalizer | None = None
         self._timestamps: pd.DatetimeIndex | None = None
-        self._pending_regeneration = bool(start_datetime and end_datetime)
+        self._pending_regeneration: bool = True
         self._rng: RNGProtocol = SeedableRNG(seed) if seed is not None else DefaultRNG()
         self._expand_dimensions = expand_dimensions
         self._scale_variance = float(scale_variance)
@@ -174,21 +180,75 @@ class DataGen:
         self._baselines: dict[str, pd.DataFrame] = {}
         self._state: PipelineState = PipelineState.CONFIGURED
 
-        if start_datetime and end_datetime:
+        has_start = self._has_datetime(start_datetime)
+        has_end = self._has_datetime(end_datetime)
+        if has_start:
+            self._coerce_timestamp(start_datetime)
+        if has_end:
+            self._coerce_timestamp(end_datetime)
+        if has_start and has_end:
+            self._validate_date_order(start_datetime, end_datetime)
+
+    def generate(self) -> pd.DataFrame:
+        """Run the generation pipeline if pending and return the DataFrame.
+
+        Executes the generation pipeline lazily when configuration changes are
+        pending, the pipeline is still in ``CONFIGURED`` state, or the stored
+        frame is empty; otherwise returns the cached DataFrame without
+        recomputing. Equivalent to reading :attr:`data`.
+
+        Returns:
+            A ``pd.DataFrame`` indexed by a ``pd.DatetimeIndex`` over the
+            configured time range and granularity, containing ``epoch`` plus
+            columns for all configured dimensions, metrics (including any
+            ``<metric>_anomaly`` label columns), and multi-items.
+
+        Example:
+            >>> from ts_data_generator import DataGenerator, Granularity, LinearTrend
+            >>> dg = DataGenerator(
+            ...     start_datetime="2024-01-01",
+            ...     end_datetime="2024-01-02",
+            ...     granularity=Granularity.HOUR,
+            ...     seed=42,
+            ... )
+            >>> dg.add_metric("sales", LinearTrend(offset=100.0, slope=0))
+            >>> df = dg.generate()
+            >>> "sales" in df.columns and df.shape[0] > 0
+            True
+
+        """
+        if (
+            self._pending_regeneration
+            or self._state == PipelineState.CONFIGURED
+            or self._data.empty
+        ):
             self._generate_data()
+        return self._data
 
     @property
     def data(self) -> pd.DataFrame:
         """The generated, timestamp-indexed DataFrame.
 
-        Returns the generated DataFrame. Assigning a new DataFrame overrides
-        the stored data directly.
+        Evaluates the generation pipeline lazily when pending. Assigning a new
+        DataFrame overrides the stored data directly and marks the pipeline as
+        generated.
+
+        Returns:
+            A ``pd.DataFrame`` indexed by a ``pd.DatetimeIndex`` over the
+            configured time range and granularity, containing ``epoch`` plus
+            columns for all configured dimensions, metrics (including any
+            ``<metric>_anomaly`` label columns), and multi-items.
+
         """
+        if self._pending_regeneration:
+            self._generate_data()
         return self._data
 
     @data.setter
     def data(self, value: pd.DataFrame) -> None:
         self._data = value
+        self._pending_regeneration = False
+        self._state = PipelineState.GENERATED
 
     @property
     def workers(self) -> int | None:
@@ -209,7 +269,7 @@ class DataGen:
         return self._state
 
     def __repr__(self) -> str:
-        lines = ["DataGen("]
+        lines = ["DataGenerator("]
         for d in self._dimensions:
             lines.append(f"    dimension={json.dumps(d.to_json())},")
         for m in self._metrics:
@@ -285,15 +345,16 @@ class DataGen:
 
         Returns the granularity's string value (the :class:`Granularity` enum's
         ``.value``). Assigning to this property re-binds the granularity and
-        regenerates the data; pass a :class:`Granularity` member or a pandas-style
-        offset string (``"h"``, ``"D"``). A string that ``Granularity`` cannot
-        parse raises ``ValueError``.
+        marks the data for lazy regeneration on the next :attr:`data` or
+        :meth:`generate` access; pass a :class:`Granularity` member or a
+        pandas-style offset string (``"h"``, ``"D"``). A string that
+        ``Granularity`` cannot parse raises ``ValueError``.
 
         Example:
-            Read and rebind the granularity, regenerating immediately::
+            Read and rebind the granularity, marking the generator for lazy regeneration::
 
-                dg = DataGen(start_datetime="2024-01-01",
-                             end_datetime="2024-01-02", seed=1)
+                dg = DataGenerator(start_datetime="2024-01-01",
+                                   end_datetime="2024-01-02", seed=1)
                 dg.granularity            # "5min"
                 dg.granularity = "h"
                 dg.granularity            # "h"
@@ -321,7 +382,8 @@ class DataGen:
         When ``True``, generation emits one row per
         *(timestamp x product of all enumerable dimensions' distinct values)*,
         each combination carrying its own independently regenerated metric
-        series. Setting it triggers a regeneration.
+        series. Setting it marks the data for lazy regeneration on the next
+        :attr:`data` or :meth:`generate` access.
         """
         return self._expand_dimensions
 
@@ -336,7 +398,8 @@ class DataGen:
 
         When > 0 and ``expand_dimensions`` is active, each unique combination
         slice is scaled by a deterministic factor sampled from
-        ``LogNormal(0, scale_variance)``. Assigning regenerates the data.
+        ``LogNormal(0, scale_variance)``. Assigning marks the data for lazy
+        regeneration on the next :attr:`data` or :meth:`generate` access.
         Defaults to ``0.0`` (disabled).
         """
         return self._scale_variance
@@ -368,23 +431,50 @@ class DataGen:
     # Datetime properties
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _has_datetime(value: str | datetime | pd.Timestamp | None) -> bool:
+        """Return True if *value* is a non-empty datetime specification."""
+        return value is not None and not (isinstance(value, str) and value == "")
+
+    @staticmethod
+    def _coerce_timestamp(value: str | datetime | pd.Timestamp) -> pd.Timestamp:
+        """Convert an ISO date string, datetime, or Timestamp into a pd.Timestamp."""
+        if isinstance(value, pd.Timestamp):
+            return value
+        if isinstance(value, datetime):
+            return pd.Timestamp(value)
+        if isinstance(value, str) and value:
+            try:
+                return pd.Timestamp(datetime.fromisoformat(value))
+            except ValueError as exc:
+                raise ValidationError("Dates must be in ISO format (YYYY-MM-DD).") from exc
+        raise ValidationError("Dates must be in ISO format (YYYY-MM-DD).")
+
+    @classmethod
+    def _validate_date_order(
+        cls,
+        start: str | datetime | pd.Timestamp,
+        end: str | datetime | pd.Timestamp,
+    ) -> None:
+        """Raise ValidationError if *start* is after *end*."""
+        if cls._coerce_timestamp(start) > cls._coerce_timestamp(end):
+            raise ValidationError("start_datetime cannot be after end_datetime.")
+
     @property
     def start_datetime(self) -> str | datetime | pd.Timestamp:
         """Start bound of the generated time range.
 
         Returns the value set at construction or via assignment. Assigning a
-        non-empty value regenerates the data; assigning an empty value raises
-        :class:`ValidationError`.
+        non-empty value marks the pipeline for regeneration; assigning an empty
+        or malformed value raises :class:`ValidationError`.
         """
         return self._start_datetime
 
     @start_datetime.setter
-    def start_datetime(self, value: str) -> None:
-        if not value:
-            try:
-                datetime.fromisoformat(value)
-            except ValueError as exc:
-                raise ValidationError("Dates must be in ISO format (YYYY-MM-DD).") from exc
+    def start_datetime(self, value: str | datetime | pd.Timestamp) -> None:
+        self._coerce_timestamp(value)
+        if self._has_datetime(self._end_datetime):
+            self._validate_date_order(value, self._end_datetime)
         self._start_datetime = value
         self._request_regeneration()
 
@@ -393,18 +483,16 @@ class DataGen:
         """End bound of the generated time range.
 
         Returns the value set at construction or via assignment. Assigning a
-        non-empty value regenerates the data; assigning an empty value raises
-        :class:`ValidationError`.
+        non-empty value marks the pipeline for regeneration; assigning an empty
+        or malformed value raises :class:`ValidationError`.
         """
         return self._end_datetime
 
     @end_datetime.setter
-    def end_datetime(self, value: str) -> None:
-        if not value:
-            try:
-                datetime.fromisoformat(value)
-            except ValueError as exc:
-                raise ValidationError("Dates must be in ISO format (YYYY-MM-DD).") from exc
+    def end_datetime(self, value: str | datetime | pd.Timestamp) -> None:
+        self._coerce_timestamp(value)
+        if self._has_datetime(self._start_datetime):
+            self._validate_date_order(self._start_datetime, value)
         self._end_datetime = value
         self._request_regeneration()
 
@@ -413,8 +501,8 @@ class DataGen:
     # ------------------------------------------------------------------
 
     @property
-    def dimensions(self) -> dict[str, Dimensions]:
-        """Mapping of dimension name to Dimensions instance."""
+    def dimensions(self) -> dict[str, Dimension]:
+        """Mapping of dimension name to Dimension instance."""
         return {
             name: d
             for d in self._dimensions
@@ -422,25 +510,27 @@ class DataGen:
         }
 
     @property
-    def multi_items(self) -> dict[str, MultiItems]:
-        """Mapping of comma-joined names to MultiItems instance."""
+    def multi_items(self) -> dict[str, MultiItem]:
+        """Mapping of comma-joined names to MultiItem instance."""
         return {",".join(names): mt for mt in self._multi_items for names in [mt.names]}
 
     @property
-    def metrics(self) -> dict[str, Metrics]:
-        """Mapping of metric name to Metrics instance."""
+    def metrics(self) -> dict[str, Metric]:
+        """Mapping of metric name to Metric instance."""
         return {m.name: m for m in self._metrics}
 
     @property
     def baselines(self) -> dict[str, pd.DataFrame]:
         """Clean (anomaly-free) baseline DataFrames keyed by metric name.
 
-        Populated after data generation. Empty until the first generation.
+        Evaluates the generation pipeline lazily when pending.
         """
+        if self._pending_regeneration:
+            self._generate_data()
         return self._baselines
 
     @property
-    def trends(self) -> dict[str, dict[str, Trends]]:
+    def trends(self) -> dict[str, dict[str, Trend]]:
         """Nested mapping: ``{metric_name: {trend_name: trend_instance}}``."""
         return {m.name: {t.name: t for t in m.trends} for m in self._metrics}
 
@@ -490,15 +580,32 @@ class DataGen:
                 range/auto-name generator).
 
         Example:
-            >>> from ts_data_generator import DataGen
-            >>> from ts_data_generator.utils.functions import random_choice
-            >>> dg = DataGen(start_datetime="2024-01-01",
-            ...              end_datetime="2024-01-02", seed=0)
+            >>> from ts_data_generator import DataGenerator, random_choice
+            >>> dg = DataGenerator(start_datetime="2024-01-01",
+            ...                    end_datetime="2024-01-02", seed=0)
             >>> dg.add_dimension("region", random_choice(["north", "south"]))
             >>> "region" in dg.data.columns
             True
 
         """
+        coerced_fn, weights = self._coerce_dimension_function(name, function, weights)
+        coerced_fn = self._apply_domain(name, coerced_fn, domain)
+
+        dimension = Dimension(name=name, function=coerced_fn, expand=expand, weights=weights)
+
+        if dimension in self._dimensions:
+            raise DimensionError(f"Dimension with name {dimension.name!r} already exists.")
+
+        self._dimensions.append(dimension)
+        self._request_regeneration()
+
+    @staticmethod
+    def _coerce_dimension_function(
+        name: str,
+        function: int | float | str | list[Any] | dict[Any, float] | Generator[Any, None, None],
+        weights: dict[Any, float] | None = None,
+    ) -> tuple[DimensionCarrier | Generator[Any, None, None], dict[Any, float] | None]:
+        """Validate and coerce a dimension function specification into a carrier or generator."""
         if isinstance(function, dict):
             if not function:
                 raise ValidationError("Dimension values dict must not be empty.")
@@ -512,22 +619,14 @@ class DataGen:
             )
 
         if isinstance(function, (int, float, str)):
-            function = constant(function)
+            return constant(function), weights
 
         if isinstance(function, list):
             if not function:
                 raise ValidationError("Dimension values list must not be empty.")
-            function = _list_carrier(function)
+            return _list_carrier(function), weights
 
-        function = self._apply_domain(name, function, domain)
-
-        dimension = Dimensions(name=name, function=function, expand=expand, weights=weights)
-
-        if dimension in self._dimensions:
-            raise DimensionError(f"Dimension with name {dimension.name!r} already exists.")
-
-        self._dimensions.append(dimension)
-        self._request_regeneration()
+        return function, weights
 
     @staticmethod
     def _apply_domain(
@@ -565,7 +664,13 @@ class DataGen:
         carrier_name = getattr(function, "__name__", "custom")
         return DomainCarrier(function, list(domain), carrier_name)
 
-    def update_dimension(self, name: str, function: int | str | float | Generator | None) -> None:
+    def update_dimension(
+        self,
+        name: str,
+        function: (
+            int | float | str | list[Any] | dict[Any, float] | Generator[Any, None, None] | None
+        ),
+    ) -> None:
         """Update an existing dimension's generator function.
 
         Args:
@@ -584,21 +689,21 @@ class DataGen:
             return
 
         dimension = self.dimensions[name]
-        if not isinstance(function, (int, str, float, Generator)):
-            raise ValidationError("Function must be a generator, int, float, or str.")
-        dimension.function = function
+        coerced_fn, coerced_weights = self._coerce_dimension_function(name, function)
+        if coerced_weights is not None:
+            dimension.weights = coerced_weights
+        dimension.function = coerced_fn
+        self._request_regeneration()
 
     def remove_dimension(self, name: str) -> None:
-        """Remove a dimension and its column from the data.
+        """Remove a dimension and mark data for regeneration.
 
         Args:
             name: The dimension name to remove.
 
         """
-        if name in self.dimensions:
-            if not self._data.empty and name in self._data.columns:
-                self._data = self._data.drop([name], axis=1, errors="ignore")
         self._dimensions = [d for d in self._dimensions if d.name != name]
+        self._request_regeneration()
 
     # ------------------------------------------------------------------
     # Metric management
@@ -607,7 +712,7 @@ class DataGen:
     def add_metric(
         self,
         name: str,
-        trends: list[Trends] | set[Trends],
+        trends: Trend | Sequence[Trend] | set[Trend],
         aggregation_type: AggregationType = AggregationType.AVG,
         anomalies: list[Anomaly] | None = None,
     ) -> None:
@@ -615,7 +720,7 @@ class DataGen:
 
         Args:
             name: Unique column name for the metric.
-            trends: Collection of Trend instances. Their values are summed.
+            trends: A Trend instance or collection of Trend instances. Their values are summed.
             aggregation_type: Aggregation method for resampling.
             anomalies: Optional list of Anomaly instances applied in order
                 after trend composition.
@@ -625,25 +730,24 @@ class DataGen:
                 duplicate trends are detected.
 
         Example:
-            >>> from ts_data_generator import DataGen
-            >>> from ts_data_generator.utils.functions import random_choice
-            >>> from ts_data_generator.utils.trends import SinusoidalTrend
-            >>> dg = DataGen(start_datetime="2024-01-01",
-            ...              end_datetime="2024-01-02", seed=1)
+            >>> from ts_data_generator import (
+            ...     DataGenerator,
+            ...     SinusoidalTrend,
+            ...     random_choice,
+            ... )
+            >>> dg = DataGenerator(start_datetime="2024-01-01",
+            ...                    end_datetime="2024-01-02", seed=1)
             >>> dg.add_dimension("region", random_choice(["north", "south"]))
-            >>> dg.add_metric("signal", {SinusoidalTrend(amplitude=10.0, freq=0.1)})
+            >>> dg.add_metric("signal", [SinusoidalTrend(amplitude=10.0, freq=0.1)])
             >>> "signal" in dg.data.columns
             True
             >>> dg.data["signal"].shape[0] == dg.data.shape[0]
             True
 
         """
-        if len(trends) != len(set(trends)):
-            raise MetricError("Duplicate trends are present.")
-
-        metric = Metrics(
+        metric = Metric(
             name=name,
-            trends=set(trends),
+            trends=trends,
             aggregation_type=aggregation_type,
             anomalies=anomalies,
         )
@@ -655,16 +759,15 @@ class DataGen:
         self._request_regeneration()
 
     def remove_metric(self, name: str) -> None:
-        """Remove a metric and its column from the data.
+        """Remove a metric and mark data for regeneration.
 
         Args:
             name: The metric name to remove.
 
         """
-        if name in self.metrics:
-            if not self._data.empty and name in self._data.columns:
-                self._data = self._data.drop([name], axis=1, errors="ignore")
         self._metrics = [m for m in self._metrics if m.name != name]
+        self._baselines.pop(name, None)
+        self._request_regeneration()
 
     # ------------------------------------------------------------------
     # Multi-item management
@@ -705,10 +808,9 @@ class DataGen:
             ValidationError: If function type is invalid, domain is invalid, or generation fails.
 
         Example:
-            >>> from ts_data_generator import DataGen
-            >>> from ts_data_generator.utils.functions import random_choice
-            >>> dg = DataGen(start_datetime="2024-01-01",
-            ...              end_datetime="2024-01-02", seed=2)
+            >>> from ts_data_generator import DataGenerator, random_choice
+            >>> dg = DataGenerator(start_datetime="2024-01-01",
+            ...                    end_datetime="2024-01-02", seed=2)
             >>> dg.add_multi_items(["city", "zone"],
             ...                   random_choice([("NYC", "E"), ("LA", "W")]))
             >>> "city" in dg.data.columns and "zone" in dg.data.columns
@@ -740,7 +842,7 @@ class DataGen:
 
         function = self._apply_multi_item_domain(names, function, domain)
 
-        items = MultiItems(
+        items = MultiItem(
             names=names,
             function=function,
             aggregation_type=aggregation_type,
@@ -755,12 +857,7 @@ class DataGen:
                 raise MultiItemError(f"Multi-item with name(s) {overlap} already exists.")
 
         self._multi_items.append(items)
-
-        try:
-            self._request_regeneration()
-        except Exception:
-            self._multi_items.remove(items)
-            raise
+        self._request_regeneration()
 
     @staticmethod
     def _apply_multi_item_domain(
@@ -804,7 +901,7 @@ class DataGen:
         return DomainCarrier(function, tuple_domain, carrier_name)
 
     def remove_multi_item(self, names: str | list[str]) -> None:
-        """Remove a multi-item group and its columns.
+        """Remove a multi-item group and mark data for regeneration.
 
         If any of the given names overlap with a multi-item group, that
         entire group is removed.
@@ -820,18 +917,17 @@ class DataGen:
         overlapping = [mt for mt in self._multi_items if name_set & set(mt.names)]
 
         for item in overlapping:
-            if not self._data.empty:
-                self._data = self._data.drop(item.names, axis=1, errors="ignore")
             self._multi_items = [mt for mt in self._multi_items if mt.names != item.names]
+        self._request_regeneration()
 
     # ------------------------------------------------------------------
     # Data generation
     # ------------------------------------------------------------------
 
     def _request_regeneration(self) -> None:
-        """Signal that data needs regeneration; defers until both datetimes are set."""
-        if self._start_datetime and self._end_datetime:
-            self._generate_data()
+        """Mark the pipeline dirty so data is regenerated on the next read."""
+        self._pending_regeneration = True
+        self._state = PipelineState.CONFIGURED
 
     def _validate_dates(self) -> None:
         """Validate that start/end datetimes are set and logically ordered.
@@ -840,15 +936,11 @@ class DataGen:
             ValidationError: If dates are missing or start is after end.
 
         """
-        if not self._start_datetime:
+        if not self._has_datetime(self._start_datetime):
             raise ValidationError("start_datetime must be set.")
-        if not self._end_datetime:
+        if not self._has_datetime(self._end_datetime):
             raise ValidationError("end_datetime must be set.")
-
-        start = datetime.fromisoformat(cast(str, self._start_datetime))
-        end = datetime.fromisoformat(cast(str, self._end_datetime))
-        if start > end:
-            raise ValidationError("start_datetime cannot be after end_datetime.")
+        self._validate_date_order(self._start_datetime, self._end_datetime)
 
     def _generate_data(self) -> pd.DataFrame:
         """Build or rebuild the full generated DataFrame.
@@ -865,9 +957,8 @@ class DataGen:
             freq=self.granularity,
         )
 
-        reset_needed = self._timestamps is not None and len(self._timestamps) != len(new_timestamps)
-
         self._timestamps = new_timestamps
+        self._baselines = {}
 
         if self._should_expand():
             self._data = self._generate_expanded_data(new_timestamps)
@@ -875,18 +966,11 @@ class DataGen:
             self._state = PipelineState.GENERATED
             return self._data
 
-        if reset_needed or self._data.empty:
-            self._data = pd.DataFrame(index=new_timestamps)
+        data = pd.DataFrame(index=new_timestamps)
 
-        existing_columns: set[str] = set()
-        if not self._data.empty:
-            existing_columns = set(self._data.columns)
-
-        metric_df = self._build_metrics(new_timestamps, existing_columns)
-        dimension_df = self._build_dimensions(new_timestamps, existing_columns)
-        multi_item_df = self._build_multi_items(new_timestamps, existing_columns)
-
-        data = self._data
+        metric_df = self._build_metrics(new_timestamps)
+        dimension_df = self._build_dimensions(new_timestamps)
+        multi_item_df = self._build_multi_items(new_timestamps)
 
         for component in (dimension_df, metric_df, multi_item_df):
             if not component.empty:
@@ -955,40 +1039,31 @@ class DataGen:
 
         return self._sort_columns(data, dims_alphabetical=True)
 
-    def _build_metrics(
-        self, timestamps: pd.DatetimeIndex, existing_columns: set[str]
-    ) -> pd.DataFrame:
+    def _build_metrics(self, timestamps: pd.DatetimeIndex) -> pd.DataFrame:
         data_dict: dict[str, Any] = {}
-        for metric in self.metrics.values():
-            if metric.name not in existing_columns:
-                result = metric.generate(timestamps, rng=self._rng)
-                self._baselines[metric.name] = result.baseline
-                data_dict[metric.name] = result.signal[metric.name].to_numpy()
-                if not result.labels.empty:
-                    label_col = f"{metric.name}_anomaly"
-                    data_dict[label_col] = result.labels[label_col].to_numpy()
+        for metric in self._metrics:
+            result = metric.generate(timestamps, rng=self._rng)
+            self._baselines[metric.name] = result.baseline
+            data_dict[metric.name] = result.signal[metric.name].to_numpy()
+            if not result.labels.empty:
+                label_col = f"{metric.name}_anomaly"
+                data_dict[label_col] = result.labels[label_col].to_numpy()
         if not data_dict:
             return pd.DataFrame(index=timestamps)
         return pd.DataFrame(data_dict, index=timestamps)
 
-    def _build_dimensions(
-        self, timestamps: pd.DatetimeIndex, existing_columns: set[str]
-    ) -> pd.DataFrame:
+    def _build_dimensions(self, timestamps: pd.DatetimeIndex) -> pd.DataFrame:
         df = pd.DataFrame(index=timestamps)
-        for dimension in self.dimensions.values():
-            if dimension.name not in existing_columns:
-                generated = dimension.generate(timestamps, rng=self._rng)
-                df = pd.concat([df, generated], axis=1)
+        for dimension in self._dimensions:
+            generated = dimension.generate(timestamps, rng=self._rng)
+            df = pd.concat([df, generated], axis=1)
         return df
 
-    def _build_multi_items(
-        self, timestamps: pd.DatetimeIndex, existing_columns: set[str]
-    ) -> pd.DataFrame:
+    def _build_multi_items(self, timestamps: pd.DatetimeIndex) -> pd.DataFrame:
         df = pd.DataFrame(index=timestamps)
-        for multi_item in self.multi_items.values():
-            if any(item not in existing_columns for item in multi_item.names):
-                generated = multi_item.generate(timestamps, rng=self._rng)
-                df = pd.concat([df, generated], axis=1)
+        for multi_item in self._multi_items:
+            generated = multi_item.generate(timestamps, rng=self._rng)
+            df = pd.concat([df, generated], axis=1)
         return df
 
     def _sort_columns(self, data: pd.DataFrame, *, dims_alphabetical: bool = False) -> pd.DataFrame:
@@ -1063,15 +1138,17 @@ class DataGen:
             KeyError: If granularity string is not recognized.
 
         Example:
-            >>> from ts_data_generator import DataGen
-            >>> from ts_data_generator.schema import Granularity
-            >>> from ts_data_generator.utils.functions import random_choice
-            >>> from ts_data_generator.utils.trends import LinearTrend
-            >>> dg = DataGen(start_datetime="2024-01-01",
-            ...              end_datetime="2024-01-02",
-            ...              granularity=Granularity.HOURLY, seed=42)
+            >>> from ts_data_generator import (
+            ...     DataGenerator,
+            ...     Granularity,
+            ...     LinearTrend,
+            ...     random_choice,
+            ... )
+            >>> dg = DataGenerator(start_datetime="2024-01-01",
+            ...                    end_datetime="2024-01-02",
+            ...                    granularity=Granularity.HOUR, seed=42)
             >>> dg.add_dimension("region", random_choice(["north", "south"]))
-            >>> dg.add_metric("sales", {LinearTrend(offset=100.0, slope=0)})
+            >>> dg.add_metric("sales", [LinearTrend(offset=100.0, slope=0)])
             >>> dg.aggregate("D").shape[0] < dg.data.shape[0]
             True
 
@@ -1150,3 +1227,6 @@ class DataGen:
             include=include,
             **matplotlib_kwargs,
         )
+
+
+DataGen = DataGenerator

@@ -13,20 +13,19 @@ nav_order: 4
 
 ## 📈 Built-in Native Plotting
 
-The `DataGen` class contains a `.plot()` method that leverages `matplotlib` to render quick line charts of your generated numeric metrics.
+The `DataGenerator` class contains a `.plot()` method that leverages `matplotlib` to render quick line charts of your generated numeric metrics.
 
 ```python
-from ts_data_generator import DataGen
-from ts_data_generator.utils.trends import SinusoidalTrend, LinearTrend
+from ts_data_generator import DataGenerator, LinearTrend, SinusoidalTrend
 
-dg = DataGen(seed=42)
+dg = DataGenerator(seed=42)
 dg.start_datetime = "2024-01-01"
 dg.end_datetime = "2024-01-04"
 dg.to_granularity("h")
 
 # Composing a metric
-dg.add_metric("temperature", {LinearTrend(offset=15.0, slope=2), SinusoidalTrend(amplitude=5, freq=1)})
-dg.add_metric("humidity", {SinusoidalTrend(amplitude=15, freq=1)})
+dg.add_metric("temperature", [LinearTrend(offset=15.0, slope=2), SinusoidalTrend(amplitude=5, freq=1)])
+dg.add_metric("humidity", SinusoidalTrend(amplitude=15, freq=1))
 
 df = dg.data
 
@@ -57,18 +56,16 @@ Seaborn is perfect for plotting metrics grouped by categorical dimensions (like 
 ```python
 import seaborn as sns
 import matplotlib.pyplot as plt
-from ts_data_generator import DataGen
-from ts_data_generator.utils.functions import random_choice
-from ts_data_generator.utils.trends import SinusoidalTrend
+from ts_data_generator import DataGenerator, SinusoidalTrend, random_choice
 
 # Setup multi-variate generation
-dg = DataGen(seed=42)
+dg = DataGenerator(seed=42)
 dg.start_datetime = "2024-01-01"
 dg.end_datetime = "2024-01-03"
 dg.to_granularity("h")
 
 dg.add_dimension("region", random_choice(["North", "South"]))
-dg.add_metric("temperature", {SinusoidalTrend(amplitude=10, freq=1)})
+dg.add_metric("temperature", SinusoidalTrend(amplitude=10, freq=1))
 
 df = dg.data.reset_index() # Seaborn works best with long-format columns
 
@@ -100,15 +97,14 @@ Plotly allows you to hover over spikes, zoom in on stochastically placed anomali
 
 ```python
 import plotly.express as px
-from ts_data_generator import DataGen
-from ts_data_generator.utils.trends import StockTrend
+from ts_data_generator import DataGenerator, StockTrend
 
 # Setup a stock price simulation
-dg = DataGen(seed=777)
+dg = DataGenerator(seed=777)
 dg.start_datetime = "2024-01-01"
 dg.end_datetime = "2024-01-07"
 dg.to_granularity("5min")
-dg.add_metric("asset_price", {StockTrend(amplitude=150.0, noise_level=0.1)})
+dg.add_metric("asset_price", StockTrend(amplitude=150.0, noise_level=0.1))
 
 df = dg.data
 

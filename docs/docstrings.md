@@ -13,8 +13,8 @@ granularity, carrier, `expand_dimensions`, baseline) is defined in
 [`concepts.md`](concepts.md); use those terms, do not invent synonyms.
 
 **Scope.** Everything a user touches in the IDE: the public surface of
-`DataGen`, `utils.trends`, `utils.functions`, `anomalies`, `schema`, and the
-pre-built factory types (`Dimensions`, `Metrics`, `MultiItems`). **Internal
+`DataGenerator`, `trends`, `functions`, `anomalies`, `schema`, and the
+pre-built factory types (`Dimension`, `Metric`, `MultiItem`). **Internal
 `_*` helpers and `_*` modules are out of scope** — they are never linted by the
 `D` rules (ticket 03) and need not be documented to this standard.
 
@@ -70,12 +70,12 @@ Rules:
 
 | Surface | `Example` required? | Form |
 |---|---|---|
-| Core generate-and-read flow: `DataGen` construct → `add_dimension`/`add_metric`/`add_multi_items` → `.data` / `aggregate` | **Yes** | runnable `>>>` doctest |
+| Core generate-and-read flow: `DataGenerator` construct → `add_dimension`/`add_metric`/`add_multi_items` → `.data` / `.generate()` / `aggregate` | **Yes** | runnable `>>>` doctest |
 | Trend composition: `SinusoidalTrend` + `random_choice` passed to `add_metric` | **Yes** | runnable `>>>` doctest |
-| The 8 trend classes, the 6 `utils.functions` carriers | **Yes** (one each) | runnable `>>>` doctest |
+| The 8 `Trend` classes, the 6 `functions` carriers | **Yes** (one each) | runnable `>>>` doctest |
 | Read/write properties (`granularity`, `data`, `shape`, …) | Optional — illustrative | `::` block or short `>>>` (see §4) |
 | Long-tail methods (`normalize`, `denormalize`, `plot`, `to_granularity`, `head`, `tail`) | Optional — illustrative | `::` block |
-| Pre-built factory types (`Dimensions`, `Metrics`, `MultiItems`) | Optional | `::` block |
+| Pre-built factory types (`Dimension`, `Metric`, `MultiItem`) | Optional | `::` block |
 
 The core-flow doctests are **run in CI** (ticket 04); everything else is
 illustrative and never executed. Do not put a runnable `>>>` block on a symbol
@@ -87,18 +87,15 @@ unless you intend CI to run it — an unrun `>>>` reads as a broken promise.
 
 ```python
 Example:
-    >>> from ts_data_generator import DataGen
-    >>> from ts_data_generator.schema import Granularity
-    >>> from ts_data_generator.utils.functions import random_choice
-    >>> from ts_data_generator.utils.trends import LinearTrend
-    >>> dg = DataGen(
+    >>> from ts_data_generator import DataGenerator, Granularity, LinearTrend, random_choice
+    >>> dg = DataGenerator(
     ...     start_datetime="2024-01-01",
     ...     end_datetime="2024-01-02",
-    ...     granularity=Granularity.HOURLY,
+    ...     granularity=Granularity.HOUR,
     ...     seed=42,
     ... )
     >>> dg.add_dimension("region", random_choice(["north", "south"]))
-    >>> dg.add_metric("sales", {LinearTrend(offset=100.0, slope=0)})
+    >>> dg.add_metric("sales", LinearTrend(offset=100.0, slope=0))
     >>> df = dg.data
     >>> df.shape[0] > 0
     True
@@ -126,7 +123,7 @@ Convention:
 Example:
     Roll two dimensions into a Cartesian product via ``expand_dimensions``::
 
-        dg = DataGen(..., expand_dimensions=True)
+        dg = DataGenerator(..., expand_dimensions=True)
         dg.add_dimension("region", random_choice(["north", "south"]))
         dg.add_dimension("product", random_choice(["a", "b"]))
         # .data now has one row per (timestamp x region x product)
@@ -147,13 +144,14 @@ def granularity(self) -> str:
 
     Returns the granularity's string value (the ``Granularity`` enum's
     ``.value``). Assigning to this property re-binds the granularity and
-    regenerates the data; pass a ``Granularity`` member or a pandas-style
+    marks the data for lazy regeneration on the next ``.data`` or
+    ``.generate()`` access; pass a ``Granularity`` member or a pandas-style
     offset string (``"h"``, ``"D"``). A string that ``Granularity`` cannot
     parse raises ``ValueError``.
 
     Example:
-        >>> dg = DataGen(start_datetime="2024-01-01",
-        ...              end_datetime="2024-01-02", seed=1)
+        >>> dg = DataGenerator(start_datetime="2024-01-01",
+        ...                    end_datetime="2024-01-02", seed=1)
         >>> dg.granularity
         '5min'
         >>> dg.granularity = "h"
@@ -165,7 +163,7 @@ def granularity(self) -> str:
 Rules:
 
 - The property docstring is what the IDE shows on hover for both get and set —
-  describe the value *and* the assign-time side effect (regeneration, validation).
+  describe the value *and* the assign-time side effect (lazy regeneration, validation).
 - Type the getter's return annotation (`-> str`), not `-> Any`.
 - Read-only properties (`data`, `shape`, `head`/`tail` are methods) describe
   only the value; `data` documents the returned DataFrame's columns and index
@@ -184,9 +182,9 @@ public symbols a user imports from this module.>
 """
 ```
 
-- `data_gen.py` → names `DataGen` and the entry-point flow.
-- `utils/functions.py` → names the carrier helpers and the CLI-shorthand link.
-- `utils/trends.py` → names `Trend` + subclasses and the composition model.
+- `data_gen.py` → names `DataGenerator` and the entry-point flow.
+- `functions.py` → names the carrier helpers and the CLI-shorthand link.
+- `trends.py` → names `Trend` + subclasses and the composition model.
 - `anomalies/` → names the `Anomaly` base + built-ins.
 - `schema/` → names the user-facing types and the converter/imputer entry points.
 
@@ -210,7 +208,7 @@ fixes the *convention*:
 
   ```python
   @overload
-  def __init__(self, *, dimensions: list[Dimensions], ...) -> None: ...
+  def __init__(self, *, dimensions: list[Dimension], ...) -> None: ...
   @overload
   def __init__(self, *, start_datetime: str, ...) -> None: ...
   def __init__(self, dimensions=None, ..., ) -> None:
@@ -226,7 +224,7 @@ fixes the *convention*:
 The three examples below are the reference shapes the execution phase (ticket
 07 pilot) copies. They are drawn from the real source so they are faithful.
 
-### Flagship method — `DataGen.add_dimension`
+### Flagship method — `DataGenerator.add_dimension`
 
 ```python
 def add_dimension(
@@ -269,17 +267,16 @@ def add_dimension(
             auto-name generator).
 
     Example:
-        >>> from ts_data_generator import DataGen
-        >>> from ts_data_generator.utils.functions import random_choice
-        >>> dg = DataGen(start_datetime="2024-01-01",
-        ...              end_datetime="2024-01-02", seed=0)
+        >>> from ts_data_generator import DataGenerator, random_choice
+        >>> dg = DataGenerator(start_datetime="2024-01-01",
+        ...                    end_datetime="2024-01-02", seed=0)
         >>> dg.add_dimension("region", random_choice(["north", "south"]))
         >>> "region" in dg.data.columns
         True
     """
 ```
 
-### Read/write property — `DataGen.granularity`
+### Read/write property — `DataGenerator.granularity`
 
 See §4 (the `granularity` example *is* the worked example for properties).
 
@@ -306,7 +303,7 @@ def random_choice(
         ``next()`` yields a random element.
 
     Example:
-        >>> from ts_data_generator.utils.functions import random_choice
+        >>> from ts_data_generator import random_choice
         >>> carrier = random_choice(["a", "b", "c"])
         >>> carrier.domain
         ['a', 'b', 'c']

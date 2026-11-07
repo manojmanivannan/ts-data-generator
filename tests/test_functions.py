@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from ts_data_generator.random import DefaultRNG, SeedableRNG
-from ts_data_generator.utils.functions import (
+from ts_data_generator.functions import (
     auto_generate_name,
     random_choice,
     random_float,
     random_int,
 )
+from ts_data_generator.random import DefaultRNG, SeedableRNG
 
 
 class TestRandomChoiceWithRNG:

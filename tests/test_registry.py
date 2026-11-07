@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from ts_data_generator.exceptions import RegistryError
-from ts_data_generator.utils.registry import Registry
+from ts_data_generator.registry import Registry
 
 # ── helpers for test modules ─────────────────────────────────────────────
 # NOTE: names must NOT start with '_' because Registry.list_available()
@@ -41,12 +41,12 @@ class TestRegistryInit:
 
     def test_accepts_module_string(self) -> None:
         """A dotted module string is imported successfully."""
-        r = Registry("ts_data_generator.utils.functions")
+        r = Registry("ts_data_generator.functions")
         assert "random_choice" in r.list_available()
 
     def test_accepts_module_object(self) -> None:
         """An already-imported module object is accepted."""
-        import ts_data_generator.utils.functions as fn_mod
+        import ts_data_generator.functions as fn_mod
 
         r = Registry(fn_mod)
         assert "random_choice" in r.list_available()
@@ -117,7 +117,7 @@ class TestRegistryListAvailable:
     """Tests for Registry.list_available()."""
 
     def test_lists_all_public_names_by_default(self) -> None:
-        r = Registry("ts_data_generator.utils.functions")
+        r = Registry("ts_data_generator.functions")
         available = r.list_available()
         for name in ("constant", "random_choice", "random_int", "random_float",
                       "ordered_choice", "auto_generate_name"):
@@ -147,7 +147,7 @@ class TestRegistryListAvailable:
 
     def test_returns_sorted(self) -> None:
         """list_available() returns alphabetically sorted names."""
-        r = Registry("ts_data_generator.utils.functions")
+        r = Registry("ts_data_generator.functions")
         available = r.list_available()
         assert available == sorted(available)
 
@@ -158,7 +158,7 @@ class TestRegistryRealModules:
     def test_trend_registry_finds_sinusoidal(self) -> None:
         """The trends module should expose SinusoidalTrend."""
         r = Registry(
-            "ts_data_generator.utils.trends",
+            "ts_data_generator.trends",
             base_class=object,  # just ensures it's a class
         )
         assert "SinusoidalTrend" in r.list_available()
@@ -173,8 +173,35 @@ class TestRegistryRealModules:
 
     def test_function_registry_finds_random_choice(self) -> None:
         """The functions module should expose random_choice."""
-        from ts_data_generator.utils.functions import random_choice
+        from ts_data_generator.functions import random_choice
 
-        r = Registry("ts_data_generator.utils.functions")
+        r = Registry("ts_data_generator.functions")
         obj = r.get("random_choice")
         assert obj is random_choice
+
+    def test_function_registry_respects_all_and_returns_only_6_functions(self) -> None:
+        """Registry('ts_data_generator.functions') returns only the 6 dimension functions."""
+        r = Registry("ts_data_generator.functions")
+        assert r.list_available() == [
+            "auto_generate_name",
+            "constant",
+            "ordered_choice",
+            "random_choice",
+            "random_float",
+            "random_int",
+        ]
+
+    def test_registry_get_rejects_attribute_not_in_all(self) -> None:
+        """When __all__ is defined on a module, get() rejects attributes not in __all__."""
+        import types
+
+        mod = types.ModuleType("dummy_mod")
+        mod.exported_fn = lambda: 1  # type: ignore[attr-defined]
+        mod.internal_helper = lambda: 2  # type: ignore[attr-defined]
+        mod.__all__ = ["exported_fn"]  # type: ignore[attr-defined]
+
+        r = Registry(mod)
+        assert r.list_available() == ["exported_fn"]
+        assert r.get("exported_fn") is mod.exported_fn
+        with pytest.raises(RegistryError, match="not a valid option"):
+            r.get("internal_helper")

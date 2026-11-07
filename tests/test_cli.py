@@ -548,7 +548,7 @@ class TestEdgeCases:
 class TestNoDimensionsGenerate:
     """Regression tests: a metric-only, dimensionless dataset must generate
     successfully via the CLI (dimensions are optional, matching the Python
-    API where DataGen.add_dimension() is never required)."""
+    API where DataGenerator.add_dimension() is never required)."""
 
     @pytest.fixture
     def runner(self):

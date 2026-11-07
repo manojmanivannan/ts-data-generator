@@ -15,14 +15,14 @@ from ts_data_generator.exceptions import AggregationError
 from ts_data_generator.schema.models import AggregationType, Granularity
 
 if TYPE_CHECKING:
-    from ts_data_generator.schema.models import Dimensions, Metrics, MultiItems
+    from ts_data_generator.schema.models import Dimension, Metric, MultiItem
 
 
 def aggregate_dataframe(
     data: pd.DataFrame,
-    metrics: dict[str, Metrics],
-    dimensions: dict[str, Dimensions],
-    multi_items: dict[str, MultiItems],
+    metrics: dict[str, Metric],
+    dimensions: dict[str, Dimension],
+    multi_items: dict[str, MultiItem],
     *,
     from_granularity: str,
     to_granularity: str,
@@ -41,15 +41,15 @@ def aggregate_dataframe(
     groupby keys; every other dimension is aggregated away (its values
     combined through each metric's ``aggregation_type``).  *by* lists
     individual column names, so the components of a linked dimension
-    (``MultiItems`` without ``aggregation_type``) may be kept or rolled up
+    (``MultiItem`` without ``aggregation_type``) may be kept or rolled up
     independently — e.g. ``by=["region", "city"]`` keeps ``region`` and
     ``city`` while rolling up a companion ``store_id`` column.
 
     Args:
         data: The source DataFrame (assumed indexed by timestamp).
-        metrics: Mapping of metric name to ``Metrics`` instance.
-        dimensions: Mapping of dimension name to ``Dimensions`` instance.
-        multi_items: Mapping of comma-joined names to ``MultiItems`` instance.
+        metrics: Mapping of metric name to ``Metric`` instance.
+        dimensions: Mapping of dimension name to ``Dimension`` instance.
+        multi_items: Mapping of comma-joined names to ``MultiItem`` instance.
         from_granularity: Current granularity of the data (e.g. ``"5min"``).
         to_granularity: Target granularity (e.g. ``"h"``, ``"D"``).
         by: Optional subset of dimension column names to group by.  ``None``
@@ -87,7 +87,7 @@ def aggregate_dataframe(
             agg_dict[label_col] = "max"
 
     # Full set of groupable columns: scalar dimension names plus the
-    # component columns of linked dimensions (MultiItems without an
+    # component columns of linked dimensions (MultiItem without an
     # aggregation_type). Multi-items *with* an aggregation_type are linked
     # metrics and join agg_dict instead.
     groupable: list[str] = list(dimensions.keys())

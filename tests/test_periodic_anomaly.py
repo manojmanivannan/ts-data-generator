@@ -4,10 +4,10 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from ts_data_generator import DataGen
+from ts_data_generator import DataGenerator
 from ts_data_generator.anomalies import EventSchedule, PeriodicBurstAnomaly
 from ts_data_generator.random import DefaultRNG, SeedableRNG
-from ts_data_generator.utils.trends import LinearTrend
+from ts_data_generator.trends import LinearTrend
 
 
 class TestEventScheduleConstruction:
@@ -290,9 +290,9 @@ class TestSharedScheduleCorrelatesMetrics:
             assert np.any(bler_result[start : end + 1] > 0.0)
 
 
-class TestDataGenWithPeriodicBurstAnomaly:
+class TestDataGeneratorWithPeriodicBurstAnomaly:
     def test_end_to_end_in_dataframe(self):
-        dg = DataGen(
+        dg = DataGenerator(
             start_datetime="2024-01-01",
             end_datetime="2024-01-01 00:30:00",
             granularity="min",

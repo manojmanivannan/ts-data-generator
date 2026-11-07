@@ -52,7 +52,7 @@ import pandas as pd
 from ts_data_generator.carriers import DimensionCarrier
 from ts_data_generator.exceptions import ExpandError
 from ts_data_generator.random import SeedableRNG
-from ts_data_generator.schema.models import Dimensions, Metrics, MultiItems
+from ts_data_generator.schema.models import Dimension, Metric, MultiItem
 
 # The carrier kind reported for an opaque plain generator with no domain.
 _OPAQUE_KIND = "custom"
@@ -67,7 +67,7 @@ def combination_seed(base_seed: int, combination: list[tuple[str, Any]]) -> int:
     across processes (unlike Python's salted ``hash()``).
 
     Args:
-        base_seed: The ``DataGen`` base seed.
+        base_seed: The ``DataGenerator`` base seed.
         combination: ``(dimension_name, value)`` pairs for one combo.
 
     Returns:
@@ -80,14 +80,14 @@ def combination_seed(base_seed: int, combination: list[tuple[str, Any]]) -> int:
 
 def compute_combination_scale(
     combo_pairs: list[tuple[str, Any]],
-    dimensions: dict[str, Dimensions],
-    linked_dims: dict[str, MultiItems],
+    dimensions: dict[str, Dimension],
+    linked_dims: dict[str, MultiItem],
     rng: SeedableRNG,
     scale_variance: float = 0.0,
 ) -> float:
     """Compute the effective scale factor for a combination of expanding dimensions.
 
-    Combines explicit weights defined on Dimensions / MultiItems multiplicatively,
+    Combines explicit weights defined on Dimension / MultiItem multiplicatively,
     and applies a stochastic scale multiplier if scale_variance > 0.
     """
     scale = 1.0
@@ -107,7 +107,7 @@ def compute_combination_scale(
     return scale
 
 
-def resolve_expand(dimension: Dimensions | MultiItems, global_expand: bool) -> bool:
+def resolve_expand(dimension: Dimension | MultiItem, global_expand: bool) -> bool:
     """Resolve a dimension's effective expansion against the global flag.
 
     ``None`` inherits the global flag; ``True``/``False`` override it
@@ -119,7 +119,7 @@ def resolve_expand(dimension: Dimensions | MultiItems, global_expand: bool) -> b
     return global_expand
 
 
-def _resolve_domain(name: str, dimension: Dimensions | MultiItems) -> list[Any]:
+def _resolve_domain(name: str, dimension: Dimension | MultiItem) -> list[Any]:
     """Return the expandable domain of a dimension or linked dimension, or raise ``ExpandError``.
 
     Reads the carrier's ``.domain`` with zero introspection. A non-expandable
@@ -131,7 +131,7 @@ def _resolve_domain(name: str, dimension: Dimensions | MultiItems) -> list[Any]:
     """
     fn = dimension.function
     if not isinstance(fn, DimensionCarrier):
-        source_hint = "add_multi_items" if isinstance(dimension, MultiItems) else "add_dimension"
+        source_hint = "add_multi_items" if isinstance(dimension, MultiItem) else "add_dimension"
         raise ExpandError(
             f"dimension {name!r} cannot be expanded: it is an opaque generator "
             f"({_OPAQUE_KIND}) with no known domain. Provide a finite value list "
@@ -146,7 +146,7 @@ def _resolve_domain(name: str, dimension: Dimensions | MultiItems) -> list[Any]:
         )
     domain = fn.domain
     assert domain is not None  # expandable carriers always carry a domain
-    if isinstance(dimension, MultiItems):
+    if isinstance(dimension, MultiItem):
         normalized_domain: list[tuple[Any, ...]] = []
         for item in domain:
             t = tuple(item) if isinstance(item, (list, tuple)) else (item,)
@@ -165,10 +165,10 @@ def _generate_combo_dataframe(
     expanding_keys: list[str],
     is_linked: list[bool],
     base_seed: int,
-    dimensions: dict[str, Dimensions],
-    linked_dims: dict[str, MultiItems],
-    metrics: dict[str, Metrics],
-    linked_metrics: dict[str, MultiItems],
+    dimensions: dict[str, Dimension],
+    linked_dims: dict[str, MultiItem],
+    metrics: dict[str, Metric],
+    linked_metrics: dict[str, MultiItem],
     timestamps: pd.DatetimeIndex,
     scale_variance: float,
     non_expanding_scalar_names: list[str],
@@ -234,12 +234,12 @@ def _generate_combo_worker(task: tuple) -> pd.DataFrame:
 
 
 def build_expanded_dataframe(
-    dimensions: dict[str, Dimensions],
-    metrics: dict[str, Metrics],
+    dimensions: dict[str, Dimension],
+    metrics: dict[str, Metric],
     timestamps: pd.DatetimeIndex,
     base_seed: int,
     global_expand: bool = True,
-    multi_items: dict[str, MultiItems] | None = None,
+    multi_items: dict[str, MultiItem] | None = None,
     scale_variance: float = 0.0,
     workers: int | None = None,
 ) -> pd.DataFrame:
@@ -247,7 +247,7 @@ def build_expanded_dataframe(
 
     The Cartesian product runs over **expanding** dimensions only — those whose
     effective expansion (per-dim override falling back to ``global_expand``) is
-    ``True`` and which carry an enumerable domain. Linked dimensions (MultiItems
+    ``True`` and which carry an enumerable domain. Linked dimensions (MultiItem
     without ``aggregation_type``) participate in the product as a compound key
     over their distinct-tuple domain. Each combination carries its own
     independently regenerated metric series (both regular metrics and linked
@@ -259,14 +259,14 @@ def build_expanded_dataframe(
     with component columns in declared order).
 
     Args:
-        dimensions: Mapping of dimension name to ``Dimensions`` instance.
-        metrics: Mapping of metric name to ``Metrics`` instance.
+        dimensions: Mapping of dimension name to ``Dimension`` instance.
+        metrics: Mapping of metric name to ``Metric`` instance.
         timestamps: The full timestamp index for the dataset.
         base_seed: The base seed (a derived default when the engine is unseeded).
         global_expand: The global ``expand_dimensions`` flag the per-dim
             ``expand`` override falls back to. Defaults to ``True`` since this
             is only reached on the expansion path.
-        multi_items: Optional mapping of comma-joined names to ``MultiItems``
+        multi_items: Optional mapping of comma-joined names to ``MultiItem``
             instance. Linked dimensions join dimension expansion; linked metrics
             regenerate once per combination.
         scale_variance: Standard deviation for stochastic log-normal scaling
@@ -288,10 +288,10 @@ def build_expanded_dataframe(
     if multi_items is None:
         multi_items = {}
 
-    linked_dims: dict[str, MultiItems] = {
+    linked_dims: dict[str, MultiItem] = {
         key: mi for key, mi in multi_items.items() if not mi.aggregation_type
     }
-    linked_metrics: dict[str, MultiItems] = {
+    linked_metrics: dict[str, MultiItem] = {
         key: mi for key, mi in multi_items.items() if mi.aggregation_type
     }
 
@@ -398,7 +398,7 @@ def build_expanded_dataframe(
         ]
 
     # Ordering: one alphabetical slot per compound name; component columns sort
-    # in declared MultiItems.names order.
+    # in declared MultiItem.names order.
     sort_cols: list[str] = ["_ts"]
     for key in all_dim_keys:
         if key in dimensions:

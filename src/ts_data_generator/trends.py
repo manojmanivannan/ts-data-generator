@@ -1,26 +1,29 @@
 """Trend generators for time series metrics.
 
-Each trend class inherits from the abstract :class:`Trends` base and implements
+Each trend class inherits from the abstract :class:`Trend` base and implements
 ``generate(timestamps, rng)`` to produce a numpy array of values matching the
 length of the given timestamps. Trends compose inside
-:class:`~ts_data_generator.DataGen` by passing one or more trend instances to
-:meth:`~ts_data_generator.DataGen.add_metric`, which sums their outputs into a
+:class:`~ts_data_generator.DataGenerator` by passing one or more trend instances to
+:meth:`~ts_data_generator.DataGenerator.add_metric`, which sums their outputs into a
 single metric column.
 
 Example:
-    >>> from ts_data_generator import DataGen
-    >>> from ts_data_generator.schema import Granularity
-    >>> from ts_data_generator.utils.functions import random_choice
-    >>> from ts_data_generator.utils.trends import LinearTrend, SinusoidalTrend
-    >>> dg = DataGen(
+    >>> from ts_data_generator import (
+    ...     DataGenerator,
+    ...     Granularity,
+    ...     LinearTrend,
+    ...     SinusoidalTrend,
+    ...     random_choice,
+    ... )
+    >>> dg = DataGenerator(
     ...     start_datetime="2024-01-01",
     ...     end_datetime="2024-01-02",
-    ...     granularity=Granularity.HOURLY,
+    ...     granularity=Granularity.HOUR,
     ...     seed=42,
     ... )
     >>> dg.add_dimension("region", random_choice(["north", "south"]))
-    >>> dg.add_metric("sales", {SinusoidalTrend(amplitude=2.0, freq=24),
-    ...                        LinearTrend(offset=100.0, slope=0)})
+    >>> dg.add_metric("sales", [SinusoidalTrend(amplitude=2.0, freq=24),
+    ...                        LinearTrend(offset=100.0, slope=0)])
     >>> "sales" in dg.data.columns and "region" in dg.data.columns
     True
     >>> dg.data.shape[0] > 0
@@ -60,13 +63,13 @@ _FREQ_CONVERTERS: dict[str, object] = {
 }
 
 
-class Trends(ABC):
+class Trend(ABC):
     """Abstract base for all trend generators.
 
     Subclasses implement :meth:`generate` to produce a numpy array of values
     matching the length of the given timestamps. Trends are not used directly;
-    they compose inside :class:`~ts_data_generator.DataGen` via
-    :meth:`~ts_data_generator.DataGen.add_metric`, which sums the arrays from
+    they compose inside :class:`~ts_data_generator.DataGenerator` via
+    :meth:`~ts_data_generator.DataGenerator.add_metric`, which sums the arrays from
     every trend handed to a metric into one column.
 
     Args:
@@ -97,7 +100,7 @@ class Trends(ABC):
         ...
 
 
-class SinusoidalTrend(Trends):
+class SinusoidalTrend(Trend):
     """Generate a sinusoidal wave with optional noise.
 
     Args:
@@ -167,7 +170,7 @@ class SinusoidalTrend(Trends):
         return base_wave + noise
 
 
-class LinearTrend(Trends):
+class LinearTrend(Trend):
     """Generate a linear trend with optional noise.
 
     The ``slope`` parameter directly sets the angle of the trend in degrees.
@@ -248,7 +251,7 @@ class LinearTrend(Trends):
         return base_trend + noise
 
 
-class WeekendTrend(Trends):
+class WeekendTrend(Trend):
     """Generate a trend that spikes (up or down) on weekends.
 
     Args:
@@ -316,7 +319,7 @@ class WeekendTrend(Trends):
         return trend + noise
 
 
-class HolidayTrend(Trends):
+class HolidayTrend(Trend):
     """Generate a trend that ramps up/down around holidays.
 
     Resolves holidays automatically via the ``holidays`` library when
@@ -470,7 +473,7 @@ class HolidayTrend(Trends):
         return result
 
 
-class ARNoiseTrend(Trends):
+class ARNoiseTrend(Trend):
     """Generate autoregressive AR(p) noise.
 
     ``value[t] = sum(coefficients[i] * value[t-i-1]) + N(0, noise_std)``.
@@ -602,7 +605,7 @@ class ARNoiseTrend(Trends):
         return result[p:]
 
 
-class MarkovTrend(Trends):
+class MarkovTrend(Trend):
     """Generate discrete-state Markov chain noise.
 
     At each timestamp the model samples the next state from a transition
@@ -745,7 +748,7 @@ class MarkovTrend(Trends):
         return self._values[states] + noise
 
 
-class StockTrend(Trends):
+class StockTrend(Trend):
     """Generate a stock-like trend with random walk and multi-scale sine components.
 
     Args:
@@ -822,3 +825,15 @@ class StockTrend(Trends):
             base_wave = base_wave[::-1]
 
         return base_wave + trend
+
+
+__all__ = [
+    "ARNoiseTrend",
+    "HolidayTrend",
+    "LinearTrend",
+    "MarkovTrend",
+    "SinusoidalTrend",
+    "StockTrend",
+    "Trend",
+    "WeekendTrend",
+]

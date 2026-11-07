@@ -116,7 +116,7 @@ Available dimension functions:
 ---
 
 ### 3. `tsdata metrics`
-Lists all available metric trend functions, their exact parameters, and CLI shorthand examples. Uses the `Registry` class to reflectively discover all `Trends` subclasses in the `ts_data_generator.utils.trends` module.
+Lists all available metric trend functions, their exact parameters, and CLI shorthand examples. Uses the `Registry` class to reflectively discover all `Trend` subclasses in the `ts_data_generator.trends` module.
 
 ```bash
 $ tsdata metrics
@@ -142,7 +142,7 @@ Available trend functions:
 ```
 
 > [!NOTE]
-> The `Trends` base class is automatically filtered out of the list. The CLI uses a `Registry` object with `base_class=Trends` to ensure only concrete trend subclasses are available.
+> The `Trend` base class is automatically filtered out of the list. The CLI uses a `Registry` object with `base_class=Trend` to ensure only concrete trend subclasses are available.
 
 ---
 
@@ -197,18 +197,18 @@ Or override specific values:
 
 ## 🔌 CLI Architecture: Pluggable Registries
 
-The CLI parser uses the `schema/parser.py` module to extract strings like `name=func(args)` into strongly typed `DimensionSpec`, `TrendSpec`, and `AnomalySpec` dataclasses. The parser uses `Registry` objects (`ts_data_generator.utils.registry`) to look up components securely.
+The CLI parser uses the `schema/parser.py` module to extract strings like `name=func(args)` into strongly typed `DimensionSpec`, `TrendSpec`, and `AnomalySpec` dataclasses. The parser uses `Registry` objects (`ts_data_generator.registry`) to look up components securely.
 
 ```python
 # Each registry is instantiated with a module path and optional filters
 _DIMENSION_REGISTRY = Registry(
-    "ts_data_generator.utils.functions",
+    "ts_data_generator.functions",
     name_filter=lambda n: not n.startswith("_"),
 )
 _TREND_REGISTRY = Registry(
-    "ts_data_generator.utils.trends",
-    name_filter=lambda n: not n.startswith("_") and n != "Trends",
-    base_class=Trends,
+    "ts_data_generator.trends",
+    name_filter=lambda n: not n.startswith("_") and n != "Trend",
+    base_class=Trend,
 )
 _ANOMALY_REGISTRY = Registry(
     "ts_data_generator.anomalies",
@@ -218,9 +218,9 @@ _ANOMALY_REGISTRY = Registry(
 ```
 
 - **`name_filter`** controls which names appear in error messages and `list_available()`.
-- **`base_class`** ensures only concrete subclasses of `Trends` or `Anomaly` are available, filtering out abstract bases and non-class values.
+- **`base_class`** ensures only concrete subclasses of `Trend` or `Anomaly` are available, filtering out abstract bases and non-class values.
 
-To add a new CLI-pluggable type (e.g. a custom trend), simply define a class that inherits from `Trends` in the `ts_data_generator.utils.trends` module — the Registry discovers it automatically. No need to register it manually.
+To add a new CLI-pluggable type (e.g. a custom trend), simply define a class that inherits from `Trend` in the `ts_data_generator.trends` module (and include it in `__all__`) — the Registry discovers it automatically. No need to register it manually.
 
 ---
 

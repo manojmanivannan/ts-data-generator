@@ -29,36 +29,39 @@ def _(mo):
 
 @app.cell
 def _():
-    # Import the Data generator class from the ts_data_generator module
-    from ts_data_generator import DataGen
-    from ts_data_generator.schema.models import AggregationType
-    from ts_data_generator.utils.functions import random_choice, random_int
-    from ts_data_generator.utils.trends import (
-        SinusoidalTrend,
-        LinearTrend,
-    )
+    # Import the DataGenerator class and helpers from the ts_data_generator module
     import random
+
+    from ts_data_generator import (
+        AggregationType,
+        DataGenerator,
+        LinearTrend,
+        SinusoidalTrend,
+        random_choice,
+        random_int,
+    )
 
     return (
         AggregationType,
-        DataGen,
+        DataGenerator,
         LinearTrend,
         SinusoidalTrend,
         random,
         random_choice,
+        random_int,
     )
 
 
 @app.cell
 def _(
     AggregationType,
-    DataGen,
+    DataGenerator,
     LinearTrend,
     SinusoidalTrend,
     random,
     random_choice,
 ):
-    d = DataGen()
+    d = DataGenerator()
     d.start_datetime = "2019-01-01"
     d.end_datetime = "2019-02-28"
     d.to_granularity("h")
@@ -69,9 +72,7 @@ def _(
 
     d.add_metric(
         name="sinusoidal",
-        trends=[
-            SinusoidalTrend(name="sine", amplitude=6, freq=3, phase=0, noise_level=1.5)
-        ],
+        trends=SinusoidalTrend(name="sine", amplitude=6, freq=3, phase=0, noise_level=1.5),
         aggregation_type=AggregationType.SUM,
     )
 
@@ -157,17 +158,17 @@ def _(mo):
     mo.md(r"""
     ## Aggregation with `expand_dimensions=True`
 
-    When `expand_dimensions=True`, `DataGen.aggregate()` groups by all dimensional axes (including scalar dimensions and linked dimensions), and resamples each metric according to its configured `AggregationType`.
+    When `expand_dimensions=True`, `DataGenerator.aggregate()` groups by all dimensional axes (including scalar dimensions and linked dimensions), and resamples each metric according to its configured `AggregationType`.
     """)
     return
 
 
 @app.cell
-def _(AggregationType, DataGen, LinearTrend):
+def _(AggregationType, DataGenerator, LinearTrend):
     # Aggregation across expanded dimensional combinations. ``region`` is part
     # of the linked tuple so it travels with its city (London -> EU, New York
     # -> US) instead of being crossed as an independent Cartesian axis.
-    d_exp = DataGen(
+    d_exp = DataGenerator(
         start_datetime="2024-01-01 00:00:00",
         end_datetime="2024-01-03 23:00:00",
         granularity="h",
@@ -193,7 +194,7 @@ def _(AggregationType, DataGen, LinearTrend):
 
     d_exp.add_metric(
         "sales",
-        {LinearTrend(offset=10, slope=0, noise_level=0)},
+        LinearTrend(offset=10, slope=0, noise_level=0),
         aggregation_type=AggregationType.SUM,
     )
 
@@ -256,9 +257,9 @@ def _(mo):
 
 
 @app.cell
-def _(AggregationType, DataGen, LinearTrend):
+def _(AggregationType, DataGenerator, LinearTrend):
     # Scaling across expanded dimensions with AggregationType.SUM
-    d_scaled_agg = DataGen(
+    d_scaled_agg = DataGenerator(
         start_datetime="2024-01-01 00:00:00",
         end_datetime="2024-01-03 23:00:00",
         granularity="h",
@@ -270,7 +271,7 @@ def _(AggregationType, DataGen, LinearTrend):
     d_scaled_agg.add_dimension("region", ["US", "EU"], weights={"US": 5.0, "EU": 2.0})
     d_scaled_agg.add_metric(
         "sales",
-        {LinearTrend(offset=10, slope=0, noise_level=0)},
+        LinearTrend(offset=10, slope=0, noise_level=0),
         aggregation_type=AggregationType.SUM,
     )
 

@@ -15,19 +15,19 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from ts_data_generator import DataGen
+from ts_data_generator import DataGenerator
 from ts_data_generator.anomalies.point import PointAnomaly
+from ts_data_generator.functions import ordered_choice, random_choice
 from ts_data_generator.schema.models import AggregationType, Granularity
-from ts_data_generator.utils.functions import ordered_choice, random_choice
-from ts_data_generator.utils.trends import LinearTrend, SinusoidalTrend
+from ts_data_generator.trends import LinearTrend, SinusoidalTrend
 
 
 class TestExplicitDimensionWeights:
     def test_single_dimension_explicit_weights(self) -> None:
-        dg = DataGen(
+        dg = DataGenerator(
             start_datetime="2024-01-01",
             end_datetime="2024-01-03",
-            granularity=Granularity.DAILY,
+            granularity=Granularity.DAY,
             seed=42,
             expand_dimensions=True,
         )
@@ -47,10 +47,10 @@ class TestExplicitDimensionWeights:
         np.testing.assert_allclose(eu_sales, [20.0, 20.0, 20.0])
 
     def test_dict_as_dimension_function(self) -> None:
-        dg = DataGen(
+        dg = DataGenerator(
             start_datetime="2024-01-01",
             end_datetime="2024-01-03",
-            granularity=Granularity.DAILY,
+            granularity=Granularity.DAY,
             seed=42,
             expand_dimensions=True,
         )
@@ -69,10 +69,10 @@ class TestExplicitDimensionWeights:
         np.testing.assert_allclose(bas_mrr, [100.0, 100.0, 100.0])
 
     def test_multi_dimension_multiplicative_weights(self) -> None:
-        dg = DataGen(
+        dg = DataGenerator(
             start_datetime="2024-01-01",
             end_datetime="2024-01-02",
-            granularity=Granularity.DAILY,
+            granularity=Granularity.DAY,
             seed=42,
             expand_dimensions=True,
         )
@@ -96,10 +96,10 @@ class TestExplicitDimensionWeights:
         np.testing.assert_allclose(eu_dev, [20.0, 20.0])
 
     def test_partial_weights_default_to_one(self) -> None:
-        dg = DataGen(
+        dg = DataGenerator(
             start_datetime="2024-01-01",
             end_datetime="2024-01-02",
-            granularity=Granularity.DAILY,
+            granularity=Granularity.DAY,
             seed=42,
             expand_dimensions=True,
         )
@@ -117,10 +117,10 @@ class TestExplicitDimensionWeights:
 
 class TestMultiItemsDimensionWeights:
     def test_linked_dimensions_weights(self) -> None:
-        dg = DataGen(
+        dg = DataGenerator(
             start_datetime="2024-01-01",
             end_datetime="2024-01-02",
-            granularity=Granularity.DAILY,
+            granularity=Granularity.DAY,
             seed=42,
             expand_dimensions=True,
         )
@@ -139,10 +139,10 @@ class TestMultiItemsDimensionWeights:
         np.testing.assert_allclose(sfo_sales, [20.0, 20.0])
 
     def test_linked_and_scalar_dimension_weights_compose(self) -> None:
-        dg = DataGen(
+        dg = DataGenerator(
             start_datetime="2024-01-01",
             end_datetime="2024-01-02",
-            granularity=Granularity.DAILY,
+            granularity=Granularity.DAY,
             seed=42,
             expand_dimensions=True,
         )
@@ -172,10 +172,10 @@ class TestMultiItemsDimensionWeights:
 
 class TestStochasticScaleVariance:
     def test_scale_variance_differentiates_slices_with_zero_noise(self) -> None:
-        dg = DataGen(
+        dg = DataGenerator(
             start_datetime="2024-01-01",
             end_datetime="2024-01-03",
-            granularity=Granularity.DAILY,
+            granularity=Granularity.DAY,
             seed=42,
             expand_dimensions=True,
             scale_variance=0.5,
@@ -198,11 +198,11 @@ class TestStochasticScaleVariance:
         assert len(scales) == 3
 
     def test_scale_variance_determinism(self) -> None:
-        def build(seed: int) -> DataGen:
-            dg = DataGen(
+        def build(seed: int) -> DataGenerator:
+            dg = DataGenerator(
                 start_datetime="2024-01-01",
                 end_datetime="2024-01-03",
-                granularity=Granularity.DAILY,
+                granularity=Granularity.DAY,
                 seed=seed,
                 expand_dimensions=True,
                 scale_variance=0.5,
@@ -218,10 +218,10 @@ class TestStochasticScaleVariance:
         assert not build(42).data["sales"].equals(build(99).data["sales"])
 
     def test_scale_variance_composes_with_explicit_weights(self) -> None:
-        dg = DataGen(
+        dg = DataGenerator(
             start_datetime="2024-01-01",
             end_datetime="2024-01-03",
-            granularity=Granularity.DAILY,
+            granularity=Granularity.DAY,
             seed=42,
             expand_dimensions=True,
             scale_variance=0.3,
@@ -239,10 +239,10 @@ class TestStochasticScaleVariance:
 
 class TestAnomalyLabelsWithScaling:
     def test_anomaly_labels_match_scaled_baseline_deviations(self) -> None:
-        dg = DataGen(
+        dg = DataGenerator(
             start_datetime="2024-01-01",
             end_datetime="2024-01-05",
-            granularity=Granularity.DAILY,
+            granularity=Granularity.DAY,
             seed=42,
             expand_dimensions=True,
         )
@@ -270,10 +270,10 @@ class TestAnomalyLabelsWithScaling:
 
 class TestLinkedMetricsScaling:
     def test_linked_metrics_scaled_by_combination_scale(self) -> None:
-        dg = DataGen(
+        dg = DataGenerator(
             start_datetime="2024-01-01",
             end_datetime="2024-01-02",
-            granularity=Granularity.DAILY,
+            granularity=Granularity.DAY,
             seed=42,
             expand_dimensions=True,
         )
@@ -304,10 +304,10 @@ class TestLinkedMetricsScaling:
 
 class TestAggregationWithScaling:
     def test_aggregation_aggregates_scaled_values_per_combination(self) -> None:
-        dg = DataGen(
+        dg = DataGenerator(
             start_datetime="2024-01-01 00:00:00",
             end_datetime="2024-01-01 03:00:00",
-            granularity=Granularity.HOURLY,
+            granularity=Granularity.HOUR,
             seed=42,
             expand_dimensions=True,
         )
@@ -330,14 +330,14 @@ class TestAggregationWithScaling:
 
 class TestBackwardsCompatibility:
     def test_default_scale_variance_is_zero(self) -> None:
-        dg = DataGen()
+        dg = DataGenerator()
         assert dg.scale_variance == 0.0
 
     def test_no_weights_and_zero_variance_unaltered(self) -> None:
-        dg = DataGen(
+        dg = DataGenerator(
             start_datetime="2024-01-01",
             end_datetime="2024-01-03",
-            granularity=Granularity.DAILY,
+            granularity=Granularity.DAY,
             seed=42,
             expand_dimensions=True,
         )

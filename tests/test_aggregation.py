@@ -1,15 +1,15 @@
 """
-Tests for aggregation functionality in DataGen
+Tests for aggregation functionality in DataGenerator
 """
 
 import pytest
 import pandas as pd
 import numpy as np
-from ts_data_generator import DataGen
+from ts_data_generator import DataGenerator
 from ts_data_generator.exceptions import AggregationError
-from ts_data_generator.schema.models import Granularity, AggregationType
-from ts_data_generator.utils.functions import random_choice
-from ts_data_generator.utils.trends import SinusoidalTrend, LinearTrend
+from ts_data_generator.functions import random_choice
+from ts_data_generator.schema.models import AggregationType, Granularity
+from ts_data_generator.trends import LinearTrend, SinusoidalTrend
 
 
 class TestAggregation:
@@ -17,11 +17,11 @@ class TestAggregation:
 
     @pytest.fixture
     def data_gen_5min_instance(self):
-        """Create a DataGen instance with 5min granularity for aggregation tests"""
-        data_gen = DataGen()
+        """Create a DataGenerator instance with 5min granularity for aggregation tests"""
+        data_gen = DataGenerator()
         data_gen.start_datetime = "2022-01-01 00:00:00"
         data_gen.end_datetime = "2022-01-01 02:00:00"  # 2 hours = 24 intervals at 5min
-        data_gen.granularity = Granularity.FIVE_MIN
+        data_gen.granularity = Granularity.FIVE_MINUTE
         data_gen.add_dimension(name="protocol", function=random_choice(["TCP", "UDP"]))
         data_gen.add_dimension(name="region", function=random_choice(["US", "EU"]))
 
@@ -36,11 +36,11 @@ class TestAggregation:
 
     @pytest.fixture
     def data_gen_hourly_instance(self):
-        """Create a DataGen instance with hourly granularity"""
-        data_gen = DataGen()
+        """Create a DataGenerator instance with hourly granularity"""
+        data_gen = DataGenerator()
         data_gen.start_datetime = "2022-01-01 00:00:00"
         data_gen.end_datetime = "2022-01-01 12:00:00"
-        data_gen.granularity = Granularity.HOURLY
+        data_gen.granularity = Granularity.HOUR
         data_gen.add_dimension(name="product", function=random_choice(["A", "B"]))
 
         metric_trend = LinearTrend(name="linear", slope=20, offset=0, noise_level=0)
@@ -136,11 +136,11 @@ class TestAggregationWithMultiItems:
 
     @pytest.fixture
     def data_gen_with_multi_items(self):
-        """Create DataGen instance with multi-items"""
-        data_gen = DataGen()
+        """Create DataGenerator instance with multi-items"""
+        data_gen = DataGenerator()
         data_gen.start_datetime = "2022-01-01 00:00:00"
         data_gen.end_datetime = "2022-01-01 01:00:00"
-        data_gen.granularity = Granularity.FIVE_MIN
+        data_gen.granularity = Granularity.FIVE_MINUTE
 
         # Need at least one dimension for aggregation to work
         data_gen.add_dimension(name="protocol", function=random_choice(["TCP", "UDP"]))
@@ -186,11 +186,11 @@ class TestAggregationEdgeCases:
 
     @pytest.fixture
     def data_gen_single_value(self):
-        """Create DataGen with very short time range"""
-        data_gen = DataGen()
+        """Create DataGenerator with very short time range"""
+        data_gen = DataGenerator()
         data_gen.start_datetime = "2022-01-01 00:00:00"
         data_gen.end_datetime = "2022-01-01 00:05:00"  # Only 1 interval
-        data_gen.granularity = Granularity.FIVE_MIN
+        data_gen.granularity = Granularity.FIVE_MINUTE
         # Need at least one dimension for aggregation
         data_gen.add_dimension(name="protocol", function=random_choice(["TCP"]))
 
@@ -208,11 +208,11 @@ class TestAggregationEdgeCases:
 
     @pytest.fixture
     def data_gen_with_constant_metric(self):
-        """Create DataGen with constant metric value"""
-        data_gen = DataGen()
+        """Create DataGenerator with constant metric value"""
+        data_gen = DataGenerator()
         data_gen.start_datetime = "2022-01-01 00:00:00"
         data_gen.end_datetime = "2022-01-01 02:00:00"
-        data_gen.granularity = Granularity.FIVE_MIN
+        data_gen.granularity = Granularity.FIVE_MINUTE
         data_gen.add_dimension(name="protocol", function=random_choice(["TCP"]))
 
         # Use a small limit with large offset for near-constant values
@@ -238,11 +238,11 @@ class TestAggregationMultipleDimensions:
 
     @pytest.fixture
     def data_gen_multi_dimensions(self):
-        """Create DataGen with multiple dimensions"""
-        data_gen = DataGen()
+        """Create DataGenerator with multiple dimensions"""
+        data_gen = DataGenerator()
         data_gen.start_datetime = "2022-01-01 00:00:00"
         data_gen.end_datetime = "2022-01-02 00:00:00"
-        data_gen.granularity = Granularity.HOURLY
+        data_gen.granularity = Granularity.HOUR
 
         data_gen.add_dimension(name="protocol", function=random_choice(["TCP", "UDP"]))
         data_gen.add_dimension(
@@ -304,10 +304,10 @@ class TestAggregationSubsetDimensions:
     @pytest.fixture
     def expanded_hourly(self):
         """2 regions x 2 stores x 72 hours, expand on, SUM metric."""
-        dg = DataGen(
+        dg = DataGenerator(
             start_datetime="2024-01-01 00:00:00",
             end_datetime="2024-01-03 23:00:00",
-            granularity=Granularity.HOURLY,
+            granularity=Granularity.HOUR,
             seed=42,
             expand_dimensions=True,
         )

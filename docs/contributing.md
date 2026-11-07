@@ -40,12 +40,12 @@ uv run pytest
 
 ## 🔌 Building Custom Extensions
 
-You can extend `ts-data-generator` by adding custom **Trends** or **Anomalies**. To ensure your extensions play nicely with the deterministic seeding engine and pipeline, you must adhere to the correct base classes and method signatures.
+You can extend `ts-data-generator` by adding custom **Trend** or **Anomaly** classes. To ensure your extensions play nicely with the deterministic seeding engine and pipeline, you must adhere to the correct base classes and method signatures.
 
 ### 📈 1. Creating a Custom Trend
 
 A trend defines a clean base signal. To build a custom trend:
-1.  Create a class that inherits from the abstract base class `Trends` (located in `ts_data_generator.utils.trends`).
+1.  Create a class that inherits from the abstract base class `Trend` (located in `ts_data_generator.trends` and re-exported at the top level of `ts_data_generator`).
 2.  Implement the `generate(self, timestamps: pd.DatetimeIndex, rng: RNGProtocol) -> np.ndarray` method.
 3.  Ensure your mathematical transformations return a NumPy array of floats matching the length of `timestamps`.
 4.  **Important**: All stochastic choices *must* use the passed-down `rng` object to maintain determinism.
@@ -54,10 +54,10 @@ A trend defines a clean base signal. To build a custom trend:
 ```python
 import numpy as np
 import pandas as pd
-from ts_data_generator.utils.trends import Trends
+from ts_data_generator import Trend
 from ts_data_generator.random import RNGProtocol
 
-class CustomStepTrend(Trends):
+class CustomStepTrend(Trend):
     """Generates a custom step wave that increments by a factor every N timestamps."""
     
     def __init__(self, name: str = "default", step_interval: int = 10, increment: float = 5.0) -> None:
@@ -86,7 +86,7 @@ class CustomStepTrend(Trends):
 ### 🛑 2. Creating a Custom Anomaly
 
 An anomaly perturbs a metric *after* the baseline trends are compiled. To build a custom anomaly:
-1.  Create a class that inherits from the abstract base class `Anomaly` (located in `ts_data_generator.anomalies.base`).
+1.  Create a class that inherits from the abstract base class `Anomaly` (located in `ts_data_generator.anomalies` and re-exported at the top level of `ts_data_generator`).
 2.  Implement the `intervene(self, base_array: np.ndarray, timestamps: pd.DatetimeIndex, rng: RNGProtocol) -> np.ndarray` method.
 3.  Mutate or copy `base_array` and return the contaminated NumPy array.
 
@@ -94,7 +94,7 @@ An anomaly perturbs a metric *after* the baseline trends are compiled. To build 
 ```python
 import numpy as np
 import pandas as pd
-from ts_data_generator.anomalies.base import Anomaly
+from ts_data_generator import Anomaly
 from ts_data_generator.random import RNGProtocol
 
 class CustomClippingAnomaly(Anomaly):

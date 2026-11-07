@@ -74,12 +74,10 @@ tsdata generate --start 2024-01-01 --end 2024-01-07 --granularity h \
 ### Python API
 
 ```python
-from ts_data_generator import DataGen
-from ts_data_generator.utils.functions import random_choice
-from ts_data_generator.utils.trends import SinusoidalTrend, LinearTrend
+from ts_data_generator import DataGenerator, LinearTrend, SinusoidalTrend, random_choice
 
 # Expand dimensions across Cartesian product with scaled multi-series metrics
-dg = DataGen(
+dg = DataGenerator(
     start_datetime="2024-01-01",
     end_datetime="2024-01-07",
     granularity="h",
@@ -92,7 +90,7 @@ dg = DataGen(
 dg.add_dimension("tier", {"enterprise": 10.0, "pro": 3.0, "free": 1.0})
 dg.add_dimension("region", random_choice(["US", "EU"]), weights={"US": 5.0, "EU": 2.0})
 dg.add_dimension("environment", random_choice(["prod", "dev"]))
-dg.add_metric("sales", {LinearTrend(offset=100, slope=10), SinusoidalTrend(amplitude=20, freq=24)})
+dg.add_metric("sales", [LinearTrend(offset=100, slope=10), SinusoidalTrend(amplitude=20, freq=24)])
 
 # Linked correlated columns with tuple weights
 dg.add_multi_items(
