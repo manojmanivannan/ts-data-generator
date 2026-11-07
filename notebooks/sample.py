@@ -1,6 +1,6 @@
 import marimo
 
-__generated_with = "0.24.0"
+__generated_with = "0.25.2"
 app = marimo.App()
 
 
@@ -191,7 +191,7 @@ def _(mo):
 
 
 @app.cell
-def _(DataGenerator, LinearTrend, WeekendTrend):
+def _(DataGenerator, LinearTrend, WeekendTrend, mo):
     # Anomaly injection examples
     from ts_data_generator import ConceptDrift, DriftSegment, MissingData, PointAnomaly
 
@@ -227,7 +227,7 @@ def _(DataGenerator, LinearTrend, WeekendTrend):
         ],
     )
 
-    d2.plot(figsize=(12,6), title="Metrics with Anomalies")
+    mo.ui.matplotlib(d2.plot(figsize=(12,6), title="Metrics with Anomalies"))
     return
 
 
@@ -242,8 +242,8 @@ def _(mo):
 
 
 @app.cell
-def _(d):
-    d.plot(exclude=['product_id'])
+def _(d, mo):
+    mo.ui.matplotlib(d.plot(exclude=['product_id']))
     return
 
 

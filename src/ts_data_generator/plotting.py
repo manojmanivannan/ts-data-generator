@@ -8,9 +8,12 @@ column, auto-selecting numeric columns).
 from __future__ import annotations
 
 import importlib.util
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import pandas as pd
+
+if TYPE_CHECKING:
+    from matplotlib.axes import Axes
 
 from ts_data_generator.exceptions import ValidationError
 
@@ -21,7 +24,7 @@ def plot_time_series(
     exclude: list[str] | None = None,
     include: list[str] | None = None,
     **matplotlib_kwargs: Any,
-) -> None:
+) -> Axes:
     """Plot numeric columns from a time-indexed DataFrame.
 
     Args:
@@ -31,6 +34,9 @@ def plot_time_series(
             are omitted, all numeric columns (except ``epoch``) are plotted.
         matplotlib_kwargs: Additional keyword arguments forwarded to
             matplotlib's ``plot`` function.
+
+    Returns:
+        The matplotlib Axes containing the plot.
 
     Raises:
         ValidationError: If both ``exclude`` and ``include`` are provided,
@@ -63,4 +69,4 @@ def plot_time_series(
             "Install with: uv add 'ts-data-generator[plotting]'"
         )
 
-    data.plot(y=plot_cols, **matplotlib_kwargs)
+    return data.plot(y=plot_cols, **matplotlib_kwargs)
