@@ -34,9 +34,13 @@ Here is a complete, runnable script that generates a clean training dataset and 
 ```python
 import pandas as pd
 import numpy as np
-from ts_data_generator import DataGen
-from ts_data_generator.utils.trends import SinusoidalTrend, ARNoiseTrend
-from ts_data_generator.anomalies import PointAnomaly, MissingData
+from ts_data_generator import (
+    ARNoiseTrend,
+    DataGenerator,
+    MissingData,
+    PointAnomaly,
+    SinusoidalTrend,
+)
 
 # ==========================================
 # 1. SETUP SHARED SIMULATION CONFIGURATION
@@ -47,16 +51,16 @@ END_DATE = "2024-01-15"
 GRANULARITY = "h" # Hourly readings
 
 # A typical industrial temperature sensor: daily cycle + sticky AR(1) fluctuations
-sensor_trends = {
+sensor_trends = [
     SinusoidalTrend(amplitude=12.0, freq=1.0), # Daily thermal cycle
     ARNoiseTrend(decay=0.85, noise_std=1.5)     # Atmospheric drift volatility
-}
+]
 
 # ==========================================
 # 2. GENERATE CLEAN BASELINE TRAINING DATA
 # ==========================================
 print("Generating clean baseline training dataset...")
-dg_train = DataGen(seed=SEED)
+dg_train = DataGenerator(seed=SEED)
 dg_train.start_datetime = START_DATE
 dg_train.end_datetime = END_DATE
 dg_train.to_granularity(GRANULARITY)
@@ -80,7 +84,7 @@ print("Generating contaminated test dataset...")
 point_spikes = PointAnomaly(probability=0.015, mode="additive", magnitude=(20.0, 40.0))
 data_dropouts = MissingData(mode="burst", burst_probability=0.01, min_length=2, max_length=4)
 
-dg_test = DataGen(seed=SEED)
+dg_test = DataGenerator(seed=SEED)
 dg_test.start_datetime = START_DATE
 dg_test.end_datetime = END_DATE
 dg_test.to_granularity(GRANULARITY)

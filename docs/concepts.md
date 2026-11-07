@@ -18,6 +18,8 @@ Understanding how these primitives work and interact is key to generating high-f
 
 Every dataset goes through a five-stage processing pipeline. This pipeline ensures that context (dimensions), mathematical signals (trends), errors (anomalies), and scales (normalization) are resolved in a strict, logical sequence.
 
+`DataGenerator` evaluates this pipeline **lazily**: adding or mutating dimensions, metrics, multi-items, dates, or granularity records the configuration and transitions `PipelineState` to `CONFIGURED` without immediately computing rows. The full generation pipeline runs only when `.data`, `.baselines`, or `.generate()` is accessed, and caches the resulting DataFrame until the next configuration change.
+
 Here is the sequential flow of execution, which is strictly guarded by the underlying `PipelineState` (`CONFIGURED` -> `GENERATED` -> `NORMALIZED`):
 
 ```mermaid
@@ -55,7 +57,7 @@ Dimensions represent the **contextual axes** of your time series data (e.g., `st
 
 ### 2. Metrics & Trends (Base Signal)
 Metrics represent the **numeric observations** you want to track (e.g., `cpu_utilization`, `sales_revenue`, `temperature`).
-*   **Compositional Math**: A metric is not defined by a single equation. Instead, you compose it by summing multiple **Trends** together:
+*   **Compositional Math**: A metric is not defined by a single equation. Instead, you compose it by summing multiple **Trend** components together:
     $$\text{Metric}(t) = \sum \text{Trend}_i(t)$$
 *   **Modular Layers**: This allows you to stack a stable base level (`LinearTrend`), a periodic daily oscillation (`SinusoidalTrend`), a weekend drop-off (`WeekendTrend`), and autocorrelated volatility (`ARNoiseTrend`) to easily build highly complex signals.
 

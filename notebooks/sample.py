@@ -33,10 +33,10 @@ def _(mo):
 
 @app.cell
 def _():
-    # Import the Data generator class from the ts_data_generator module 
-    from ts_data_generator import DataGen
+    # Import the DataGenerator class from the ts_data_generator module
+    from ts_data_generator import DataGenerator
 
-    return (DataGen,)
+    return (DataGenerator,)
 
 
 @app.cell(hide_code=True)
@@ -48,8 +48,8 @@ def _(mo):
 
 
 @app.cell
-def _(DataGen):
-    d = DataGen()
+def _(DataGenerator):
+    d = DataGenerator()
     d.start_datetime = "2019-01-01"
     d.end_datetime = "2019-01-12"
     d.to_granularity("h")
@@ -63,14 +63,14 @@ def _(mo):
     Adding a dimension needs two parameter: a name(str) and a function.</br>
     The function parameter can take either integer, float, string or generator object as input.
 
-    There are some useful generator objects like `random_choice` and `random_int` in the `ts_data_generator.utils.functions` module
+    There are some useful generator objects like `random_choice` and `random_int` in `ts_data_generator` (from `ts_data_generator.functions`)
     """)
     return
 
 
 @app.cell
 def _(d):
-    from ts_data_generator.utils.functions import random_choice, random_int
+    from ts_data_generator import random_choice, random_int
 
     d.add_dimension("product", random_choice(["A", "B", "C", "D"]),expand=True)
     d.add_dimension("product_id", random_int(1,10000))
@@ -88,25 +88,23 @@ def _(d):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ### Adding Metrics
+    ### Adding Metric
 
-    Adding a metric needs two parameters: a name(str) and Trends.</br>
-    Trends are components that can be layered to create complex metrics. They create trends to simulate any metrics.</br>
-    You can club multiple trends to achieve your desired metric. Out of the box, there are four trends: Sine, Linear, Weekend, Stock
+    Adding a metric needs two parameters: a name(str) and a `Trend` (or list of `Trend` instances).</br>
+    Trend instances are components that can be layered to create complex metrics.</br>
+    You can combine multiple trends to achieve your desired metric. Out of the box, there are four basic trends: Sine, Linear, Weekend, Stock
     """)
     return
 
 
 @app.cell
 def _(d):
-    from ts_data_generator.utils.trends import SinusoidalTrend, LinearTrend, WeekendTrend, StockTrend
+    from ts_data_generator import LinearTrend, SinusoidalTrend, StockTrend, WeekendTrend
 
 
     d.add_metric(
         name="sinusoidal", 
-        trends=[
-            SinusoidalTrend(name="sine", amplitude=6, freq=3, phase=0, noise_level=1.5)
-        ]
+        trends=SinusoidalTrend(name="sine", amplitude=6, freq=3, phase=0, noise_level=1.5),
         )
 
 
@@ -120,9 +118,7 @@ def _(d):
 
     d.add_metric(
         name="weekend_trend", 
-        trends=[
-            WeekendTrend(name="weekend", weekend_effect=10, direction="up", noise_level=0.5, limit=10)
-        ])
+        trends=WeekendTrend(name="weekend", weekend_effect=10, direction="up", noise_level=0.5, limit=10))
 
 
     d.add_metric(
@@ -157,28 +153,22 @@ def _(mo):
 @app.cell
 def _(d):
     # Additional trend types: HolidayTrend, ARNoiseTrend, MarkovTrend
-    from ts_data_generator.utils.trends import HolidayTrend, ARNoiseTrend, MarkovTrend
+    from ts_data_generator import ARNoiseTrend, HolidayTrend, MarkovTrend
 
     # Add more metrics with the new trend types
     d.add_metric(
         name="holiday_effect",
-        trends=[
-            HolidayTrend(name="hols", country="US", effect=30, pre_window=3, post_window=2, direction="up"),
-        ],
+        trends=HolidayTrend(name="hols", country="US", effect=30, pre_window=3, post_window=2, direction="up"),
     )
 
     d.add_metric(
         name="ar_noise",
-        trends=[
-            ARNoiseTrend(name="ar", coefficients=[0.5, -0.2], noise_std=0.5),
-        ],
+        trends=ARNoiseTrend(name="ar", coefficients=[0.5, -0.2], noise_std=0.5),
     )
 
     d.add_metric(
         name="markov_states",
-        trends=[
-            MarkovTrend(name="mkv", states=["low", "med", "high"], values=[10, 50, 100], stickiness=0.9, noise_std=5),
-        ],
+        trends=MarkovTrend(name="mkv", states=["low", "med", "high"], values=[10, 50, 100], stickiness=0.9, noise_std=5),
     )
 
     d.data.tail()
@@ -201,12 +191,12 @@ def _(mo):
 
 
 @app.cell
-def _(DataGen, LinearTrend, WeekendTrend):
+def _(DataGenerator, LinearTrend, WeekendTrend):
     # Anomaly injection examples
-    from ts_data_generator.anomalies import PointAnomaly, MissingData, ConceptDrift, DriftSegment
+    from ts_data_generator import ConceptDrift, DriftSegment, MissingData, PointAnomaly
 
     # Set up a fresh generator for anomaly demos
-    d2 = DataGen(seed=42)
+    d2 = DataGenerator(seed=42)
     d2.start_datetime = "2019-01-01"
     d2.end_datetime = "2019-01-12"
     d2.to_granularity("h")
@@ -228,7 +218,7 @@ def _(DataGen, LinearTrend, WeekendTrend):
     # ConceptDrift with start_index for sequential multi-segment positioning
     d2.add_metric(
         name="drift_metric",
-        trends=[LinearTrend(name="base", slope=4, offset=20, noise_level=1)],
+        trends=LinearTrend(name="base", slope=4, offset=20, noise_level=1),
         anomalies=[
             ConceptDrift(segments=[
                 DriftSegment(start_timestamp="2019-01-01T00:00:00", target_mean=80, target_std=5, hold_duration=86400, restore=True),
@@ -355,7 +345,7 @@ def _(mo):
     mo.md(r"""
     ### Multivariate Dimension Expansion (`expand_dimensions`)
 
-    By default, `DataGen` generates one row per timestamp, advancing dimensions and metrics concurrently in a single stream.
+    By default, `DataGenerator` generates one row per timestamp, advancing dimensions and metrics concurrently in a single stream.
 
     When `expand_dimensions=True`, the generator expands enumerable dimensions into their full **Cartesian product**. Each unique combination of dimensions gets an independently regenerated, reproducible metric series based on a deterministic per-combination seed.
     """)
@@ -363,19 +353,19 @@ def _(mo):
 
 
 @app.cell
-def _(DataGen, LinearTrend, SinusoidalTrend, random_choice):
-    from ts_data_generator.utils.functions import ordered_choice
-    d_exp = DataGen(start_datetime='2024-01-01', end_datetime='2024-01-03', granularity='h', seed=42, expand_dimensions=True)
+def _(DataGenerator, LinearTrend, SinusoidalTrend, random_choice):
+    from ts_data_generator import ordered_choice
+    d_exp = DataGenerator(start_datetime='2024-01-01', end_datetime='2024-01-03', granularity='h', seed=42, expand_dimensions=True)
     d_exp.add_dimension('region', random_choice(['US', 'EU']))
     d_exp.add_dimension('tier', ordered_choice(['free', 'premium']))
-    # 1. Create DataGen with expand_dimensions=True
-    d_exp.add_metric('revenue', {LinearTrend(offset=100, slope=5, noise_level=1), SinusoidalTrend(amplitude=15, freq=24, noise_level=0.5)})
+    # 1. Create DataGenerator with expand_dimensions=True
+    d_exp.add_metric('revenue', [LinearTrend(offset=100, slope=5, noise_level=1), SinusoidalTrend(amplitude=15, freq=24, noise_level=0.5)])
     d_exp.add_multi_items(names=['datacenter', 'city'], function=[('DC-1', 'New York'), ('DC-2', 'London')])
     df_expanded = d_exp.data
     print(f'Total rows: {len(df_expanded)} (49 timestamps × 2 regions × 2 tiers × 2 datacenters = {49 * 2 * 2 * 2})')
     # Add enumerable dimensions
     # Add metric with composed trends
-    # Add linked dimensions via MultiItems (expands as tuple domain)
+    # Add linked dimensions via MultiItem (expands as tuple domain)
     df_expanded.head(10)
     return (d_exp,)
 
@@ -415,9 +405,9 @@ def _(mo):
 
 
 @app.cell
-def _(DataGen, LinearTrend, SinusoidalTrend):
-    # Create DataGen with dimension scaling
-    d_scaled = DataGen(
+def _(DataGenerator, LinearTrend, SinusoidalTrend):
+    # Create DataGenerator with dimension scaling
+    d_scaled = DataGenerator(
         start_datetime="2024-01-01",
         end_datetime="2024-01-03",
         granularity="h",
@@ -433,7 +423,7 @@ def _(DataGen, LinearTrend, SinusoidalTrend):
     # 2. Composed metric
     d_scaled.add_metric(
         "revenue",
-        {LinearTrend(offset=100, slope=2, noise_level=1), SinusoidalTrend(amplitude=15, freq=24)},
+        [LinearTrend(offset=100, slope=2, noise_level=1), SinusoidalTrend(amplitude=15, freq=24)],
     )
 
     df_scaled = d_scaled.data

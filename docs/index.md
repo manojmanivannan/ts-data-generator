@@ -79,10 +79,9 @@ tsdata generate \
 Compose your generators directly inside your training/validation pipelines or notebooks:
 
 ```python
-from ts_data_generator import DataGen
-from ts_data_generator.utils.trends import LinearTrend, SinusoidalTrend
+from ts_data_generator import DataGenerator, LinearTrend, SinusoidalTrend
 
-dg = DataGen(seed=42)
+dg = DataGenerator(seed=42)
 dg.start_datetime = "2024-01-01"
 dg.end_datetime = "2024-01-07"
 dg.to_granularity("h")
@@ -90,10 +89,10 @@ dg.to_granularity("h")
 # Composing a metric from multiple trends
 dg.add_metric(
     "sales",
-    {
+    [
         LinearTrend(offset=10.0, slope=10),
-        SinusoidalTrend(amplitude=10.0, freq=24.0)
-    }
+        SinusoidalTrend(amplitude=10.0, freq=24.0),
+    ],
 )
 
 df = dg.data # Retrieves the Pandas DataFrame
@@ -110,7 +109,7 @@ The generator is designed from the ground up around **Modular Compositions**:
 
 *   **Realistic Trends & Seasonality**: Compose complex signals by layering multiple trends (Sinusoidal, Linear, AR Noise, Markov Chains, stock-like random walks) onto a single metric. [Explore Trend Functions]({{ site.baseurl }}/trends){: .btn .btn-outline .btn-xs }
 *   **Contextual Dimensions & Multivariate Expansion**: Enrich your metrics with dimensions using single-stream iterators or expand to full Cartesian products (`expand_dimensions=True`) with independent per-combination series. [Explore Dimensions]({{ site.baseurl }}/dimensions){: .btn .btn-outline .btn-xs }
-*   **Correlated Multi-Items**: Couple linked dimension hierarchies (e.g. city/state/country) and multi-metric vectors simultaneously. [Explore MultiItems]({{ site.baseurl }}/dimensions#multi-item-generators-linked-dimensions){: .btn .btn-outline .btn-xs }
+*   **Correlated Multi-Items**: Couple linked dimension hierarchies (e.g. city/state/country) and multi-metric vectors simultaneously. [Explore MultiItem]({{ site.baseurl }}/dimensions#multi-item-generators-linked-dimensions){: .btn .btn-outline .btn-xs }
 *   **Stochastic Anomaly Injection**: Inject realistic anomalies (isolated spikes, bursty data drops, or gradual concept drifts) *after* your trends are calculated to benchmark your detection pipelines. [Explore Anomalies]({{ site.baseurl }}/anomalies){: .btn .btn-outline .btn-xs }
 *   **Schema Imputing**: Bootstrap a generation config instantly by analyzing an existing historical CSV file. [Explore Imputer]({{ site.baseurl }}/imputer){: .btn .btn-outline .btn-xs }
 

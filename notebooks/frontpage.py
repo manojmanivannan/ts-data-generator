@@ -6,12 +6,19 @@ app = marimo.App()
 
 @app.cell
 def _():
-    from ts_data_generator import DataGen
-    from ts_data_generator.schema.models import Granularity
-    from ts_data_generator.utils.trends import SinusoidalTrend, LinearTrend
-    from ts_data_generator.utils.functions import random_choice
+    from ts_data_generator import (
+        DataGenerator,
+        Granularity,
+        LinearTrend,
+        SinusoidalTrend,
+        random_choice,
+    )
 
-    d = DataGen(start_datetime="2020-01-01",end_datetime="2020-01-03", granularity=Granularity.FIVE_MIN)
+    d = DataGenerator(
+        start_datetime="2020-01-01",
+        end_datetime="2020-01-03",
+        granularity=Granularity.FIVE_MINUTE,
+    )
     d.add_dimension("product", random_choice(["A", "B", "C","D"]))
     d.add_metric(
         "temperature",

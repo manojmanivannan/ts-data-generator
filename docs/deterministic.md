@@ -22,10 +22,10 @@ To prevent this, `ts-data-generator` completely bypasses the global random state
 
 ```mermaid
 graph TD
-    A["DataGen(seed=42)"] -->|Initializes| B[SeedableRNG]
+    A["DataGenerator(seed=42)"] -->|Initializes| B[SeedableRNG]
     B -->|Backs| C[NumPy BitGenerator: PCG64]
-    C -->|Isolated Thread-Safe Stream| D[Trends Generation]
-    C -->|Isolated Thread-Safe Stream| E[Anomalies Intervention]
+    C -->|Isolated Thread-Safe Stream| D[Trend Generation]
+    C -->|Isolated Thread-Safe Stream| E[Anomaly Intervention]
     C -->|Isolated Thread-Safe Stream| F[Dimension Sampling]
 
     style A fill:#e3f2fd,stroke:#2196f3,stroke-width:2px
@@ -37,13 +37,13 @@ graph TD
 ```
 
 ### 1. Isolated PCG64 Engine
-When you initialize `DataGen(seed=12345)`, a private `SeedableRNG` object is created. Under the hood, this object initializes a private `numpy.random.Generator` backed by the modern, highly secure **PCG64** pseudo-random number generator (PRNG) algorithm.
+When you initialize `DataGenerator(seed=12345)`, a private `SeedableRNG` object is created. Under the hood, this object initializes a private `numpy.random.Generator` backed by the modern, highly secure **PCG64** pseudo-random number generator (PRNG) algorithm.
 
 ### 2. Deep Seeding Propagation
 This isolated `rng` instance is passed directly down into every individual Trend, Anomaly, and Dimension generator during the execution of the building pipeline. Every single decision (like stochastically triggering a `PointAnomaly` spike or sampling a random choice dimension) uses only this passed-down `rng` instance.
 
 ### 3. Unified RNG Protocol
-Previous versions relied on a hypothetical seam (`if rng is not None`) and a global NumPy fallback. The library now enforces a strict `RNGProtocol` interface. `DataGen` uses either a `SeedableRNG` (when seeded) or a `DefaultRNG` (which encapsulates unseeded global generation), guaranteeing that the random number generator object is *always* available to the underlying trends and anomalies without repetitive branching.
+Previous versions relied on a hypothetical seam (`if rng is not None`) and a global NumPy fallback. The library now enforces a strict `RNGProtocol` interface. `DataGenerator` uses either a `SeedableRNG` (when seeded) or a `DefaultRNG` (which encapsulates unseeded global generation), guaranteeing that the random number generator object is *always* available to the underlying trends and anomalies without repetitive branching.
 
 When writing a custom trend or anomaly, you no longer need to check if `rng` is `None`—simply use `rng.normal(loc, scale, size)` or `rng.choice(...)`.
 
@@ -52,26 +52,25 @@ When writing a custom trend or anomaly, you no longer need to check if `rng` is 
 ## 🐍 Python & CLI Usage
 
 ### Python API
-Simply pass a fixed integer seed to the `DataGen` initializer:
+Simply pass a fixed integer seed to the `DataGenerator` initializer:
 
 ```python
-from ts_data_generator import DataGen
-from ts_data_generator.utils.trends import SinusoidalTrend
+from ts_data_generator import DataGenerator, SinusoidalTrend
 
 # Run A
-dg_a = DataGen(seed=42)
+dg_a = DataGenerator(seed=42)
 dg_a.start_datetime = "2024-01-01"
 dg_a.end_datetime = "2024-01-02"
 dg_a.to_granularity("h")
-dg_a.add_metric("usage", {SinusoidalTrend(amplitude=10, freq=1, noise_level=1.0)})
+dg_a.add_metric("usage", SinusoidalTrend(amplitude=10, freq=1, noise_level=1.0))
 df_a = dg_a.data
 
 # Run B (Exact same seed)
-dg_b = DataGen(seed=42)
+dg_b = DataGenerator(seed=42)
 dg_b.start_datetime = "2024-01-01"
 dg_b.end_datetime = "2024-01-02"
 dg_b.to_granularity("h")
-dg_b.add_metric("usage", {SinusoidalTrend(amplitude=10, freq=1, noise_level=1.0)})
+dg_b.add_metric("usage", SinusoidalTrend(amplitude=10, freq=1, noise_level=1.0))
 df_b = dg_b.data
 
 # Verify bit-for-bit identity
@@ -99,7 +98,7 @@ To guarantee determinism and order-insensitivity:
 
 ```python
 # Order-insensitive, deterministic combination seeds
-dg = DataGen(seed=42, expand_dimensions=True)
+dg = DataGenerator(seed=42, expand_dimensions=True)
 dg.add_dimension("region", random_choice(["US", "EU"]))
 dg.add_dimension("tier", random_choice(["free", "paid"]))
 ```

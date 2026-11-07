@@ -18,7 +18,7 @@ $$\text{Baseline}(t) = \sum_{i} \text{Trend}_i(t)$$
 
 ## 📈 Supported Trend Types
 
-Every trend class inherits from `Trends` and is located in `ts_data_generator.utils.trends`. Below is the complete catalog of all 7 available trends with their options, Python API usage, and CLI shorthand strings.
+Every trend class inherits from `Trend` and is located in `ts_data_generator.trends` (and re-exported at the top level of `ts_data_generator`). Below is the complete catalog of all 7 available trends with their options, Python API usage, and CLI shorthand strings.
 
 ### 1. `SinusoidalTrend`
 Generates periodic sinusoidal waves to model cycles (e.g. daily temperature fluctuations, weekly retail cycles).
@@ -29,7 +29,7 @@ Generates periodic sinusoidal waves to model cycles (e.g. daily temperature fluc
 
 ```python
 # API:
-from ts_data_generator.utils.trends import SinusoidalTrend
+from ts_data_generator import SinusoidalTrend
 trend = SinusoidalTrend(amplitude=15.0, freq=1.0, phase=6.0, noise_level=0.5)
 ```
 ```bash
@@ -47,7 +47,7 @@ Generates a steady upward or downward slope with optional white noise.
 
 ```python
 # API:
-from ts_data_generator.utils.trends import LinearTrend
+from ts_data_generator import LinearTrend
 trend = LinearTrend(offset=100.0, slope=15.0, noise_level=1.0)
 ```
 ```bash
@@ -66,7 +66,7 @@ Creates distinct steps or spikes on weekends (Saturday and Sunday) relative to w
 
 ```python
 # API:
-from ts_data_generator.utils.trends import WeekendTrend
+from ts_data_generator import WeekendTrend
 trend = WeekendTrend(weekend_effect=50.0, direction="up", noise_level=2.0)
 ```
 ```bash
@@ -87,7 +87,7 @@ Ramps values up or down around public holidays. It integrates with the `holidays
 
 ```python
 # API (Automatic US Calendar):
-from ts_data_generator.utils.trends import HolidayTrend
+from ts_data_generator import HolidayTrend
 trend = HolidayTrend(country="US", effect=100.0, pre_window=3, post_window=1)
 
 # API (Custom Dates):
@@ -111,7 +111,7 @@ This creates realistic "sticky" volatility where today's fluctuation is correlat
 
 ```python
 # API (Explicit AR(2) process):
-from ts_data_generator.utils.trends import ARNoiseTrend
+from ts_data_generator import ARNoiseTrend
 trend = ARNoiseTrend(coefficients=[0.6, -0.2], noise_std=1.5)
 
 # API (Auto-generated stable AR(3) process):
@@ -134,7 +134,7 @@ Simulates discrete regime switches (e.g. system jumping between "Idle", "Active"
 
 ```python
 # API (Stickiness mode):
-from ts_data_generator.utils.trends import MarkovTrend
+from ts_data_generator import MarkovTrend
 trend = MarkovTrend(
     states=["low", "medium", "high"],
     values=[10.0, 50.0, 150.0],
@@ -165,7 +165,7 @@ A compound financial simulation combining an integrated random walk (Brownian mo
 
 ```python
 # API:
-from ts_data_generator.utils.trends import StockTrend
+from ts_data_generator import StockTrend
 trend = StockTrend(amplitude=100.0, direction="up", noise_level=0.5)
 ```
 ```bash
@@ -182,15 +182,15 @@ The true power of this architecture comes from **composing** these trends. Since
 Here is a complete, runnable script showing how to build a highly realistic telemetry signal by layering three distinct trends:
 
 ```python
-from ts_data_generator import DataGen
-from ts_data_generator.utils.trends import (
+from ts_data_generator import (
+    ARNoiseTrend,
+    DataGenerator,
     LinearTrend,
     SinusoidalTrend,
-    ARNoiseTrend
 )
 
 # 1. Setup Generator
-dg = DataGen(seed=42)
+dg = DataGenerator(seed=42)
 dg.start_datetime = "2024-01-01"
 dg.end_datetime = "2024-01-14"
 dg.to_granularity("h")
@@ -200,10 +200,10 @@ base_growth = LinearTrend(offset=50.0, slope=2.0)             # Upward linear cr
 daily_cycle = SinusoidalTrend(amplitude=10.0, freq=1.0)      # Daily sine oscillation (period = 1 day)
 network_noise = ARNoiseTrend(decay=0.85, noise_std=2.0)      # Volatility with lag stickiness
 
-# 3. Add to the metric (trends are provided as a set/list)
+# 3. Add to the metric (trends can be provided as a single Trend or a sequence/list)
 dg.add_metric(
     name="active_sessions",
-    trends={base_growth, daily_cycle, network_noise}
+    trends=[base_growth, daily_cycle, network_noise]
 )
 
 # 4. Generate and inspect

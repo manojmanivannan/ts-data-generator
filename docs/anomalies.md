@@ -16,7 +16,7 @@ This makes it exceptionally easy to benchmark anomaly detection models or test s
 
 ## 🛑 Available Anomaly Types
 
-All anomaly classes are located in `ts_data_generator.anomalies`. They are applied stochastically based on your configuration.
+All anomaly classes are located in `ts_data_generator.anomalies` (and re-exported at the top level of `ts_data_generator`). They are applied stochastically based on your configuration.
 
 ### 1. `PointAnomaly`
 Injects isolated spikes or drops in the metric value at individual timestamps.
@@ -28,7 +28,7 @@ Injects isolated spikes or drops in the metric value at individual timestamps.
 
 ```python
 # API:
-from ts_data_generator.anomalies import PointAnomaly
+from ts_data_generator import PointAnomaly
 
 # 1. Additive spikes of random height
 random_spikes = PointAnomaly(probability=0.02, mode="additive", magnitude=(50.0, 100.0))
@@ -57,7 +57,7 @@ Simulates sensor failures, transmission drops, or periodic maintenance outages b
 
 ```python
 # API (Stochastic drops):
-from ts_data_generator.anomalies import MissingData
+from ts_data_generator import MissingData
 
 # Random 5% individual dropouts
 random_drops = MissingData(mode="random", probability=0.05)
@@ -108,7 +108,7 @@ Drift is defined by passing an ordered list of `DriftSegment` objects to the `Co
 
 ```python
 # API (Overheating Event with Restore):
-from ts_data_generator.anomalies import ConceptDrift, DriftSegment
+from ts_data_generator import ConceptDrift, DriftSegment
 
 overheat = ConceptDrift(segments=[
     DriftSegment(
@@ -150,11 +150,15 @@ Unlike `PointAnomaly` (memoryless, one timestamp at a time) or `ConceptDrift` (a
 
 ```python
 # API: correlated jammer-style bursts across multiple metrics
-from ts_data_generator import DataGen
-from ts_data_generator.anomalies import EventSchedule, PeriodicBurstAnomaly
-from ts_data_generator.utils.trends import LinearTrend, ARNoiseTrend
+from ts_data_generator import (
+    ARNoiseTrend,
+    DataGenerator,
+    EventSchedule,
+    LinearTrend,
+    PeriodicBurstAnomaly,
+)
 
-dg = DataGen(seed=42)
+dg = DataGenerator(seed=42)
 dg.start_datetime = "2024-01-01"
 dg.end_datetime = "2024-01-01 00:30:00"
 dg.to_granularity("100ms")
@@ -164,18 +168,18 @@ jammer = EventSchedule(period=100, duration=(15, 20), phase=250, skip_probabilit
 
 dg.add_metric(
     "DL_BLER",
-    trends={LinearTrend(offset=0.01, slope=0.0), ARNoiseTrend(decay=0.3, noise_std=0.002)},
+    trends=[LinearTrend(offset=0.01, slope=0.0), ARNoiseTrend(decay=0.3, noise_std=0.002)],
     anomalies=[PeriodicBurstAnomaly(schedule=jammer, peak_magnitude=(0.03, 0.08), decay=0.3, tail_length=12)],
 )
 dg.add_metric(
     "UL_SNR",
-    trends={LinearTrend(offset=21.0, slope=0.0)},
+    trends=LinearTrend(offset=21.0, slope=0.0),
     anomalies=[PeriodicBurstAnomaly(schedule=jammer, peak_magnitude=(-4.0, -1.0), decay=0.3, tail_length=12)],
 )
 # decay=0, tail_length=0, replacement -> a clean 0/1 event flag column
 dg.add_metric(
     "Jamming",
-    trends={LinearTrend(offset=0.0, slope=0.0)},
+    trends=LinearTrend(offset=0.0, slope=0.0),
     anomalies=[PeriodicBurstAnomaly(schedule=jammer, peak_magnitude=1.0, decay=0.0, mode="replacement")],
 )
 ```
@@ -193,21 +197,25 @@ You can apply multiple anomalies to the same metric. The generation engine appli
 Here is a fully runnable Python API script demonstrating trend composition and stacked anomalies (spikes + dropouts):
 
 ```python
-from ts_data_generator import DataGen
-from ts_data_generator.utils.trends import SinusoidalTrend, LinearTrend
-from ts_data_generator.anomalies import PointAnomaly, MissingData
+from ts_data_generator import (
+    DataGenerator,
+    LinearTrend,
+    MissingData,
+    PointAnomaly,
+    SinusoidalTrend,
+)
 
 # 1. Setup Generator
-dg = DataGen(seed=999)
+dg = DataGenerator(seed=999)
 dg.start_datetime = "2024-01-01"
 dg.end_datetime = "2024-01-02"
 dg.to_granularity("5min")
 
 # 2. Setup Base Trends (Baseline CPU)
-cpu_trends = {
+cpu_trends = [
     LinearTrend(offset=30.0, slope=15.0), # Creeping baseline load
     SinusoidalTrend(amplitude=10.0, freq=1.0, noise_level=2.0) # Daily cycles
-}
+]
 
 # 3. Setup Anomalies to stack
 spikes = PointAnomaly(probability=0.05, mode="additive", magnitude=(10.0, 15.0))
@@ -257,18 +265,16 @@ Key behaviors:
 *   **Automatic in CSV/CLI/presets:** No extra flag or config is needed. Every `tsdata generate` command (and every preset) that declares `--anomalies` automatically gains the matching `_anomaly` columns in its output CSV.
 
 ```python
-from ts_data_generator import DataGen
-from ts_data_generator.utils.trends import LinearTrend
-from ts_data_generator.anomalies import PointAnomaly, MissingData
+from ts_data_generator import DataGenerator, LinearTrend, MissingData, PointAnomaly
 
-dg = DataGen(seed=42)
+dg = DataGenerator(seed=42)
 dg.start_datetime = "2024-01-01"
 dg.end_datetime = "2024-01-02"
 dg.to_granularity("5min")
 
 dg.add_metric(
     name="cpu_usage",
-    trends={LinearTrend(offset=30.0, slope=0.1)},
+    trends=LinearTrend(offset=30.0, slope=0.1),
     anomalies=[
         PointAnomaly(probability=0.05, mode="additive", magnitude=(10.0, 15.0)),
         MissingData(mode="burst", burst_probability=0.01, min_length=2, max_length=4),

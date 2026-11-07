@@ -29,12 +29,11 @@ def _(mo):
 
 @app.cell
 def _():
-    # Import the Data generator class from the ts_data_generator module 
-    from ts_data_generator import DataGen
-    from ts_data_generator.schema.models import Granularity
+    # Import the DataGenerator class and SchemaConverter from ts_data_generator
+    from ts_data_generator import DataGenerator, Granularity
     from ts_data_generator.analyzers.converter import SchemaConverter
     # '%matplotlib inline' command supported automatically in marimo
-    return (SchemaConverter,)
+    return DataGenerator, Granularity, SchemaConverter
 
 
 @app.cell

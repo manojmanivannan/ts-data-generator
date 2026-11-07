@@ -16,7 +16,7 @@ In `ts-data-generator`, dimensions are designed to be **infinite Python iterator
 
 ## 🛠️ Built-in Dimension Helpers
 
-The package includes a comprehensive set of pre-built dimension helpers inside `ts_data_generator.utils.functions`. These functions can be used in your Python scripts or invoked directly in your terminal using the CLI shorthand.
+The package includes a comprehensive set of pre-built dimension helpers in `ts_data_generator.functions` (also re-exported at the top level of `ts_data_generator`). These functions can be used in your Python scripts or invoked directly in your terminal using the CLI shorthand.
 
 | Helper | Type | Description | Example CLI Shorthand |
 |:---|:---|:---|:---|
@@ -70,18 +70,18 @@ When using the Python API, you pass a dimension generator to the `.add_dimension
 Here is a fully runnable script showcasing all built-in helpers and custom generators:
 
 ```python
-from ts_data_generator import DataGen
-from ts_data_generator.utils.functions import (
+from ts_data_generator import (
+    DataGenerator,
+    auto_generate_name,
     constant,
     ordered_choice,
     random_choice,
     random_float,
     random_int,
-    auto_generate_name
 )
 
-# Initialize DataGen
-dg = DataGen(seed=42)
+# Initialize DataGenerator
+dg = DataGenerator(seed=42)
 dg.start_datetime = "2024-01-01"
 dg.end_datetime = "2024-01-03"
 dg.to_granularity("h")
@@ -149,13 +149,13 @@ When `expand_dimensions` is on, the engine emits one row per *(timestamp × Cart
 `expand=False` is also the **escape hatch** for non-enumerable dimensions (`random_int`, `random_float`, `auto_generate_name`, or an opaque generator without `domain=`): marked `expand=False`, a non-enumerable dimension is excluded from the product and does **not** raise `ExpandError`, even with the global flag on. The error fires only for a dimension that is *actually expanding*.
 
 ```python
-dg = DataGen(start_datetime="2024-01-01", end_datetime="2024-01-03",
-             granularity="D", seed=42, expand_dimensions=True)
+dg = DataGenerator(start_datetime="2024-01-01", end_datetime="2024-01-03",
+                   granularity="D", seed=42, expand_dimensions=True)
 
 dg.add_dimension("region", random_choice(["US", "EU"]))               # expands (inherits)
 dg.add_dimension("port", random_int(1, 100), expand=False)            # opts out, no error
 dg.add_dimension("env", ordered_choice(["prod", "dev"]), expand=True) # forces expansion
-dg.add_metric("sales", {LinearTrend(offset=10)})
+dg.add_metric("sales", LinearTrend(offset=10))
 # Rows = 3 timestamps × 2 regions × 2 envs = 12; `port` varies within each series.
 ```
 
@@ -184,7 +184,7 @@ Here is a complete, runnable example showing how to configure linked city-countr
 
 ```python
 import random
-from ts_data_generator import DataGen
+from ts_data_generator import DataGenerator
 
 # 1. Define an infinite generator yielding tuples of values
 def city_country_generator():
@@ -198,8 +198,8 @@ def city_country_generator():
         # Uniformly pick one tuple
         yield random.choice(options)
 
-# 2. Setup DataGen
-dg = DataGen(seed=123)
+# 2. Setup DataGenerator
+dg = DataGenerator(seed=123)
 dg.start_datetime = "2024-01-01"
 dg.end_datetime = "2024-01-02"
 dg.to_granularity("h")
@@ -230,9 +230,9 @@ Output:
 2024-01-01 09:00:00     Tokyo      JP           Asia
 ```
 
-### MultiItems with `expand_dimensions`
+### `MultiItem` with `expand_dimensions`
 
-When `expand_dimensions=True`, MultiItems compose by role:
+When `expand_dimensions=True`, `MultiItem` groups compose by role:
 
 - **Linked dimensions** (`aggregation_type=None`): Expand over their distinct-tuple domain as a single compound key (the tuple moves as a unit). The Cartesian product combines regular dimensions and linked dimensions' tuple domains.
 - **Linked metrics** (`aggregation_type` provided): Regenerate once per combination with a per-combination seed, preserving column correlation within each combination while generating independent series across combinations.
@@ -273,10 +273,10 @@ Any dimension or value without an explicit weight defaults to `1.0`.
 
 ### 2. Stochastic Auto-Scaling (`scale_variance`)
 
-To automatically introduce natural magnitude variance across slices without specifying manual weights for every category, set `scale_variance` on `DataGen`:
+To automatically introduce natural magnitude variance across slices without specifying manual weights for every category, set `scale_variance` on `DataGenerator`:
 
 ```python
-dg = DataGen(
+dg = DataGenerator(
     start_datetime="2024-01-01",
     end_datetime="2024-01-07",
     granularity="h",

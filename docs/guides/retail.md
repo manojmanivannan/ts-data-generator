@@ -82,14 +82,19 @@ tsdata generate --config retail_config.json
 For pipeline integration, you can compose this exact scenario programmatically.
 
 ```python
-from ts_data_generator import DataGen
-from ts_data_generator.schema.models import AggregationType
-from ts_data_generator.utils.functions import auto_generate_name, random_choice
-from ts_data_generator.utils.trends import LinearTrend, SinusoidalTrend, HolidayTrend
-from ts_data_generator.anomalies import MissingData
+from ts_data_generator import (
+    AggregationType,
+    DataGenerator,
+    HolidayTrend,
+    LinearTrend,
+    MissingData,
+    SinusoidalTrend,
+    auto_generate_name,
+    random_choice,
+)
 
 # 1. Initialize our year-long daily generator
-dg = DataGen(seed=42)
+dg = DataGenerator(seed=42)
 dg.start_datetime = "2023-01-01"
 dg.end_datetime = "2023-12-31"
 dg.to_granularity("D") # Daily granularity
@@ -103,7 +108,7 @@ growth_trend = LinearTrend(offset=1000.0, slope=5.0, noise_level=5.0) # Steady g
 weekly_seasonality = SinusoidalTrend(amplitude=10.0, freq=7.0, noise_level=5.0) # Period = 7 days for weekly cycle
 holiday_spikes = HolidayTrend(country="US", effect=50.0, pre_window=3, post_window=1)
 
-revenue_trends = {growth_trend, weekly_seasonality, holiday_spikes}
+revenue_trends = [growth_trend, weekly_seasonality, holiday_spikes]
 
 # 4. Define our Inventory Stockout anomaly
 stockout_dropout = MissingData(
