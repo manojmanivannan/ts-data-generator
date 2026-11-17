@@ -950,9 +950,8 @@ class TestDataGeneratorStateGuards:
         assert dg.state == PipelineState.GENERATED
 
     def test_datagen_normalize_before_generate_raises(self):
-        from ts_data_generator.exceptions import ConfigurationError
         dg = DataGenerator()
-        with pytest.raises(ConfigurationError):
+        with pytest.raises(ValidationError, match="start_datetime must be set"):
             dg.normalize("mean-std")
 
     def test_datagen_denormalize_before_normalize_warns(self, caplog):
@@ -1163,4 +1162,395 @@ class TestPublicAPIAndLazyExecution:
         assert dg.state == PipelineState.GENERATED
         assert dg.data is custom_df
         assert call_count == 2
+
+
+class TestReleaseReadinessRegressions:
+    """Regression tests for R2, R3, and R4 release readiness fixes."""
+
+    def test_normalize_after_configuration_triggers_lazy_generation(self) -> None:
+        from ts_data_generator import DataGenerator
+        from ts_data_generator.data_gen import PipelineState
+
+        dg = DataGenerator(
+            start_datetime="2024-01-01",
+            end_datetime="2024-01-05",
+            granularity="D",
+            seed=42,
+        )
+        dg.add_metric("m1", LinearTrend(offset=10.0, slope=5.0, noise_level=0.0))
+        assert dg.state == PipelineState.CONFIGURED
+
+        dg.normalize("min-max")
+        assert dg.state == PipelineState.NORMALIZED
+        assert dg.data["m1"].min() == pytest.approx(0.0)
+        assert dg.data["m1"].max() == pytest.approx(1.0)
+
+    def test_normalize_after_incremental_mutation_triggers_lazy_generation(self) -> None:
+        from ts_data_generator import DataGenerator
+        from ts_data_generator.data_gen import PipelineState
+
+        dg = DataGenerator(
+            start_datetime="2024-01-01",
+            end_datetime="2024-01-10",
+            granularity="D",
+            seed=42,
+        )
+        dg.add_metric("m1", LinearTrend(offset=10.0, slope=2.0, noise_level=0.0))
+        _ = dg.data
+
+        dg.add_metric("m2", LinearTrend(offset=100.0, slope=5.0, noise_level=0.0))
+        assert dg.state == PipelineState.CONFIGURED
+
+        dg.normalize("mean-std")
+        assert dg.state == PipelineState.NORMALIZED
+        assert "m2" in dg.data.columns
+        assert dg.data["m2"].mean() == pytest.approx(0.0, abs=1e-9)
+
+    def test_normalize_then_add_metric_rebuilds_unnormalized_cleanly(self) -> None:
+        from ts_data_generator import DataGenerator
+
+        dg = DataGenerator(
+            start_datetime="2024-01-01",
+            end_datetime="2024-01-05",
+            granularity="D",
+            seed=42,
+        )
+        dg.add_metric("m1", LinearTrend(offset=10.0, slope=5.0, noise_level=0.0))
+        dg.normalize("min-max")
+        assert dg.data["m1"].max() == pytest.approx(1.0)
+
+        dg.add_metric("m2", LinearTrend(offset=100.0, slope=10.0, noise_level=0.0))
+        df_unnorm = dg.data
+        assert df_unnorm["m1"].iloc[0] == pytest.approx(10.0)
+        assert df_unnorm["m2"].iloc[0] == pytest.approx(100.0)
+
+        dg.normalize("min-max")
+        assert dg.data["m1"].min() == pytest.approx(0.0)
+        assert dg.data["m1"].max() == pytest.approx(1.0)
+        assert dg.data["m2"].min() == pytest.approx(0.0)
+        assert dg.data["m2"].max() == pytest.approx(1.0)
+
+    def test_incremental_add_metric_preserves_existing_metrics_and_stateful_dims(self) -> None:
+        from ts_data_generator import (
+            DataGenerator,
+            EventSchedule,
+            PeriodicBurstAnomaly,
+            PointAnomaly,
+            ordered_choice,
+            random_choice,
+        )
+
+        def counter_gen():
+            i = 1
+            while True:
+                yield i
+                i += 1
+
+        sched = EventSchedule(period=5, duration=2, phase=2)
+        dg = DataGenerator(
+            start_datetime="2024-01-01",
+            end_datetime="2024-01-20",
+            granularity="D",
+            seed=42,
+        )
+        dg.add_dimension("ord", ordered_choice(["A", "B", "C"]))
+        dg.add_dimension("lst", ["X", "Y"])
+        dg.add_dimension("cnt", counter_gen())
+        dg.add_dimension("unseeded_rc", random_choice(["P", "Q"]))
+        dg.add_metric(
+            "m1",
+            [LinearTrend(offset=10.0, slope=1.0, noise_level=2.0)],
+            anomalies=[
+                PointAnomaly(probability=0.1, magnitude=50.0),
+                PeriodicBurstAnomaly(schedule=sched, peak_magnitude=20.0),
+            ],
+        )
+
+        df1 = dg.data.copy()
+
+        dg.add_metric("m2", [LinearTrend(offset=50.0, slope=0.5, noise_level=3.0)])
+        df2 = dg.data.copy()
+
+        pd.testing.assert_series_equal(df2["m1"], df1["m1"])
+        pd.testing.assert_series_equal(df2["m1_anomaly"], df1["m1_anomaly"])
+        for col in ("ord", "lst", "cnt", "unseeded_rc"):
+            pd.testing.assert_series_equal(df2[col], df1[col])
+
+        # Seeded metrics match an up-front DataGenerator with both metrics
+        dg_upfront = DataGenerator(
+            start_datetime="2024-01-01",
+            end_datetime="2024-01-20",
+            granularity="D",
+            seed=42,
+        )
+        dg_upfront.add_dimension("ord", ordered_choice(["A", "B", "C"]))
+        dg_upfront.add_dimension("lst", ["X", "Y"])
+        dg_upfront.add_dimension("cnt", counter_gen())
+        dg_upfront.add_dimension("unseeded_rc", random_choice(["P", "Q"]))
+        dg_upfront.add_metric(
+            "m1",
+            [LinearTrend(offset=10.0, slope=1.0, noise_level=2.0)],
+            anomalies=[
+                PointAnomaly(probability=0.1, magnitude=50.0),
+                PeriodicBurstAnomaly(
+                    schedule=EventSchedule(period=5, duration=2, phase=2),
+                    peak_magnitude=20.0,
+                ),
+            ],
+        )
+        dg_upfront.add_metric("m2", [LinearTrend(offset=50.0, slope=0.5, noise_level=3.0)])
+        df_upfront = dg_upfront.data
+        pd.testing.assert_series_equal(df2["m1"], df_upfront["m1"])
+        pd.testing.assert_series_equal(df2["m2"], df_upfront["m2"])
+        pd.testing.assert_series_equal(df2["m1_anomaly"], df_upfront["m1_anomaly"])
+
+    def test_incremental_add_dimension_and_multi_item_preserves_existing_columns(self) -> None:
+        from ts_data_generator import DataGenerator, PointAnomaly, ordered_choice
+
+        dg = DataGenerator(
+            start_datetime="2024-01-01",
+            end_datetime="2024-01-08",
+            granularity="D",
+            seed=123,
+        )
+        dg.add_dimension("d1", ordered_choice(["A", "B"]))
+        dg.add_metric(
+            "m1",
+            LinearTrend(offset=5.0, slope=1.0, noise_level=2.0),
+            anomalies=[PointAnomaly(probability=0.2, magnitude=30.0)],
+        )
+        df1 = dg.data.copy()
+
+        dg.add_dimension("d2", ordered_choice(["X", "Y"]))
+        dg.add_multi_items(["k1", "k2"], [("u", 1), ("v", 2)])
+        df2 = dg.data
+
+        pd.testing.assert_series_equal(df2["d1"], df1["d1"])
+        pd.testing.assert_series_equal(df2["m1"], df1["m1"])
+        pd.testing.assert_series_equal(df2["m1_anomaly"], df1["m1_anomaly"])
+        assert list(df2["d2"])[:2] == ["X", "Y"]
+        assert list(df2["k1"])[:2] == ["u", "v"]
+        assert list(df2["k2"])[:2] == [1, 2]
+
+    def test_incremental_update_and_remove_preserves_other_columns(self) -> None:
+        from ts_data_generator import DataGenerator, ordered_choice
+
+        dg = DataGenerator(
+            start_datetime="2024-01-01",
+            end_datetime="2024-01-06",
+            granularity="D",
+            seed=99,
+        )
+        dg.add_dimension("d1", ordered_choice(["A", "B"]))
+        dg.add_dimension("d2", ["X", "Y"])
+        dg.add_metric("m1", LinearTrend(offset=10.0, slope=1.0, noise_level=2.0))
+        dg.add_metric("m2", LinearTrend(offset=20.0, slope=1.0, noise_level=2.0))
+        df1 = dg.data.copy()
+
+        dg.update_dimension("d2", "Z")
+        dg.remove_metric("m2")
+        df2 = dg.data
+
+        pd.testing.assert_series_equal(df2["d1"], df1["d1"])
+        pd.testing.assert_series_equal(df2["m1"], df1["m1"])
+        assert (df2["d2"] == "Z").all()
+        assert "m2" not in df2.columns
+
+    def test_empty_dataframe_assignment_regenerates_for_both_generate_and_data(self) -> None:
+        from ts_data_generator import DataGenerator, PointAnomaly
+
+        dg_a = DataGenerator(
+            start_datetime="2024-01-01",
+            end_datetime="2024-01-05",
+            granularity="D",
+            seed=42,
+        )
+        dg_a.add_metric(
+            "m1",
+            LinearTrend(offset=10.0, slope=2.0, noise_level=1.0),
+            anomalies=[PointAnomaly(probability=0.2, magnitude=50.0)],
+        )
+        df_orig = dg_a.data.copy()
+
+        dg_b = DataGenerator(
+            start_datetime="2024-01-01",
+            end_datetime="2024-01-05",
+            granularity="D",
+            seed=42,
+        )
+        dg_b.add_metric(
+            "m1",
+            LinearTrend(offset=10.0, slope=2.0, noise_level=1.0),
+            anomalies=[PointAnomaly(probability=0.2, magnitude=50.0)],
+        )
+        _ = dg_b.data
+
+        dg_a.data = pd.DataFrame()
+        regen_via_data = dg_a.data
+        assert not regen_via_data.empty
+        pd.testing.assert_frame_equal(regen_via_data, df_orig)
+        assert "m1" in dg_a.baselines
+
+        dg_b.data = pd.DataFrame()
+        regen_via_generate = dg_b.generate()
+        assert not regen_via_generate.empty
+        pd.testing.assert_frame_equal(regen_via_generate, df_orig)
+        assert "m1" in dg_b.baselines
+
+    def test_non_empty_custom_dataframe_still_overrides(self) -> None:
+        from ts_data_generator import DataGenerator
+
+        dg = DataGenerator(
+            start_datetime="2024-01-01",
+            end_datetime="2024-01-03",
+            granularity="D",
+            seed=42,
+        )
+        dg.add_metric("m1", LinearTrend(offset=10.0, slope=0.0, noise_level=0.0))
+        custom = dg.data.copy()
+        custom["m1"] = 999.0
+        dg.data = custom
+        assert dg.data is custom
+        assert dg.generate() is custom
+
+    def test_update_dimension_clears_weights_when_omitted(self) -> None:
+        from ts_data_generator import DataGenerator, random_choice
+
+        dg = DataGenerator(
+            start_datetime="2024-01-01",
+            end_datetime="2024-01-02",
+            granularity="D",
+            seed=42,
+            expand_dimensions=True,
+        )
+        dg.add_dimension("region", {"US": 5.0, "EU": 2.0})
+        dg.add_metric("sales", LinearTrend(offset=10.0, slope=0.0, noise_level=0.0))
+        assert dg.dimensions["region"].weights == {"US": 5.0, "EU": 2.0}
+
+        # Updating without weights= clears prior weights to None
+        dg.update_dimension("region", ["APAC", "LATAM"])
+        assert dg.dimensions["region"].weights is None
+        df = dg.data
+        assert (df["sales"] == 10.0).all()
+
+        # Updating with explicit weights= applies new weights
+        dg.update_dimension("region", random_choice(["APAC"]), weights={"APAC": 3.0})
+        assert dg.dimensions["region"].weights == {"APAC": 3.0}
+        df_weighted = dg.data
+        assert (df_weighted["sales"] == 30.0).all()
+
+    def test_update_dimension_domain_expand_and_noop(self) -> None:
+        from ts_data_generator import DataGenerator
+
+        def custom_gen():
+            while True:
+                yield "X"
+                yield "Y"
+
+        dg = DataGenerator(
+            start_datetime="2024-01-01",
+            end_datetime="2024-01-02",
+            granularity="D",
+            seed=42,
+            expand_dimensions=False,
+        )
+        dg.add_dimension("tier", "free", expand=False, weights={"free": 2.0})
+        dg.add_metric("sales", LinearTrend(offset=10.0, slope=0.0, noise_level=0.0))
+
+        # No-op when function=None and no other params
+        dg.update_dimension("tier", None)
+        assert dg.dimensions["tier"].expand is False
+        assert dg.dimensions["tier"].weights == {"free": 2.0}
+
+        # Update with domain= and expand=True forces expansion even when global flag is False
+        dg.update_dimension("tier", custom_gen(), domain=["X", "Y"], expand=True)
+        assert dg.dimensions["tier"].expand is True
+        assert dg.dimensions["tier"].weights is None
+        df = dg.data
+        assert set(df["tier"]) == {"X", "Y"}
+        assert len(df) == 4  # 2 timestamps x 2 tier values
+
+        # Update only expand=False with function=None
+        dg.update_dimension("tier", expand=False)
+        assert dg.dimensions["tier"].expand is False
+        assert len(dg.data) == 2
+
+    def test_direct_scalar_dimension_and_multi_item_in_datagenerator(self) -> None:
+        from ts_data_generator import DataGenerator, Dimension, MultiItem, constant
+
+        for expand in (False, True):
+            dg = DataGenerator(
+                dimensions=[
+                    Dimension("x", 5),
+                    Dimension("s", "hi"),
+                    Dimension("f", 2.5),
+                ],
+                multi_items=[
+                    MultiItem(["m1", "m2"], 7),
+                    MultiItem(["c1", "c2"], constant("x")),
+                    MultiItem(["z1", "z2"], constant(0)),
+                    MultiItem(["e1", "e2"], constant("")),
+                ],
+                start_datetime="2024-01-01",
+                end_datetime="2024-01-02",
+                granularity="D",
+                seed=1,
+                expand_dimensions=expand,
+            )
+            df = dg.data
+            assert len(df) == 2
+            assert (df["x"] == 5).all()
+            assert (df["s"] == "hi").all()
+            assert (df["f"] == 2.5).all()
+            assert (df["m1"] == 7).all()
+            assert (df["m2"] == 7).all()
+            assert (df["c1"] == "x").all()
+            assert (df["c2"] == "x").all()
+            assert (df["z1"] == 0).all()
+            assert (df["z2"] == 0).all()
+            assert (df["e1"] == "").all()
+            assert (df["e2"] == "").all()
+
+            dg2 = DataGenerator(
+                start_datetime="2024-01-01",
+                end_datetime="2024-01-02",
+                granularity="D",
+                seed=1,
+                expand_dimensions=expand,
+            )
+            dg2.add_multi_items(["a", "b"], 5)
+            dg2.add_multi_items(["zero1", "zero2"], 0)
+            dg2.add_multi_items(["empty1", "empty2"], "")
+            df2 = dg2.data
+            assert len(df2) == 2
+            assert (df2["a"] == 5).all()
+            assert (df2["b"] == 5).all()
+            assert (df2["zero1"] == 0).all()
+            assert (df2["zero2"] == 0).all()
+            assert (df2["empty1"] == "").all()
+            assert (df2["empty2"] == "").all()
+
+    def test_subpackage_exports_and_version(self) -> None:
+        import tomllib
+        from pathlib import Path
+
+        import ts_data_generator as tdg
+        import ts_data_generator.analyzers as analyzers_pkg
+        import ts_data_generator.transforms as transforms_pkg
+        from ts_data_generator.analyzers import SchemaConverter
+        from ts_data_generator.transforms import Normalizer
+
+        assert SchemaConverter.__name__ == "SchemaConverter"
+        assert Normalizer.__name__ == "Normalizer"
+        assert analyzers_pkg.__all__ == ["SchemaConverter"]
+        assert transforms_pkg.__all__ == ["Normalizer"]
+        assert "SchemaConverter" not in tdg.__all__
+        assert "Normalizer" not in tdg.__all__
+        assert not hasattr(tdg, "SchemaConverter")
+        assert not hasattr(tdg, "Normalizer")
+
+        assert tdg.__version__ == "1.0.1"
+        pyproject_path = Path(__file__).resolve().parents[1] / "pyproject.toml"
+        with pyproject_path.open("rb") as f:
+            assert tomllib.load(f)["project"]["version"] == "1.0.1"
 

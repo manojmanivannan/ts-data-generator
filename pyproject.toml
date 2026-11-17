@@ -8,7 +8,7 @@ artifacts = ["src/ts_data_generator/data/*.json"]
 
 [project]
 name = "ts-data-generator"
-version = "0.1.0"
+version = "1.0.1"
 description = "A Python library for generating synthetic time series data"
 requires-python = ">=3.11"
 dependencies = [

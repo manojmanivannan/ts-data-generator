@@ -7,15 +7,16 @@ types.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 import pandas as pd
 
 from ts_data_generator.exceptions import AggregationError
-from ts_data_generator.schema.models import AggregationType, Granularity
-
-if TYPE_CHECKING:
-    from ts_data_generator.schema.models import Dimension, Metric, MultiItem
+from ts_data_generator.schema.models import (
+    AggregationType,
+    Dimension,
+    Granularity,
+    Metric,
+    MultiItem,
+)
 
 
 def aggregate_dataframe(
@@ -24,8 +25,8 @@ def aggregate_dataframe(
     dimensions: dict[str, Dimension],
     multi_items: dict[str, MultiItem],
     *,
-    from_granularity: str,
-    to_granularity: str,
+    from_granularity: Granularity | str,
+    to_granularity: Granularity | str,
     by: list[str] | None = None,
 ) -> pd.DataFrame:
     """Resample *data* from *from_granularity* to *to_granularity*.
@@ -50,8 +51,10 @@ def aggregate_dataframe(
         metrics: Mapping of metric name to ``Metric`` instance.
         dimensions: Mapping of dimension name to ``Dimension`` instance.
         multi_items: Mapping of comma-joined names to ``MultiItem`` instance.
-        from_granularity: Current granularity of the data (e.g. ``"5min"``).
-        to_granularity: Target granularity (e.g. ``"h"``, ``"D"``).
+        from_granularity: Current granularity of the data as a
+            :class:`Granularity` member or string (e.g. ``"5min"``).
+        to_granularity: Target granularity as a :class:`Granularity` member
+            or string (e.g. ``"h"``, ``"D"``).
         by: Optional subset of dimension column names to group by.  ``None``
             (default) groups by every dimension and linked-dimension column
             (the historical behaviour).  An empty list aggregates away *all*
@@ -65,7 +68,8 @@ def aggregate_dataframe(
     Raises:
         AggregationError: If *to_granularity* is finer than *from_granularity*,
             or if *by* names a column that is not a groupable dimension.
-        KeyError: If *to_granularity* is not a recognised granularity string.
+        ValueError: If *to_granularity* or *from_granularity* is not a
+            recognised granularity.
     """
     target = Granularity(to_granularity)
     current = Granularity(from_granularity)

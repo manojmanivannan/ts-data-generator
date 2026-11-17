@@ -18,7 +18,7 @@ def _(mo):
 
     ```python
     # Mega-signal metric: 16 stacked trends on a fresh generator
-    d_mega = DataGen(
+    d_mega = DataGenerator(
         start_datetime="2024-01-01", end_datetime="2024-01-10", granularity="5min", seed=7
     )
 
@@ -75,22 +75,22 @@ def _():
     from ts_data_generator import (
         ARNoiseTrend,
         ConceptDrift,
-        DataGen,
+        DataGenerator,
         DriftSegment,
         LinearTrend,
         MarkovTrend,
         MissingData,
+        PeriodicBurstAnomaly,
         PointAnomaly,
         SinusoidalTrend,
         StockTrend,
         WeekendTrend,
     )
-    from ts_data_generator.anomalies import PeriodicBurstAnomaly
 
     return (
         ARNoiseTrend,
         ConceptDrift,
-        DataGen,
+        DataGenerator,
         DriftSegment,
         LinearTrend,
         MarkovTrend,
@@ -107,7 +107,7 @@ def _():
 def _(
     ARNoiseTrend,
     ConceptDrift,
-    DataGen,
+    DataGenerator,
     DriftSegment,
     LinearTrend,
     MarkovTrend,
@@ -119,7 +119,7 @@ def _(
     WeekendTrend,
 ):
     # Mega-signal metric: 16 stacked trends on a fresh generator
-    d_mega = DataGen(
+    d_mega = DataGenerator(
         start_datetime="2024-01-01", end_datetime="2024-01-10", granularity="5min", seed=7
     )
 
@@ -191,11 +191,6 @@ def _(d_mega, mo):
     | ConceptDrift | at 2024-01-08 12:00 (Δ60 for 1.5 hours, then restored) |
     | PeriodicBurstAnomaly | A recurring PeriodicBurstAnomaly |
         """)])
-    return
-
-
-@app.cell
-def _():
     return
 
 

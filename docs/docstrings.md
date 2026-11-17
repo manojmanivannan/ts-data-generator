@@ -13,10 +13,13 @@ granularity, carrier, `expand_dimensions`, baseline) is defined in
 [`concepts.md`](concepts.md); use those terms, do not invent synonyms.
 
 **Scope.** Everything a user touches in the IDE: the public surface of
-`DataGenerator`, `trends`, `functions`, `anomalies`, `schema`, and the
-pre-built factory types (`Dimension`, `Metric`, `MultiItem`). **Internal
-`_*` helpers and `_*` modules are out of scope** — they are never linted by the
-`D` rules (ticket 03) and need not be documented to this standard.
+`DataGenerator`, `trends`, `functions`, `anomalies`, `schema`, `analyzers`
+(`SchemaConverter`), `transforms` (`Normalizer`), `carriers`
+(`DimensionCarrier`), and the pre-built factory types (`Dimension`, `Metric`,
+`MultiItem`). **Internal `_*` helpers and internal modules (configured in
+`pyproject.toml` `[tool.ruff.lint.per-file-ignores]`) are out of scope** — they
+are not linted by the `D` rules (ticket 03) and need not be documented to this
+standard.
 
 ## 1. Section structure (Google style)
 
@@ -105,9 +108,10 @@ Convention:
 
 - **Imports live in the example, not the module top.** Each doctest is
   self-contained: it shows the real `from ts_data_generator import ...` the
-  user types. (The `conftest` doctest namespace from ticket 04 injects `pandas`
-  as `pd` and the package root; explicit per-example imports are still written
-  so the example reads correctly standalone and in the IDE.)
+  user types. (The project-root `conftest.py` doctest namespace fixture from
+  ticket 04 injects `pandas` as `pd` and the `ts_data_generator` package root;
+  explicit per-example imports are still written so the example reads
+  correctly standalone and in the IDE.)
 - **Deterministic.** Every doctest passes `seed=` (or an explicit `rng=`) so
   output is reproducible. Never assert on a random *value* — assert on shape,
   type, membership, or a rounded scalar you have fixed.
@@ -186,7 +190,9 @@ public symbols a user imports from this module.>
 - `functions.py` → names the carrier helpers and the CLI-shorthand link.
 - `trends.py` → names `Trend` + subclasses and the composition model.
 - `anomalies/` → names the `Anomaly` base + built-ins.
-- `schema/` → names the user-facing types and the converter/imputer entry points.
+- `schema/` → names the user-facing model and enum types (`Dimension`, `Metric`, `MultiItem`, `Granularity`, `AggregationType`).
+- `analyzers/` (and `analyzers/converter.py`) → exports `SchemaConverter` for CSV schema and trend analysis.
+- `transforms/` → exports `Normalizer` for numeric scaling.
 
 Internal `_*` modules skip this (out of scope).
 

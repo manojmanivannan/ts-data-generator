@@ -161,7 +161,7 @@ from ts_data_generator import (
 dg = DataGenerator(seed=42)
 dg.start_datetime = "2024-01-01"
 dg.end_datetime = "2024-01-01 00:30:00"
-dg.to_granularity("100ms")
+dg.to_granularity("s")
 
 # One schedule shared by every affected metric — same on/off windows everywhere.
 jammer = EventSchedule(period=100, duration=(15, 20), phase=250, skip_probability=0.03)
@@ -258,7 +258,7 @@ For a metric named `cpu_usage`, the generator adds a `cpu_usage_anomaly` boolean
 Key behaviors:
 
 *   **Naming:** The label column is always `<metric_name>_anomaly` (e.g. `cpu_usage` → `cpu_usage_anomaly`).
-*   **All anomaly types covered:** `PointAnomaly` (additive and replacement), `MissingData` (random/burst/patterned), and `ConceptDrift`. For drift, the entire drift window — transition in, hold, and restore — is labeled `True`, because every point in that regime deviates from the clean baseline.
+*   **All anomaly types covered:** `PointAnomaly` (additive and replacement), `MissingData` (random/burst/patterned), `ConceptDrift`, and `PeriodicBurstAnomaly`. For drift, the entire drift window — transition in, hold, and restore — is labeled `True`, because every point in that regime deviates from the clean baseline.
 *   **Appears only when needed:** The label column is created only for metrics that actually have anomalies configured. Metrics with no anomalies get no label column.
 *   **Safe with normalize & plot:** The column is `bool` dtype, so `normalize()` and `plot()` — which only operate on numeric columns — skip it automatically. The labels are never rescaled or plotted.
 *   **Survives aggregation:** When you call `dg.aggregate(...)`, the label column is aggregated as a boolean OR (`max`): a coarser resample window is labeled `True` if any point within it was anomalous.

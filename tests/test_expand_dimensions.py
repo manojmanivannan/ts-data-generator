@@ -18,7 +18,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from ts_data_generator import DataGenerator
+from ts_data_generator import DataGenerator, Dimension, MultiItem
 from ts_data_generator.anomalies.point import PointAnomaly
 from ts_data_generator.exceptions import ExpandError, ValidationError
 from ts_data_generator.expand import combination_seed
@@ -629,6 +629,52 @@ class TestExpandLinkedDimensions:
         df = dg.data
         assert len(df) == 4  # 2 timestamps x 2 tuples from declared domain
 
+    def test_linked_dim_scalar_and_constant_carrier_expand(self) -> None:
+        dg = DataGenerator(
+            start_datetime="2024-01-01",
+            end_datetime="2024-01-02",
+            granularity=Granularity.DAY,
+            seed=1,
+            expand_dimensions=True,
+        )
+        dg.add_dimension("region", random_choice(["US", "EU"]))
+        dg.add_multi_items(["a", "b"], 5)
+        dg.add_multi_items(["z1", "z2"], 0)
+        dg.add_multi_items(["s1", "s2"], "")
+        dg.add_metric("m", {LinearTrend(offset=1, noise_level=0)})
+        df = dg.data
+        assert len(df) == 4  # 2 timestamps x 2 regions x 1 constant per multi-item
+        assert (df["a"] == 5).all()
+        assert (df["b"] == 5).all()
+        assert (df["z1"] == 0).all()
+        assert (df["z2"] == 0).all()
+        assert (df["s1"] == "").all()
+        assert (df["s2"] == "").all()
+
+        dg_direct = DataGenerator(
+            dimensions=[Dimension(["d1", "d2"], constant(3))],
+            multi_items=[
+                MultiItem(["c1", "c2"], constant("x")),
+                MultiItem(["n1", "n2"], constant(0)),
+                MultiItem(["e1", "e2"], constant("")),
+            ],
+            start_datetime="2024-01-01",
+            end_datetime="2024-01-02",
+            granularity=Granularity.DAY,
+            seed=1,
+            expand_dimensions=True,
+        )
+        df_direct = dg_direct.data
+        assert len(df_direct) == 2
+        assert (df_direct["d1"] == 3).all()
+        assert (df_direct["d2"] == 3).all()
+        assert (df_direct["c1"] == "x").all()
+        assert (df_direct["c2"] == "x").all()
+        assert (df_direct["n1"] == 0).all()
+        assert (df_direct["n2"] == 0).all()
+        assert (df_direct["e1"] == "").all()
+        assert (df_direct["e2"] == "").all()
+
 
 class TestExpandCompoundKeySeedAndOrdering:
     """Compound key is atomic in seed and in ordering."""
@@ -759,6 +805,29 @@ class TestExpandLinkedDimensionsErrorHandling:
         assert len(df) == 6  # 3 timestamps x 2 regions
         assert "c1" in df.columns
         assert "c2" in df.columns
+
+    def test_mismatched_constant_tuple_and_non_constant_scalar_raise(self) -> None:
+        dg_mismatch = DataGenerator(
+            multi_items=[MultiItem(["a", "b"], constant([(1, 2, 3)]))],
+            start_datetime="2024-01-01",
+            end_datetime="2024-01-02",
+            granularity=Granularity.DAY,
+            seed=1,
+            expand_dimensions=True,
+        )
+        with pytest.raises(ExpandError, match="does not match number of columns"):
+            _ = dg_mismatch.data
+
+        dg_non_constant = DataGenerator(
+            multi_items=[MultiItem(["a", "b"], random_choice([5, 6]))],
+            start_datetime="2024-01-01",
+            end_datetime="2024-01-02",
+            granularity=Granularity.DAY,
+            seed=1,
+            expand_dimensions=True,
+        )
+        with pytest.raises(ExpandError, match="does not match number of columns"):
+            _ = dg_non_constant.data
 
 
 class TestExpandMultiItemAggregationAndAnomalies:

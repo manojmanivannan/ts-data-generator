@@ -19,7 +19,6 @@ import pandas as pd
 from ts_data_generator.aggregator import aggregate_dataframe
 from ts_data_generator.carriers import DimensionCarrier, DomainCarrier
 from ts_data_generator.exceptions import (
-    ConfigurationError,
     DimensionError,
     MetricError,
     MultiItemError,
@@ -34,6 +33,7 @@ from ts_data_generator.schema.models import (
     Dimension,
     Granularity,
     Metric,
+    MetricResult,
     MultiItem,
 )
 from ts_data_generator.transforms.normalizer import Normalizer, create_normalizer
@@ -181,6 +181,10 @@ class DataGenerator:
         self._data: pd.DataFrame = pd.DataFrame()
         self._baselines: dict[str, pd.DataFrame] = {}
         self._state: PipelineState = PipelineState.CONFIGURED
+        self._cached_timestamps: pd.DatetimeIndex | None = None
+        self._cached_dimensions: dict[str | tuple[str, ...], tuple[Any, pd.DataFrame]] = {}
+        self._cached_metrics: dict[str, MetricResult] = {}
+        self._cached_multi_items: dict[str, tuple[Any, pd.DataFrame]] = {}
 
         has_start = self._has_datetime(start_datetime)
         has_end = self._has_datetime(end_datetime)
@@ -231,9 +235,10 @@ class DataGenerator:
     def data(self) -> pd.DataFrame:
         """The generated, timestamp-indexed DataFrame.
 
-        Evaluates the generation pipeline lazily when pending. Assigning a new
-        DataFrame overrides the stored data directly and marks the pipeline as
-        generated.
+        Evaluates the generation pipeline lazily when pending, ungenerated, or
+        empty. Assigning a new DataFrame overrides the stored data directly and
+        marks the pipeline as generated; assigning an empty DataFrame clears
+        component caches and resets a seeded RNG so the next read regenerates.
 
         Returns:
             A ``pd.DataFrame`` indexed by a ``pd.DatetimeIndex`` over the
@@ -242,15 +247,16 @@ class DataGenerator:
             ``<metric>_anomaly`` label columns), and multi-items.
 
         """
-        if self._pending_regeneration:
-            self._generate_data()
-        return self._data
+        return self.generate()
 
     @data.setter
     def data(self, value: pd.DataFrame) -> None:
         self._data = value
         self._pending_regeneration = False
         self._state = PipelineState.GENERATED
+        if value.empty:
+            self._clear_component_caches()
+            self._reset_rng()
 
     @property
     def workers(self) -> int | None:
@@ -525,9 +531,14 @@ class DataGenerator:
     def baselines(self) -> dict[str, pd.DataFrame]:
         """Clean (anomaly-free) baseline DataFrames keyed by metric name.
 
-        Evaluates the generation pipeline lazily when pending.
+        Evaluates the generation pipeline lazily when pending, ungenerated, or
+        empty.
         """
-        if self._pending_regeneration:
+        if (
+            self._pending_regeneration
+            or self._state == PipelineState.CONFIGURED
+            or self._data.empty
+        ):
             self._generate_data()
         return self._baselines
 
@@ -671,30 +682,80 @@ class DataGenerator:
         name: str,
         function: (
             int | float | str | list[Any] | dict[Any, float] | Generator[Any, None, None] | None
-        ),
+        ) = None,
+        domain: list[Any] | None = None,
+        expand: bool | None = None,
+        weights: dict[Any, float] | None = None,
     ) -> None:
-        """Update an existing dimension's generator function.
+        """Update an existing dimension's function, domain, expand override, or weights.
+
+        When ``function`` is provided without ``weights`` (and ``function`` is
+        not a ``{value: weight}`` dict), any prior ``weights`` on the dimension
+        are cleared to ``None``. Passing ``function=None`` with no other
+        arguments is a no-op; passing ``domain``, ``expand``, or ``weights``
+        with ``function=None`` updates only the supplied attributes.
 
         Args:
             name: The dimension name to update.
-            function: New generator or static value; if None, no-op.
+            function: New generator, static value, list, or ``{value: weight}``
+                dict; if ``None``, the existing function is preserved.
+            domain: Explicit value domain for an opaque custom/pre-built
+                generator (the ``domain=`` escape hatch).
+            expand: Per-dimension expansion override for ``expand_dimensions``.
+                If ``None``, the existing override is preserved.
+            weights: Optional dictionary mapping dimension values to scale
+                multipliers for multivariate dimension expansion.
 
         Raises:
             DimensionError: If the dimension does not exist.
-            ValidationError: If the function type is invalid.
+            ValidationError: If the function type or ``domain`` is invalid.
+            ValueError: If ``expand`` is not a bool/None or ``weights`` is not
+                a dict/None.
 
         """
         if name not in self.dimensions:
             raise DimensionError(f"Dimension with name {name!r} does not exist.")
 
+        dimension = self.dimensions[name]
+        cache_key = dimension.name if isinstance(dimension.name, str) else tuple(dimension.name)
+
         if function is None:
+            if domain is None and expand is None and weights is None:
+                return
+            if expand is not None and not isinstance(expand, bool):
+                raise ValueError("expand must be a bool or None")
+            if weights is not None and not isinstance(weights, dict):
+                raise ValueError("weights must be a dict or None")
+            coerced_fn: DimensionCarrier | Generator[Any, None, None] | None = None
+            if domain is not None:
+                base_fn = (
+                    constant(dimension.function)
+                    if isinstance(dimension.function, (int, float, str))
+                    else dimension.function
+                )
+                coerced_fn = self._apply_domain(name, base_fn, domain)
+            if coerced_fn is not None:
+                dimension.function = coerced_fn
+                self._cached_dimensions.pop(cache_key, None)
+            if expand is not None:
+                dimension.expand = expand
+            if weights is not None:
+                dimension.weights = weights
+            self._request_regeneration()
             return
 
-        dimension = self.dimensions[name]
-        coerced_fn, coerced_weights = self._coerce_dimension_function(name, function)
-        if coerced_weights is not None:
-            dimension.weights = coerced_weights
+        coerced_fn, coerced_weights = self._coerce_dimension_function(name, function, weights)
+        coerced_fn = self._apply_domain(name, coerced_fn, domain)
+        if expand is not None and not isinstance(expand, bool):
+            raise ValueError("expand must be a bool or None")
+        if coerced_weights is not None and not isinstance(coerced_weights, dict):
+            raise ValueError("weights must be a dict or None")
+
         dimension.function = coerced_fn
+        dimension.weights = coerced_weights
+        if expand is not None:
+            dimension.expand = expand
+        self._cached_dimensions.pop(cache_key, None)
         self._request_regeneration()
 
     def remove_dimension(self, name: str) -> None:
@@ -705,6 +766,7 @@ class DataGenerator:
 
         """
         self._dimensions = [d for d in self._dimensions if d.name != name]
+        self._cached_dimensions.pop(name, None)
         self._request_regeneration()
 
     # ------------------------------------------------------------------
@@ -769,6 +831,7 @@ class DataGenerator:
         """
         self._metrics = [m for m in self._metrics if m.name != name]
         self._baselines.pop(name, None)
+        self._cached_metrics.pop(name, None)
         self._request_regeneration()
 
     # ------------------------------------------------------------------
@@ -920,11 +983,24 @@ class DataGenerator:
 
         for item in overlapping:
             self._multi_items = [mt for mt in self._multi_items if mt.names != item.names]
+            self._cached_multi_items.pop(",".join(item.names), None)
         self._request_regeneration()
 
     # ------------------------------------------------------------------
     # Data generation
     # ------------------------------------------------------------------
+
+    def _clear_component_caches(self) -> None:
+        """Clear cached non-expand component outputs."""
+        self._cached_timestamps = None
+        self._cached_dimensions.clear()
+        self._cached_metrics.clear()
+        self._cached_multi_items.clear()
+
+    def _reset_rng(self) -> None:
+        """Reset a seeded RNG to its initial seed state."""
+        if self._rng.seed is not None:
+            self._rng = SeedableRNG(self._rng.seed)
 
     def _request_regeneration(self) -> None:
         """Mark the pipeline dirty so data is regenerated on the next read."""
@@ -963,10 +1039,16 @@ class DataGenerator:
         self._baselines = {}
 
         if self._should_expand():
+            self._clear_component_caches()
             self._data = self._generate_expanded_data(new_timestamps)
             self._pending_regeneration = False
             self._state = PipelineState.GENERATED
             return self._data
+
+        if self._cached_timestamps is None or not new_timestamps.equals(self._cached_timestamps):
+            self._clear_component_caches()
+            self._reset_rng()
+            self._cached_timestamps = new_timestamps
 
         data = pd.DataFrame(index=new_timestamps)
 
@@ -1044,12 +1126,15 @@ class DataGenerator:
     def _build_metrics(self, timestamps: pd.DatetimeIndex) -> pd.DataFrame:
         data_dict: dict[str, Any] = {}
         for metric in self._metrics:
-            result = metric.generate(timestamps, rng=self._rng)
-            self._baselines[metric.name] = result.baseline
-            data_dict[metric.name] = result.signal[metric.name].to_numpy()
+            result = self._cached_metrics.get(metric.name)
+            if result is None:
+                result = metric.generate(timestamps, rng=self._rng)
+                self._cached_metrics[metric.name] = result
+            self._baselines[metric.name] = result.baseline.copy()
+            data_dict[metric.name] = result.signal[metric.name].to_numpy().copy()
             if not result.labels.empty:
                 label_col = f"{metric.name}_anomaly"
-                data_dict[label_col] = result.labels[label_col].to_numpy()
+                data_dict[label_col] = result.labels[label_col].to_numpy().copy()
         if not data_dict:
             return pd.DataFrame(index=timestamps)
         return pd.DataFrame(data_dict, index=timestamps)
@@ -1057,14 +1142,26 @@ class DataGenerator:
     def _build_dimensions(self, timestamps: pd.DatetimeIndex) -> pd.DataFrame:
         df = pd.DataFrame(index=timestamps)
         for dimension in self._dimensions:
-            generated = dimension.generate(timestamps, rng=self._rng)
+            key = dimension.name if isinstance(dimension.name, str) else tuple(dimension.name)
+            cached = self._cached_dimensions.get(key)
+            if cached is not None and cached[0] is dimension.function:
+                generated = cached[1].copy()
+            else:
+                generated = dimension.generate(timestamps, rng=self._rng)
+                self._cached_dimensions[key] = (dimension.function, generated.copy())
             df = pd.concat([df, generated], axis=1)
         return df
 
     def _build_multi_items(self, timestamps: pd.DatetimeIndex) -> pd.DataFrame:
         df = pd.DataFrame(index=timestamps)
         for multi_item in self._multi_items:
-            generated = multi_item.generate(timestamps, rng=self._rng)
+            key = ",".join(multi_item.names)
+            cached = self._cached_multi_items.get(key)
+            if cached is not None and cached[0] is multi_item.function:
+                generated = cached[1].copy()
+            else:
+                generated = multi_item.generate(timestamps, rng=self._rng)
+                self._cached_multi_items[key] = (multi_item.function, generated.copy())
             df = pd.concat([df, generated], axis=1)
         return df
 
@@ -1115,7 +1212,7 @@ class DataGenerator:
 
     def aggregate(
         self,
-        granularity: str,
+        granularity: Granularity | str,
         by: list[str] | None = None,
     ) -> pd.DataFrame:
         """Aggregate data to a coarser granularity.
@@ -1123,7 +1220,8 @@ class DataGenerator:
         Delegates to :func:`ts_data_generator.aggregator.aggregate_dataframe`.
 
         Args:
-            granularity: Target granularity string (e.g. ``"h"``, ``"D"``).
+            granularity: Target :class:`Granularity` member or string (e.g.
+                ``"h"``, ``"D"``).
             by: Optional subset of dimension column names to group by.  When
                 ``expand_dimensions`` is active, pass a subset to roll up
                 across the other dimensions — e.g. ``by=["region"]`` keeps
@@ -1137,7 +1235,7 @@ class DataGenerator:
         Raises:
             AggregationError: If target granularity is finer than current, or
                 if *by* names a column that is not a groupable dimension.
-            KeyError: If granularity string is not recognized.
+            ValueError: If granularity string is not recognized.
 
         Example:
             >>> from ts_data_generator import (
@@ -1172,15 +1270,16 @@ class DataGenerator:
     def normalize(self, method: str = "min-max") -> None:
         """Apply normalization to numeric columns in place.
 
+        Triggers lazy generation via :attr:`data` if generation is pending.
+
         Args:
             method: ``"min-max"`` or ``"mean-std"``.
 
         Raises:
-            ValidationError: If method is unrecognized.
+            ValidationError: If method is unrecognized or required datetime
+                bounds are missing.
 
         """
-        if self._state == PipelineState.CONFIGURED:
-            raise ConfigurationError("Cannot normalize before generating data. Access .data first.")
         self._normalizer = create_normalizer(method)
         self._normalizer.normalize(self.data)
         logger.info("Data normalized with method=%r.", method)
