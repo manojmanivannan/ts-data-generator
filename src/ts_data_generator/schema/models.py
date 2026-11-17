@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Generator, Sequence
-from enum import Enum, StrEnum
+from enum import StrEnum
 from typing import TYPE_CHECKING, Any, NamedTuple, TypeAlias
 
 import numpy as np
@@ -86,7 +86,7 @@ class Granularity(StrEnum):
         return _aliases.get(self.value, self.value)
 
 
-class AggregationType(Enum):
+class AggregationType(StrEnum):
     """Aggregation method used when resampling data to a coarser granularity."""
 
     AVG = "mean"
@@ -343,11 +343,25 @@ class Dimension:
             DataFrame with one column (or multiple if name is a list of names).
 
         """
-        data = [
-            (list(next(self._function)) if isinstance(self._name, list) else [next(self._function)])
-            for _ in timestamps
-        ]
-        columns = self._name if isinstance(self._name, list) else [self._name]
+        is_multi_col = isinstance(self._name, list)
+        columns = self._name if is_multi_col else [self._name]
+        n_cols = len(columns)
+
+        if isinstance(self._function, (int, str, float)):
+            val = self._function
+            row = [val] * n_cols if is_multi_col else [val]
+            data = [row.copy() for _ in timestamps]
+        elif is_multi_col:
+            data = []
+            for _ in timestamps:
+                val = next(self._function)
+                if isinstance(val, (int, str, float)):
+                    data.append([val] * n_cols)
+                else:
+                    data.append(list(val))
+        else:
+            data = [[next(self._function)] for _ in timestamps]
+
         self._data = pd.DataFrame(data, columns=columns, index=timestamps)
         return self._data
 
@@ -481,7 +495,18 @@ class MultiItem:
             DataFrame with one column per name in the multi-item group.
 
         """
-        data = [list(next(self._function)) for _ in timestamps]
+        n_cols = len(self._names)
+        if isinstance(self._function, (int, str, float)):
+            row = [self._function] * n_cols
+            data = [row.copy() for _ in timestamps]
+        else:
+            data = []
+            for _ in timestamps:
+                val = next(self._function)
+                if isinstance(val, (int, str, float)):
+                    data.append([val] * n_cols)
+                else:
+                    data.append(list(val))
         self._data = pd.DataFrame(data, columns=self._names, index=timestamps)
         return self._data
 

@@ -86,6 +86,25 @@ class TestDimensionGenerate:
         assert isinstance(result, pd.DataFrame)
         assert len(result) == 5
 
+    def test_scalar_int_str_float_functions(self) -> None:
+        ts = _timestamps(4)
+        for val in (5, "abc", 3.14):
+            d = Dimension(name="x", function=val)
+            assert d.function == val
+            result = d.generate(ts)
+            assert list(result.columns) == ["x"]
+            assert list(result["x"]) == [val] * 4
+            assert d.function == val
+
+    def test_multi_column_scalar_function(self) -> None:
+        ts = _timestamps(3)
+        for val in (5, "abc"):
+            d = Dimension(name=["a", "b"], function=val)
+            result = d.generate(ts)
+            assert list(result.columns) == ["a", "b"]
+            assert list(result["a"]) == [val, val, val]
+            assert list(result["b"]) == [val, val, val]
+
 
 class TestDimensionFunctionSetter:
     """Tests for Dimension.function setter."""
@@ -330,6 +349,23 @@ class TestMultiItemGenerate:
         assert isinstance(result, pd.DataFrame)
         assert len(result) == 5
 
+    def test_scalar_int_str_float_functions(self) -> None:
+        ts = _timestamps(3)
+        mi_single = MultiItem(names=["x"], function=5)
+        assert mi_single.function == 5
+        df_single = mi_single.generate(ts)
+        assert list(df_single.columns) == ["x"]
+        assert list(df_single["x"]) == [5, 5, 5]
+
+        for val in (5, "abc", 3.14):
+            mi = MultiItem(names=["a", "b"], function=val)
+            assert mi.function == val
+            df = mi.generate(ts)
+            assert list(df.columns) == ["a", "b"]
+            assert list(df["a"]) == [val, val, val]
+            assert list(df["b"]) == [val, val, val]
+            assert mi.function == val
+
 
 class TestMultiItemFunctionSetter:
     """Tests for MultiItem.function setter."""
@@ -535,3 +571,19 @@ class TestGranularityStrEnum:
         assert Granularity.WEEK == "W"
         assert Granularity.MONTH == "ME"
         assert Granularity.YEAR == "Y"
+
+
+class TestAggregationTypeStrEnum:
+    """Verify AggregationType is a StrEnum with expected values."""
+
+    def test_aggregation_type_members_and_strenum(self) -> None:
+        from enum import StrEnum
+
+        from ts_data_generator.schema.models import AggregationType
+
+        assert issubclass(AggregationType, StrEnum)
+        assert isinstance(AggregationType.AVG, str)
+        assert AggregationType.AVG == "mean"
+        assert AggregationType.SUM == "sum"
+        assert AggregationType.MAX == "max"
+        assert AggregationType.MIN == "min"

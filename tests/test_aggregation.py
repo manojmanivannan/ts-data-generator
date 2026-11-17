@@ -396,3 +396,40 @@ class TestAggregationSubsetDimensions:
         assert "city" in daily.columns
         # 3 days x 2 regions x 2 stores = 12 rows
         assert len(daily) == 12
+
+
+class TestAggregationTypingAndEnumInputs:
+    """Tests for Granularity | str annotations and Granularity enum arguments."""
+
+    def test_aggregate_accepts_granularity_enum_and_type_hints(self) -> None:
+        from typing import get_type_hints
+
+        from ts_data_generator.aggregator import aggregate_dataframe
+
+        dg = DataGenerator(
+            start_datetime="2024-01-01 00:00:00",
+            end_datetime="2024-01-02 00:00:00",
+            granularity=Granularity.HOUR,
+            seed=42,
+        )
+        dg.add_dimension("region", random_choice(["US", "EU"]))
+        dg.add_metric("sales", LinearTrend(offset=10, slope=0, noise_level=0))
+
+        daily = dg.aggregate(Granularity.DAY)
+        assert len(daily) < len(dg.data)
+
+        direct = aggregate_dataframe(
+            data=dg.data,
+            metrics=dg.metrics,
+            dimensions=dg.dimensions,
+            multi_items=dg.multi_items,
+            from_granularity=Granularity.HOUR,
+            to_granularity=Granularity.DAY,
+        )
+        pd.testing.assert_frame_equal(daily, direct)
+
+        dg_hints = get_type_hints(DataGenerator.aggregate)
+        fn_hints = get_type_hints(aggregate_dataframe)
+        assert dg_hints["granularity"] == Granularity | str
+        assert fn_hints["from_granularity"] == Granularity | str
+        assert fn_hints["to_granularity"] == Granularity | str

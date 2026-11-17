@@ -60,7 +60,9 @@ from ts_data_generator.random import RNGProtocol
 class CustomStepTrend(Trend):
     """Generates a custom step wave that increments by a factor every N timestamps."""
     
-    def __init__(self, name: str = "default", step_interval: int = 10, increment: float = 5.0) -> None:
+    def __init__(
+        self, name: str | None = None, step_interval: int = 10, increment: float = 5.0
+    ) -> None:
         super().__init__(name)
         self._step_interval = step_interval
         self._increment = increment
@@ -75,7 +77,7 @@ class CustomStepTrend(Trend):
         steps = np.arange(n) // self._step_interval
         base_signal = steps * self._increment
         
-        # Add random minor fluctuations safely using the unified branching helper
+        # Add random minor fluctuations using the provided rng
         noise = rng.normal(0, 0.1, n)
             
         return base_signal + noise
@@ -114,11 +116,8 @@ class CustomClippingAnomaly(Anomaly):
         n = len(base_array)
         
         # Determine stochastically if clipping happens at each timestamp
-        # Use the seeded RNG when available to maintain determinism
-        if rng is not None:
-            mask = rng.random(n) < self._trigger_probability
-        else:
-            mask = np.random.random(n) < self._trigger_probability
+        # rng (RNGProtocol) is always provided by the generator pipeline
+        mask = rng.random(n) < self._trigger_probability
             
         # Apply clipping intervention
         result[mask] = np.minimum(result[mask], self._clip_limit)

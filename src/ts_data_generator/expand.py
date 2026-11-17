@@ -130,6 +130,10 @@ def _resolve_domain(name: str, dimension: Dimension | MultiItem) -> list[Any]:
     expanding*; a non-enumerable dim marked ``expand=False`` never reaches here.
     """
     fn = dimension.function
+    if isinstance(fn, (int, str, float)):
+        if isinstance(dimension, MultiItem):
+            return [tuple([fn] * len(dimension.names))]
+        return [fn]
     if not isinstance(fn, DimensionCarrier):
         source_hint = "add_multi_items" if isinstance(dimension, MultiItem) else "add_dimension"
         raise ExpandError(
@@ -149,7 +153,12 @@ def _resolve_domain(name: str, dimension: Dimension | MultiItem) -> list[Any]:
     if isinstance(dimension, MultiItem):
         normalized_domain: list[tuple[Any, ...]] = []
         for item in domain:
-            t = tuple(item) if isinstance(item, (list, tuple)) else (item,)
+            if isinstance(item, (list, tuple)):
+                t = tuple(item)
+            elif fn.func_name == "constant" and isinstance(item, (int, str, float)):
+                t = tuple([item] * len(dimension.names))
+            else:
+                t = (item,)
             if len(t) != len(dimension.names):
                 raise ExpandError(
                     f"dimension {name!r} cannot be expanded: domain entry {item!r} "
